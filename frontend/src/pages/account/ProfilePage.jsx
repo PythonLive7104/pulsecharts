@@ -19,7 +19,7 @@ export default function ProfilePage() {
       <div className="card">
         <h2>Account</h2>
         <div className="field-row"><span className="field-label">Email</span><span>{me?.email || "…"}</span></div>
-        <div className="field-row"><span className="field-label">Plan</span><span>{me?.is_premium ? "Premium" : "Free"}</span></div>
+        <div className="field-row"><span className="field-label">Plan</span><span>{me?.plan_tier ? me.plan_tier.charAt(0).toUpperCase() + me.plan_tier.slice(1) : "Free"}</span></div>
       </div>
 
       <div className="card">

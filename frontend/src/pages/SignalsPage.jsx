@@ -154,10 +154,10 @@ export default function SignalsPage() {
       ) : (
         <>
           <div className="tg-text">
-            <strong>Signals on Telegram <span className="feature-tag premium">Premium</span></strong>
-            <span className="muted">Get every signal pushed straight to your Telegram — available on Premium.</span>
+            <strong>Signals on Telegram <span className="feature-tag premium">Starter &amp; Pro</span></strong>
+            <span className="muted">Get every signal pushed straight to your Telegram — included on Starter &amp; Pro plans.</span>
           </div>
-          <Link className="btn-primary" to="/account/billing">Upgrade to Premium</Link>
+          <Link className="btn-primary" to="/account/billing">Upgrade</Link>
         </>
       )}
     </div>
@@ -174,7 +174,7 @@ export default function SignalsPage() {
         <div className="topbar-right">
           <ThemeToggle />
           <Link to="/account" className="plan-pill plan-pill-link">
-            {entitlements?.is_premium ? "★ Premium" : "Free"} · Account
+            {entitlements?.is_premium ? "★ " : ""}{entitlements?.plan_label || "Free"} · Account
           </Link>
           <button className="btn-ghost" onClick={logout}>Sign out</button>
         </div>
@@ -185,12 +185,12 @@ export default function SignalsPage() {
           <div className="signals-locked">
             <div className="lock-card">
               <div className="lock-icon">🔒</div>
-              <h1>Trading Signals — Premium</h1>
+              <h1>Trading Signals</h1>
               <p className="muted">
                 AI-generated buy/sell signals with entry, stop-loss, and TP1–TP4 targets,
-                confidence scores, and reasoning are a Premium feature.
+                confidence scores, and reasoning are included on the Starter &amp; Pro plans.
               </p>
-              <Link to="/account/billing" className="btn-primary btn-lg">Upgrade to Premium</Link>
+              <Link to="/account/billing" className="btn-primary btn-lg">Upgrade</Link>
             </div>
             {telegramPanel}
           </div>

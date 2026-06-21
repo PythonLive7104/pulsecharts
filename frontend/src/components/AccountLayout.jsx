@@ -16,7 +16,7 @@ export default function AccountLayout() {
         <div className="topbar-right">
           <Link to="/app" className="btn-ghost">← Back to charts</Link>
           <ThemeToggle />
-          <span className="plan-pill">{entitlements?.is_premium ? "★ Premium" : "Free"}</span>
+          <span className="plan-pill">{entitlements?.is_premium ? "★ " : ""}{entitlements?.plan_label || "Free"}</span>
           <button className="btn-ghost" onClick={logout}>Sign out</button>
         </div>
       </header>

@@ -69,7 +69,7 @@ export default function IndicatorPicker() {
               <div
                 className={`indicator ${locked ? "locked" : ""} ${active ? "active" : ""}`}
                 onClick={() => !locked && ready && activePane && toggleIndicator(activePane.id, ind.slug)}
-                title={locked ? "Premium — upgrade to unlock" : "Toggle"}
+                title={locked ? "Upgrade to unlock" : "Toggle"}
               >
                 <span>{ind.label}</span>
                 <span className="indicator-tags">
@@ -95,7 +95,7 @@ export default function IndicatorPicker() {
       </ul>
       {!entitlements.is_premium && (
         <button className="upgrade-btn" onClick={() => alert("Upgrade flow — billing coming soon (Section 16)")}>
-          Upgrade to Premium
+          Upgrade
         </button>
       )}
     </div>

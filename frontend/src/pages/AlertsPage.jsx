@@ -72,7 +72,7 @@ export default function AlertsPage() {
         <div className="topbar-right">
           <ThemeToggle />
           <Link to="/account" className="plan-pill plan-pill-link">
-            {entitlements?.is_premium ? "★ Premium" : "Free"} · Account
+            {entitlements?.is_premium ? "★ " : ""}{entitlements?.plan_label || "Free"} · Account
           </Link>
           <button className="btn-ghost" onClick={logout}>Sign out</button>
         </div>
