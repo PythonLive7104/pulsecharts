@@ -4,6 +4,8 @@ User is extended with plan/billing fields; entitlements (Section 11) are derived
 from plan_tier + plan_expiry. Email is the login identifier.
 """
 
+from datetime import timedelta
+
 from django.contrib.auth.models import AbstractUser, BaseUserManager
 from django.db import models
 from django.utils import timezone
@@ -57,9 +59,12 @@ class User(AbstractUser):
     dodo_customer_id = models.CharField(max_length=128, blank=True, default="")
 
     # Telegram signal delivery: chat_id is set once the user links via the bot's
-    # /start deep link; link_token is the one-time payload in that deep link.
+    # /start deep link; link_token is the one-time payload in that deep link, and
+    # link_token_at is when it was issued (the token expires after a short TTL so
+    # a forwarded link can't be redeemed by a stranger later).
     telegram_chat_id = models.CharField(max_length=32, blank=True, default="", db_index=True)
     telegram_link_token = models.CharField(max_length=64, blank=True, default="")
+    telegram_link_token_at = models.DateTimeField(null=True, blank=True)
 
     # Referral code used at signup (attribution); the grant itself is applied to
     # plan_tier/plan_expiry at registration time.
@@ -99,14 +104,31 @@ class User(AbstractUser):
     def telegram_connected(self) -> bool:
         return bool(self.telegram_chat_id)
 
+    # A connect link is good for this long after it's issued. Short on purpose:
+    # if the user forwards the link, a stranger can't redeem it minutes later.
+    TELEGRAM_LINK_TOKEN_TTL = timedelta(minutes=15)
+
+    def _telegram_token_fresh(self) -> bool:
+        return bool(
+            self.telegram_link_token
+            and self.telegram_link_token_at
+            and timezone.now() - self.telegram_link_token_at <= self.TELEGRAM_LINK_TOKEN_TTL
+        )
+
     def ensure_telegram_link_token(self) -> str:
-        """Return (creating if needed) the one-time token used in the bot deep link."""
-        if not self.telegram_link_token:
+        """Return a currently-valid one-time deep-link token, minting a fresh one
+        if there isn't one or it has expired."""
+        if not self._telegram_token_fresh():
             import secrets
 
             self.telegram_link_token = secrets.token_urlsafe(24)
-            self.save(update_fields=["telegram_link_token"])
+            self.telegram_link_token_at = timezone.now()
+            self.save(update_fields=["telegram_link_token", "telegram_link_token_at"])
         return self.telegram_link_token
+
+    def telegram_token_valid(self, token: str) -> bool:
+        """True if `token` matches and is within the TTL window."""
+        return bool(token) and token == self.telegram_link_token and self._telegram_token_fresh()
 
     def ensure_referral_code(self):
         """Return this user's personal ReferralCode, creating one if needed.

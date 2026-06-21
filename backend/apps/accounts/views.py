@@ -185,7 +185,8 @@ class TelegramDisconnectView(APIView):
         user = request.user
         user.telegram_chat_id = ""
         user.telegram_link_token = ""
-        user.save(update_fields=["telegram_chat_id", "telegram_link_token"])
+        user.telegram_link_token_at = None
+        user.save(update_fields=["telegram_chat_id", "telegram_link_token", "telegram_link_token_at"])
         return Response({"connected": False})
 
 
@@ -217,21 +218,33 @@ class TelegramWebhookView(APIView):
             parts = text.split(maxsplit=1)
             token = parts[1].strip() if len(parts) > 1 else ""
             user = User.objects.filter(telegram_link_token=token).first() if token else None
-            if user:
+            if not user or not user.telegram_token_valid(token):
+                # No match, or the link has expired (TTL) — a forwarded/stale link
+                # lands here instead of binding someone else's account.
+                telegram.send_message(
+                    chat_id,
+                    "I couldn't match that link, or it has expired. Open PulseCharts → "
+                    "Signals → Connect Telegram to get a fresh link.",
+                )
+            elif user.telegram_chat_id and user.telegram_chat_id != chat_id:
+                # Already linked to a different chat — don't silently hijack it.
+                telegram.send_message(
+                    chat_id,
+                    "This PulseCharts account is already linked to another Telegram chat. "
+                    "Disconnect it first in PulseCharts → Signals, then reconnect.",
+                )
+            else:
                 user.telegram_chat_id = chat_id
                 user.telegram_link_token = ""  # one-time use
-                user.save(update_fields=["telegram_chat_id", "telegram_link_token"])
+                user.telegram_link_token_at = None
+                user.save(update_fields=[
+                    "telegram_chat_id", "telegram_link_token", "telegram_link_token_at",
+                ])
                 telegram.send_message(
                     chat_id,
                     "✅ <b>Connected.</b> You'll now receive PulseCharts signals here. "
                     "Send /stop any time to unlink.\n\n"
                     "<i>Informational only. Not financial advice.</i>",
-                )
-            else:
-                telegram.send_message(
-                    chat_id,
-                    "I couldn't match that link. Open PulseCharts → Signals → Connect "
-                    "Telegram to get a fresh link.",
                 )
         elif text.startswith("/stop"):
             n = User.objects.filter(telegram_chat_id=chat_id).update(telegram_chat_id="")
