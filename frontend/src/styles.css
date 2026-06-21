@@ -659,7 +659,6 @@ a.brand:hover { text-decoration: none; }
 @media (max-width: 640px) {
   .hero h1 { font-size: 32px; }
   .footer-cols { grid-template-columns: 1fr; }
-  .sidebar { display: none; }
 }
 
 /* ========== Signals page (v2) ========== */
@@ -925,12 +924,24 @@ a.brand:hover { text-decoration: none; }
   .referral-grid { gap: 16px; }
   .referral-stats { margin-left: 0; gap: 20px; flex-wrap: wrap; }
 
-  /* --- Charting workspace: stack multi-chart layouts so each chart stays
-     usable on a phone, and let the page scroll vertically. --- */
+  /* --- Charting workspace: stack chart over the sidebar so each chart stays
+     usable on a phone AND the watchlist/indicators stay reachable, with the
+     page scrolling vertically. --- */
   .app { height: auto; min-height: 100vh; }
+  .layout { flex-direction: column; }
+  .draw-toolbar { display: none; }  /* desktop vertical strip; not for touch */
   .chart-grid.grid-2,
   .chart-grid.grid-4 { grid-template-columns: 1fr; grid-template-rows: none; grid-auto-rows: 70vh; }
   .chart-pane { min-height: 60vh; }
+  /* Sidebar (watchlist + indicators + layouts) flows below the chart instead
+     of being hidden — the watchlist gates which symbols get signals. */
+  .sidebar {
+    display: block;
+    width: 100%;
+    border-left: none;
+    border-top: 1px solid var(--border);
+    overflow-y: visible;
+  }
 }
 
 @media (max-width: 480px) {
