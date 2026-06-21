@@ -28,6 +28,11 @@ class RegisterView(generics.CreateAPIView):
 
     serializer_class = RegisterSerializer
     permission_classes = [permissions.AllowAny]
+    # JWT-only (no SessionAuthentication): a logged-in admin's session cookie in
+    # the same browser would otherwise trigger DRF's CSRF enforcement on this
+    # public POST and fail signup with "CSRF Failed". Matches the other public
+    # auth endpoints below.
+    authentication_classes = []
 
 
 class EntitlementsView(APIView):
