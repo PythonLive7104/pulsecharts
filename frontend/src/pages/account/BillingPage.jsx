@@ -65,11 +65,11 @@ export default function BillingPage() {
     }
   }
 
-  async function upgrade() {
+  async function upgrade(plan) {
     setBusy(true);
     setNotice(null);
     try {
-      const session = await api.checkout();
+      const session = await api.checkout(plan);
       if (session?.checkout_url) window.location.href = session.checkout_url;
     } catch (e) {
       // 503 coming-soon (BILLING_LIVE false) or other — show a friendly message.
@@ -130,7 +130,7 @@ export default function BillingPage() {
                 ) : isFree ? (
                   <button className="btn-ghost btn-block" disabled>Included</button>
                 ) : (
-                  <button className="btn-primary btn-block" onClick={upgrade} disabled={busy}>
+                  <button className="btn-primary btn-block" onClick={() => upgrade(p.key)} disabled={busy}>
                     {busy ? "…" : `Upgrade to ${p.label}`}
                   </button>
                 )}

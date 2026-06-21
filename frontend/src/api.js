@@ -113,7 +113,7 @@ export const api = {
       method: "POST",
       body: { old_password: oldPassword, new_password: newPassword },
     }),
-  checkout: () => request("/billing/checkout/", { method: "POST", body: {} }),
+  checkout: (plan) => request("/billing/checkout/", { method: "POST", body: { plan } }),
   plans: () => request("/plans/", { auth: false }),
   entitlements: () => request("/me/entitlements/"),
   watchlist: () => request("/watchlist/"),

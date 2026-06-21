@@ -179,7 +179,9 @@ HYPERLIQUID_WS_URL = env(
 
 DODO_PAYMENTS_API_KEY = env("DODO_PAYMENTS_API_KEY", default="")
 DODO_PAYMENTS_WEBHOOK_SECRET = env("DODO_PAYMENTS_WEBHOOK_SECRET", default="")
-# Dodo price/product IDs per paid plan (fill in once products exist in Dodo).
+# "test" hits test.dodopayments.com (no real charges); "live" hits live mode.
+DODO_PAYMENTS_MODE = env("DODO_PAYMENTS_MODE", default="test")
+# Dodo product IDs per paid plan (pdt_… from the Dodo dashboard).
 DODO_PRICE_STARTER = env("DODO_PRICE_STARTER", default="")
 DODO_PRICE_PRO = env("DODO_PRICE_PRO", default="")
 
