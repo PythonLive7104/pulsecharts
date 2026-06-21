@@ -1,0 +1,11 @@
+# Auto-HTTPS reverse proxy in front of the SPA/nginx.
+#
+# The domain comes from SITE_DOMAIN in the repo-root .env (next to
+# docker-compose.yml), so switching domains later — e.g. to getpulsecharts.com —
+# is a one-line env change + `docker compose up -d`, no code edit.
+#
+# Caddy obtains and renews Let's Encrypt certs automatically once SITE_DOMAIN's
+# DNS A record points at this server and ports 80 + 443 are reachable.
+{$SITE_DOMAIN}, www.{$SITE_DOMAIN} {
+	reverse_proxy frontend:80
+}

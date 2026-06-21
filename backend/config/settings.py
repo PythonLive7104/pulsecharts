@@ -155,6 +155,20 @@ SIMPLE_JWT = {
 FRONTEND_URL = env("FRONTEND_URL", default="http://localhost:5173") or "http://localhost:5173"
 CORS_ALLOWED_ORIGINS = [FRONTEND_URL]
 
+# --- Behind a TLS-terminating reverse proxy (Caddy in front of nginx) ------
+# Trust the forwarded proto so request.is_secure() / absolute URLs are HTTPS.
+SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
+USE_X_FORWARDED_HOST = True
+
+# CSRF: the Django admin POSTs over HTTPS on the public domain, so that origin
+# must be trusted. Derive from FRONTEND_URL plus the HTTPS form of each real
+# host in ALLOWED_HOSTS (bare "localhost" has no dot and is skipped). Override
+# wholesale with the CSRF_TRUSTED_ORIGINS env var if needed.
+CSRF_TRUSTED_ORIGINS = env("CSRF_TRUSTED_ORIGINS", default=[]) or []
+for _origin in [FRONTEND_URL, *(f"https://{h}" for h in ALLOWED_HOSTS if "." in h)]:
+    if _origin and _origin not in CSRF_TRUSTED_ORIGINS:
+        CSRF_TRUSTED_ORIGINS.append(_origin)
+
 # --- Hyperliquid upstream (Section 6, 15) ---------------------------------
 
 HYPERLIQUID_WS_URL = env(

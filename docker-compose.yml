@@ -120,15 +120,35 @@ services:
     command: python manage.py run_relay
 
   # nginx: serves the SPA and proxies /api, /ws, /admin, /static to web.
+  # Not published directly — Caddy fronts it on 80/443 (reachable in-cluster).
   frontend:
     build: ./frontend
     restart: unless-stopped
     depends_on:
       web:
         condition: service_started
+
+  # Caddy: TLS termination + automatic HTTPS (Let's Encrypt) for SITE_DOMAIN.
+  # Set SITE_DOMAIN in the repo-root .env (defaults to localhost for a self-
+  # signed local cert). Point the domain's DNS A record at this host first.
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    depends_on:
+      frontend:
+        condition: service_started
+    environment:
+      SITE_DOMAIN: ${SITE_DOMAIN:-localhost}
     ports:
       - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
 
 volumes:
   redis-data:
   db-data:
+  caddy-data:
+  caddy-config:
