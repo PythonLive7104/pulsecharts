@@ -1,0 +1,313 @@
+// Marketing landing page (Section 1, 5, 12). Positions PulseCharts as the
+// affordable, crypto-focused charting tool. Crypto-only by design (Section 5).
+// Honest copy: no accuracy/return claims (signals are v2 and out of scope here).
+import { useEffect, useState } from "react";
+import { Link } from "react-router-dom";
+import ThemeToggle from "../components/ThemeToggle";
+import Logo from "../components/Logo";
+import { useStore } from "../store/useStore";
+import { api } from "../api";
+import { PLAN_FALLBACK } from "../lib/plans";
+
+const FREE_INDICATORS = ["SMA", "EMA", "Volume"];
+const PREMIUM_INDICATORS = [
+  "RSI", "MACD", "Bollinger Bands", "Stochastic",
+  "ATR", "Fibonacci", "VWAP", "Ichimoku Cloud",
+];
+
+const TIMEFRAMES = ["1m", "5m", "15m", "1h", "4h", "1d"];
+
+const FAQS = [
+  {
+    q: "Where does the price data come from?",
+    a: "Live market data from Hyperliquid's public WebSocket feed, relayed through our servers to your browser so you get a single low-latency stream.",
+  },
+  {
+    q: "Is it really free?",
+    a: "Yes. Live charts, every timeframe, and the SMA/EMA/Volume indicators are free forever — no card required. Premium unlocks advanced indicators and saved layouts.",
+  },
+  {
+    q: "Do you support coins beyond the majors?",
+    a: "We chart the perps and spot pairs listed on Hyperliquid, with more added over time. It's a crypto-focused tool by design — no forex or stocks.",
+  },
+  {
+    q: "Is this financial advice?",
+    a: "No. PulseCharts is a charting and analysis tool. Nothing here is a recommendation to buy or sell. Always do your own research.",
+  },
+];
+
+// A lightweight CSS-only candlestick mockup for the hero.
+function ChartMock() {
+  const candles = [
+    [40, 22, "up"], [55, 30, "down"], [30, 38, "up"], [62, 18, "up"],
+    [48, 26, "down"], [70, 20, "up"], [44, 34, "down"], [58, 24, "up"],
+    [36, 30, "up"], [66, 16, "down"], [52, 28, "up"], [74, 22, "up"],
+  ];
+  return (
+    <div className="chart-mock" aria-hidden="true">
+      <div className="chart-mock-grid" />
+      <div className="chart-mock-candles">
+        {candles.map(([h, top, dir], i) => (
+          <div key={i} className="mock-candle" style={{ height: `${h}%`, marginTop: `${top}%` }}>
+            <span className={`mock-body ${dir}`} />
+          </div>
+        ))}
+      </div>
+      <svg className="mock-line" viewBox="0 0 100 100" preserveAspectRatio="none">
+        <polyline
+          points="0,70 9,60 18,64 27,40 36,48 45,30 54,42 63,34 72,46 81,26 90,34 100,20"
+          fill="none"
+          stroke="var(--accent)"
+          strokeWidth="1.4"
+        />
+      </svg>
+    </div>
+  );
+}
+
+export default function LandingPage() {
+  const isAuthed = useStore((s) => s.isAuthed);
+  const [plans, setPlans] = useState(PLAN_FALLBACK);
+  useEffect(() => {
+    api.plans()
+      .then((d) => { if (d?.plans?.length) setPlans(d.plans); })
+      .catch(() => { /* keep fallback */ });
+  }, []);
+  return (
+    <div className="landing">
+      <header className="landing-nav">
+        <span className="brand"><Logo /></span>
+        <nav className="landing-nav-links">
+          <a href="#features">Features</a>
+          <a href="#indicators">Indicators</a>
+          <a href="#pricing">Pricing</a>
+          <a href="#faq">FAQ</a>
+          <ThemeToggle />
+          {isAuthed ? (
+            <Link to="/app" className="btn-primary">Open app →</Link>
+          ) : (
+            <>
+              <Link to="/login" className="btn-ghost">Sign in</Link>
+              <Link to="/signup" className="btn-primary">Get started</Link>
+            </>
+          )}
+        </nav>
+      </header>
+
+      <main>
+      {/* Hero */}
+      <section className="hero">
+        <div className="hero-text">
+          <span className="hero-pill">⚡ Powered by Hyperliquid market data</span>
+          <h1>Pro-grade crypto charts,<br />without the pro-grade price.</h1>
+          <p className="hero-sub">
+            Real-time candlestick charting for Hyperliquid-listed coins. Start free
+            with live charts and core indicators — upgrade for advanced technical
+            analysis and saved layouts.
+          </p>
+          <div className="hero-cta">
+            {isAuthed ? (
+              <Link to="/app" className="btn-primary btn-lg">Open dashboard →</Link>
+            ) : (
+              <>
+                <Link to="/signup" className="btn-primary btn-lg">Start charting free</Link>
+                <Link to="/login" className="btn-ghost btn-lg">Sign in →</Link>
+              </>
+            )}
+          </div>
+          <p className="hero-note">No card required · Crypto-focused · Cancel anytime</p>
+        </div>
+        <ChartMock />
+      </section>
+
+      {/* Trust band */}
+      <section className="trust-band">
+        <div><strong>Real-time</strong><span>WebSocket feed</span></div>
+        <div><strong>{TIMEFRAMES.length}+</strong><span>timeframes</span></div>
+        <div><strong>11</strong><span>indicators</span></div>
+        <div><strong>$0</strong><span>to start</span></div>
+      </section>
+
+      {/* How it works */}
+      <section className="how">
+        <h2>From signup to your first chart in seconds</h2>
+        <div className="steps">
+          <div className="step">
+            <span className="step-num">1</span>
+            <h3>Create a free account</h3>
+            <p>Email and a password — that's it. No card, no setup.</p>
+          </div>
+          <div className="step">
+            <span className="step-num">2</span>
+            <h3>Pick a coin & timeframe</h3>
+            <p>Search any listed symbol and switch timeframes instantly.</p>
+          </div>
+          <div className="step">
+            <span className="step-num">3</span>
+            <h3>Add indicators</h3>
+            <p>Drop on moving averages and volume, or upgrade for the full suite.</p>
+          </div>
+        </div>
+      </section>
+
+      {/* Feature deep-dive */}
+      <section id="features" className="features">
+        <h2>Everything a crypto trader needs</h2>
+        <p className="section-sub">
+          A focused, fast charting workspace — live data, the indicators that matter,
+          algorithmic signals and the tools to act on them. Start free, upgrade when you want more.
+        </p>
+        <div className="feature-grid">
+          <div className="feature">
+            <div className="feature-icon">📈</div>
+            <h3>Real-time candlestick charts <span className="feature-tag free">Free</span></h3>
+            <p>Live OHLC candles for every Hyperliquid-listed coin, streamed over a single low-latency WebSocket and drawn with TradingView's lightweight-charts. Flip between 1m and 1d timeframes instantly, and the feed auto-reconnects if your connection drops — no frozen charts.</p>
+          </div>
+          <div className="feature">
+            <div className="feature-icon">🧮</div>
+            <h3>11 technical indicators <span className="feature-tag">Free + Premium</span></h3>
+            <p>SMA, EMA and Volume free forever. Unlock RSI, MACD, Bollinger Bands, Stochastic, ATR, VWAP, Fibonacci and Ichimoku Cloud on Premium — all computed in your browser against the live candle buffer, so they update tick-by-tick with zero lag.</p>
+          </div>
+          <div className="feature">
+            <div className="feature-icon">🤖</div>
+            <h3>Algorithmic trading signals <span className="feature-tag premium">Premium</span></h3>
+            <p>An always-on engine scans the strategies you follow and surfaces buy/sell signals — each with an entry, a stop-loss, four take-profit targets (TP1–TP4), risk/reward math and a plain-English reason it was flagged. Get them in-app or pushed straight to your <strong>Telegram</strong>, with trade updates when a target or stop is hit. Informational only, never financial advice.</p>
+          </div>
+          <div className="feature">
+            <div className="feature-icon">🔔</div>
+            <h3>Price alerts</h3>
+            <p>Set price-cross alerts on any coin and get notified the moment a level is hit — so you can step away from the screen and still catch the move you were waiting for.</p>
+          </div>
+          <div className="feature">
+            <div className="feature-icon">✏️</div>
+            <h3>Drawing tools</h3>
+            <p>Mark up charts with trendlines, levels and shapes. Annotations stay pinned to price as you pan and zoom, so your analysis is exactly where you left it next time.</p>
+          </div>
+          <div className="feature">
+            <div className="feature-icon">💾</div>
+            <h3>Saved chart layouts <span className="feature-tag premium">Premium</span></h3>
+            <p>Save any combination of symbol, timeframe and indicator preset, then reload your exact setup in one click. Keep multiple layouts for different coins and trading styles and pick up right where you left off.</p>
+          </div>
+          <div className="feature">
+            <div className="feature-icon">⭐</div>
+            <h3>Watchlists <span className="feature-tag free">Free</span></h3>
+            <p>Build a watchlist of the coins you actually trade and flip between them without losing your indicators or drawings. Reorder freely; your list and workspace sync across sessions and devices.</p>
+          </div>
+          <div className="feature">
+            <div className="feature-icon">🌗</div>
+            <h3>Dark & light themes <span className="feature-tag free">Free</span></h3>
+            <p>A clean, distraction-free interface built for long sessions. Switch between dark and light any time — your preference is remembered the next time you open the app.</p>
+          </div>
+          <div className="feature">
+            <div className="feature-icon">⚡</div>
+            <h3>Crypto-focused & fast</h3>
+            <p>Built for crypto and nothing else — no stocks, no forex, no bloat. Just a fast, responsive charting workspace that works on desktop and adapts to your phone.</p>
+          </div>
+        </div>
+      </section>
+
+      {/* Indicators showcase */}
+      <section id="indicators" className="indicators-showcase">
+        <h2>11 indicators, one click away</h2>
+        <p className="section-sub">Free to start, with the advanced suite a tap away when you're ready.</p>
+        <div className="indicator-columns">
+          <div className="indicator-col">
+            <h3>Free</h3>
+            <div className="chip-row">
+              {FREE_INDICATORS.map((i) => <span key={i} className="chip free">{i}</span>)}
+            </div>
+          </div>
+          <div className="indicator-col">
+            <h3>Premium 🔒</h3>
+            <div className="chip-row">
+              {PREMIUM_INDICATORS.map((i) => <span key={i} className="chip premium">{i}</span>)}
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* Pricing */}
+      <section id="pricing" className="pricing">
+        <h2>Simple pricing</h2>
+        <p className="section-sub">Priced to be the affordable alternative — start free, upgrade only if you want the advanced tools.</p>
+        <div className="plan-grid">
+          {plans.map((p) => {
+            const isFree = p.price_usd === 0;
+            const popular = p.key === "starter";
+            return (
+              <div key={p.key} className={`plan-card ${popular ? "featured" : ""}`}>
+                {popular && <span className="plan-badge">Most popular</span>}
+                <h3>{p.label}</h3>
+                <p className="plan-price">${p.price_usd}<span>/{p.period || "mo"}</span></p>
+                {p.tagline && <p className="plan-tagline muted">{p.tagline}</p>}
+                <ul>{p.features.map((f) => <li key={f}>✓ {f}</li>)}</ul>
+                <Link to="/signup" className={`btn-block ${popular ? "btn-primary" : "btn-ghost"}`}>
+                  {isFree ? "Get started" : "Start free, upgrade later"}
+                </Link>
+              </div>
+            );
+          })}
+        </div>
+        <p className="plan-note muted">
+          Premium billing is rolling out soon — create a free account today and upgrade in-app once it's live.
+        </p>
+      </section>
+
+      {/* FAQ */}
+      <section id="faq" className="faq">
+        <h2>Frequently asked</h2>
+        <div className="faq-list">
+          {FAQS.map((f) => (
+            <details key={f.q} className="faq-item">
+              <summary>{f.q}</summary>
+              <p>{f.a}</p>
+            </details>
+          ))}
+        </div>
+      </section>
+
+      {/* Final CTA */}
+      <section className="final-cta">
+        <h2>Ready to chart?</h2>
+        {isAuthed ? (
+          <>
+            <p>Welcome back — jump straight into your charts.</p>
+            <Link to="/app" className="btn-primary btn-lg">Open dashboard →</Link>
+          </>
+        ) : (
+          <>
+            <p>Create a free account and open your first live chart in under a minute.</p>
+            <Link to="/signup" className="btn-primary btn-lg">Start charting free</Link>
+          </>
+        )}
+      </section>
+      </main>
+
+      {/* Footer */}
+      <footer className="landing-footer">
+        <div className="footer-cols">
+          <div className="footer-brand">
+            <span className="brand"><Logo /></span>
+            <p className="muted">Affordable, crypto-focused charting powered by Hyperliquid.</p>
+          </div>
+          <div className="footer-col">
+            <h4>Product</h4>
+            <a href="#features">Features</a>
+            <a href="#pricing">Pricing</a>
+            <Link to="/app">Open app</Link>
+          </div>
+          <div className="footer-col">
+            <h4>Account</h4>
+            <Link to="/login">Sign in</Link>
+            <Link to="/signup">Create account</Link>
+            <Link to="/forgot-password">Reset password</Link>
+          </div>
+        </div>
+        <div className="footer-bottom muted">
+          PulseCharts is a charting tool for informational purposes only and is not
+          financial advice. © {new Date().getFullYear()} MAILIONDEV TECHNOLOGY LTD (RC 9233525).
+        </div>
+      </footer>
+    </div>
+  );
+}

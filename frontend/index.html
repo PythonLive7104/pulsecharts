@@ -1,0 +1,114 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <link rel="apple-touch-icon" href="/favicon.svg" />
+
+    <!-- Production domain: getpulsecharts.com (also set as FRONTEND_URL +
+         DJANGO_ALLOWED_HOSTS in backend/.env). Add /og-image.png (1200×630) for
+         social link previews — referenced by og:image / twitter:image below. -->
+
+    <!-- Primary SEO -->
+    <title>PulseCharts — Real-Time Crypto Charts &amp; Trading Signals (Free)</title>
+    <meta
+      name="description"
+      content="Pro-grade, real-time crypto charts for Hyperliquid-listed coins. Start free with live candlesticks, SMA/EMA/Volume and a signal feed — upgrade for RSI, MACD, Bollinger Bands and saved layouts. No card required."
+    />
+    <meta name="keywords" content="crypto charts, real-time crypto charting, Hyperliquid, candlestick charts, trading indicators, RSI MACD Bollinger Bands, crypto trading signals, TradingView alternative" />
+    <meta name="author" content="MAILIONDEV TECHNOLOGY LTD" />
+    <meta name="robots" content="index, follow, max-image-preview:large" />
+    <meta name="theme-color" content="#f7f9fc" />
+    <link rel="canonical" href="https://getpulsecharts.com/" />
+
+    <!-- Open Graph (Facebook, LinkedIn, Slack, etc.) -->
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="PulseCharts" />
+    <meta property="og:title" content="PulseCharts — Real-Time Crypto Charts &amp; Trading Signals" />
+    <meta property="og:description" content="Live candlestick charts for Hyperliquid-listed coins, core indicators free, advanced technical analysis and signals on Premium. No card required to start." />
+    <meta property="og:url" content="https://getpulsecharts.com/" />
+    <meta property="og:image" content="https://getpulsecharts.com/og-image.png" />
+    <meta property="og:image:alt" content="PulseCharts real-time crypto charting dashboard" />
+
+    <!-- Twitter / X card -->
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="PulseCharts — Real-Time Crypto Charts &amp; Trading Signals" />
+    <meta name="twitter:description" content="Pro-grade crypto charts, without the pro-grade price. Live data from Hyperliquid. Start free." />
+    <meta name="twitter:image" content="https://getpulsecharts.com/og-image.png" />
+
+    <!-- Structured data: Organization (for knowledge-panel / brand) -->
+    <script type="application/ld+json">
+    {
+      "@context": "https://schema.org",
+      "@type": "Organization",
+      "name": "PulseCharts",
+      "legalName": "MAILIONDEV TECHNOLOGY LTD",
+      "url": "https://getpulsecharts.com/",
+      "logo": "https://getpulsecharts.com/og-image.png",
+      "description": "Affordable, crypto-focused real-time charting and trading-signal tool powered by Hyperliquid market data."
+    }
+    </script>
+
+    <!-- Structured data: the app itself, with pricing tiers (rich results) -->
+    <script type="application/ld+json">
+    {
+      "@context": "https://schema.org",
+      "@type": "WebApplication",
+      "name": "PulseCharts",
+      "url": "https://getpulsecharts.com/",
+      "applicationCategory": "FinanceApplication",
+      "operatingSystem": "Web",
+      "description": "Real-time crypto charting for Hyperliquid-listed coins with free and premium technical indicators, watchlists, saved layouts and an algorithmic trading-signal feed.",
+      "offers": [
+        { "@type": "Offer", "name": "Free",    "price": "0",  "priceCurrency": "USD", "description": "Live charts, all timeframes, SMA/EMA/Volume, 1 watchlist symbol, 1 signal strategy." },
+        { "@type": "Offer", "name": "Starter", "price": "9",  "priceCurrency": "USD", "description": "Core premium indicators, up to 4 strategies and a real signal feed." },
+        { "@type": "Offer", "name": "Pro",     "price": "19", "priceCurrency": "USD", "description": "Every indicator and strategy with unlimited daily signals." }
+      ]
+    }
+    </script>
+
+    <!-- Structured data: FAQ (Answer Engine Optimization — AI/answer engines) -->
+    <script type="application/ld+json">
+    {
+      "@context": "https://schema.org",
+      "@type": "FAQPage",
+      "mainEntity": [
+        {
+          "@type": "Question",
+          "name": "Where does PulseCharts' price data come from?",
+          "acceptedAnswer": { "@type": "Answer", "text": "Live market data from Hyperliquid's public WebSocket feed, relayed through our servers to your browser so you get a single low-latency stream." }
+        },
+        {
+          "@type": "Question",
+          "name": "Is PulseCharts really free?",
+          "acceptedAnswer": { "@type": "Answer", "text": "Yes. Live charts, every timeframe, and the SMA/EMA/Volume indicators are free forever with no card required. Premium plans unlock advanced indicators, saved layouts and a larger signal feed." }
+        },
+        {
+          "@type": "Question",
+          "name": "Which coins does PulseCharts support?",
+          "acceptedAnswer": { "@type": "Answer", "text": "PulseCharts charts the perpetual and spot pairs listed on Hyperliquid, with more added over time. It is a crypto-focused tool by design — no forex or stocks." }
+        },
+        {
+          "@type": "Question",
+          "name": "Is PulseCharts financial advice?",
+          "acceptedAnswer": { "@type": "Answer", "text": "No. PulseCharts is a charting and analysis tool. Its indicators and algorithmic signals are informational only and are not a recommendation to buy or sell. Always do your own research." }
+        }
+      ]
+    }
+    </script>
+  </head>
+  <body>
+    <div id="root"></div>
+    <noscript>
+      <h1>PulseCharts — real-time crypto charts &amp; trading signals</h1>
+      <p>
+        PulseCharts provides pro-grade, real-time candlestick charts for
+        Hyperliquid-listed crypto, free core indicators (SMA, EMA, Volume) and a
+        premium suite (RSI, MACD, Bollinger Bands and more). JavaScript is
+        required to use the app.
+      </p>
+    </noscript>
+    <script type="module" src="/src/main.jsx"></script>
+  </body>
+</html>

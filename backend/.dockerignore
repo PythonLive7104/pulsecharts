@@ -1,0 +1,17 @@
+# Secrets are injected at runtime via compose env_file — never bake them in.
+.env
+.env.*
+
+# Python / build cruft
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+
+# Local-only artifacts
+staticfiles/
+db.sqlite3
+*.log
+.venv/
+venv/

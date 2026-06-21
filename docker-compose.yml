@@ -1,0 +1,134 @@
+# PulseCharts production stack — fully self-hosted (app + Postgres + Redis on one host).
+#
+#   docker compose up -d --build
+#
+# Postgres and Redis run as containers here, so the database lives ON THIS HOST,
+# next to the app — no external DB, no cross-region latency. Only the frontend
+# (nginx) is exposed (port 80); the backend image runs in four roles.
+#
+# Before first deploy, in backend/.env set:
+#   DJANGO_DEBUG=False
+#   DJANGO_SECRET_KEY=<a long random value>
+#   DJANGO_ALLOWED_HOSTS=your-domain.com,your.server.ip
+#   FRONTEND_URL=https://your-domain.com
+#   OPENAI_API_KEY / TELEGRAM_* / SIGNAL_* as already configured
+# And set a strong DB password (shell export or a .env file beside this one):
+#   POSTGRES_PASSWORD=<a long random value>
+#
+# NOTE: backend/.env's DATABASE_URL is IGNORED here — compose points the app at
+# the in-cluster `db` service. (To use an external DB instead, delete the `db`
+# service + the DATABASE_URL line below and set DATABASE_URL in backend/.env.)
+name: pulsecharts
+
+# Shared env for the four backend roles. These override backend/.env (compose
+# `environment` wins over env_file), pointing the app at the in-cluster services.
+x-backend-env: &backend-env
+  REDIS_URL: redis://redis:6379/0
+  DATABASE_URL: postgresql://${POSTGRES_USER:-pulsecharts}:${POSTGRES_PASSWORD:-pulsecharts}@db:5432/${POSTGRES_DB:-pulsecharts}
+
+services:
+  # PostgreSQL — data persists in the db-data volume across restarts/redeploys.
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-pulsecharts}
+      POSTGRES_USER: ${POSTGRES_USER:-pulsecharts}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-pulsecharts}
+    volumes:
+      - db-data:/var/lib/postgresql/data
+    # Published to localhost only, so ./dev.sh (running on the host, outside
+    # Docker) can use this same Postgres. Not exposed to the public interface.
+    ports:
+      - "127.0.0.1:5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-pulsecharts}"]
+      interval: 10s
+      timeout: 3s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+
+  # ASGI server: HTTP API + WebSocket relay. Runs migrations on start.
+  web:
+    build: ./backend
+    restart: unless-stopped
+    env_file: ./backend/.env
+    environment: *backend-env
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    command: >
+      sh -c "python manage.py migrate --noinput &&
+             python manage.py sync_referral_code &&
+             daphne -b 0.0.0.0 -p 8000 config.asgi:application"
+
+  # Celery worker: signal generation + outcome evaluation + alerts.
+  worker:
+    build: ./backend
+    restart: unless-stopped
+    env_file: ./backend/.env
+    environment: *backend-env
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      web:
+        condition: service_started
+    command: celery -A config worker -l info
+
+  # Celery beat: schedules the recurring scan / eval / purge / telegram tasks.
+  beat:
+    build: ./backend
+    restart: unless-stopped
+    env_file: ./backend/.env
+    environment: *backend-env
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      web:
+        condition: service_started
+    command: celery -A config beat -l info
+
+  # Hyperliquid relay: single upstream WS connection -> Channels groups.
+  relay:
+    build: ./backend
+    restart: unless-stopped
+    env_file: ./backend/.env
+    environment: *backend-env
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      web:
+        condition: service_started
+    command: python manage.py run_relay
+
+  # nginx: serves the SPA and proxies /api, /ws, /admin, /static to web.
+  frontend:
+    build: ./frontend
+    restart: unless-stopped
+    depends_on:
+      web:
+        condition: service_started
+    ports:
+      - "80:80"
+
+volumes:
+  redis-data:
+  db-data:
