@@ -74,10 +74,11 @@ export default function LandingPage() {
       .catch(() => { /* keep fallback */ });
   }, []);
   return (
-    <div className="landing">
+    <>
       <header className="landing-nav">
-        <span className="brand"><Logo /></span>
-        <nav className="landing-nav-links">
+        <div className="landing-nav-inner">
+          <span className="brand"><Logo /></span>
+          <nav className="landing-nav-links">
           <a href="#how">How it works</a>
           <a href="#features">Features</a>
           <a href="#indicators">Indicators</a>
@@ -93,8 +94,10 @@ export default function LandingPage() {
             </>
           )}
         </nav>
+        </div>
       </header>
 
+      <div className="landing">
       <main>
       {/* Hero */}
       <section className="hero">
@@ -328,5 +331,6 @@ export default function LandingPage() {
         </div>
       </footer>
     </div>
+    </>
   );
 }
