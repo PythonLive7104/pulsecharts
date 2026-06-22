@@ -256,6 +256,12 @@ export default function LandingPage() {
           {plans.map((p) => {
             const isFree = p.price_usd === 0;
             const popular = p.key === "starter";
+            // Logged-in users shouldn't be sent to signup: free → dashboard,
+            // paid → the in-app billing/upgrade page.
+            const ctaTo = !isAuthed ? "/signup" : isFree ? "/app" : "/account/billing";
+            const ctaLabel = !isAuthed
+              ? isFree ? "Get started" : "Start free, upgrade later"
+              : isFree ? "Open dashboard →" : "Upgrade";
             return (
               <div key={p.key} className={`plan-card ${popular ? "featured" : ""}`}>
                 {popular && <span className="plan-badge">Most popular</span>}
@@ -263,8 +269,8 @@ export default function LandingPage() {
                 <p className="plan-price">${p.price_usd}<span>/{p.period || "mo"}</span></p>
                 {p.tagline && <p className="plan-tagline muted">{p.tagline}</p>}
                 <ul>{p.features.map((f) => <li key={f}>✓ {f}</li>)}</ul>
-                <Link to="/signup" className={`btn-block ${popular ? "btn-primary" : "btn-ghost"}`}>
-                  {isFree ? "Get started" : "Start free, upgrade later"}
+                <Link to={ctaTo} className={`btn-block ${popular ? "btn-primary" : "btn-ghost"}`}>
+                  {ctaLabel}
                 </Link>
               </div>
             );
