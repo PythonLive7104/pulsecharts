@@ -126,7 +126,15 @@ def _swings(candles: list[dict], lookback=50):
 
 
 def compute_indicators(candles: list[dict]) -> dict:
-    """Snapshot of indicator values for the most recent completed candle."""
+    """Snapshot of indicator values for the most recent completed candle.
+
+    The feed's latest bucket is the still-forming candle, whose OHLCV jitters
+    intrabar. Drop it and compute on the last CLOSED candle so signals don't
+    flip-flop between scans — and so generation matches outcome evaluation,
+    which also only acts once a candle has closed.
+    """
+    if len(candles) >= 2:
+        candles = candles[:-1]
     closes = [c["close"] for c in candles]
     last = candles[-1]
     macd_line, macd_signal, macd_hist = _macd(closes)
