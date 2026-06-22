@@ -33,7 +33,7 @@ from apps.signals.levels import TP_MULTIPLES, compute_levels
 from apps.signals.models import SignalService
 from apps.signals.pregate import candidate_direction, passes_pregate
 
-MIN_CANDLES = 60  # enough history for EMA50 / swing windows (matches tasks.py)
+MIN_CANDLES = 210  # enough history for the 200 EMA / swing windows (matches tasks.py)
 
 
 def _blank(name):

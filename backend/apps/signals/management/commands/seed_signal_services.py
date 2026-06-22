@@ -22,7 +22,7 @@ SERVICES = [
         "description": "Signal-line crossovers combined with histogram strength.",
         "strategy_focus": (
             "Look for MACD line crossing its signal line with an expanding histogram, "
-            "in the direction of the EMA 50 trend."
+            "in the direction of the EMA 200 trend, with price on the same side of the 20 SMA."
         ),
     },
     {
@@ -50,12 +50,13 @@ SERVICES = [
         "name": "Trend Rider (EMA + RSI)",
         "slug": "trend-rider",
         "strategy_type": "trend",
-        "description": "Trade with the EMA 50 trend, fast EMAs aligned and RSI confirming.",
+        "description": "Trade with the EMA 200 trend, fast EMAs and 20 SMA aligned, RSI confirming.",
         "strategy_focus": (
-            "Trend-following setup: only go long when price is above the EMA 50 with "
-            "EMA 9 above EMA 21 and RSI above 50; only go short when price is below the "
-            "EMA 50 with EMA 9 below EMA 21 and RSI below 50. Strongest when MACD "
-            "histogram agrees with the trend direction. Avoid counter-trend calls."
+            "Trend-following setup: only go long when price is above the EMA 200 and the "
+            "20 SMA with EMA 9 above EMA 21 and RSI above 50; only go short when price is "
+            "below the EMA 200 and the 20 SMA with EMA 9 below EMA 21 and RSI below 50. "
+            "Strongest when MACD histogram agrees with the trend direction. Avoid "
+            "counter-trend calls."
         ),
     },
     {
@@ -69,7 +70,7 @@ SERVICES = [
             "the oversold zone (below 25) and crossing up over %D; go short when %K is in "
             "the overbought zone (above 75) and crossing down below %D. Prefer setups where "
             "RSI is also leaving an extreme and price is near a swing level. Skip when a "
-            "strong trend (price far from VWAP/EMA 50) would override a reversion."
+            "strong trend (price far from VWAP/EMA 200) would override a reversion."
         ),
     },
     {
@@ -114,10 +115,10 @@ SERVICES = [
         "name": "Trend Pullback",
         "slug": "trend-pullback",
         "strategy_type": "trend",
-        "description": "Buy the dip / sell the rally inside an established EMA 50 trend.",
+        "description": "Buy the dip / sell the rally inside an established EMA 200 trend.",
         "strategy_focus": (
-            "Trend-continuation pullback entry: in an uptrend (price above EMA 50, EMA 9 "
-            "above EMA 21) go long when RSI has cooled into the 40–50 pullback zone and is "
+            "Trend-continuation pullback entry: in an uptrend (price above EMA 200 and the "
+            "20 SMA, EMA 9 above EMA 21) go long when RSI has cooled into the 40–50 pullback zone and is "
             "turning back up; in a downtrend go short when RSI has bounced into the 50–60 "
             "zone and is rolling over. The idea is to join the trend on a dip, not to chase "
             "an extended move."

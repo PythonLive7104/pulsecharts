@@ -29,7 +29,7 @@ from .quota import signal_quota_for
 
 logger = logging.getLogger("signals.tasks")
 
-MIN_CANDLES = 60  # need enough history for EMA50 / swing windows
+MIN_CANDLES = 210  # need enough history for the 200 EMA (+ a small seeding buffer)
 
 # Each signal timeframe is checked against the next higher one for trend
 # agreement (regime filter). Frames absent here skip the alignment check, but
@@ -48,16 +48,16 @@ def _htf_direction(sym, htf: str, cache: dict) -> str | None:
         return cache[key]
     direction = "ERR"
     try:
-        candles = fetch_candles(sym.hl_coin, sym.ticker, htf, limit=200)
+        candles = fetch_candles(sym.hl_coin, sym.ticker, htf, limit=300)
         if len(candles) >= MIN_CANDLES:
             ind = compute_indicators(candles)
-            close, ema9, ema21, ema50 = (
-                ind["close"], ind["ema9"], ind["ema21"], ind["ema50"],
+            close, ema9, ema21, ema200 = (
+                ind["close"], ind["ema9"], ind["ema21"], ind["ema200"],
             )
-            if None not in (close, ema9, ema21, ema50):
-                if close > ema50 and ema9 > ema21:
+            if None not in (close, ema9, ema21, ema200):
+                if close > ema200 and ema9 > ema21:
                     direction = "BUY"
-                elif close < ema50 and ema9 < ema21:
+                elif close < ema200 and ema9 < ema21:
                     direction = "SELL"
                 else:
                     direction = None  # higher frame not clearly trending
@@ -125,7 +125,7 @@ def run_scan(symbol_limit: int | None = None, use_pregate: bool | None = None) -
     for sym in symbols:
         for tf in settings.SIGNAL_TIMEFRAMES:
             try:
-                candles = fetch_candles(sym.hl_coin, sym.ticker, tf, limit=200)
+                candles = fetch_candles(sym.hl_coin, sym.ticker, tf, limit=300)
             except (requests.RequestException, ValueError):
                 logger.warning("candle fetch failed: %s %s", sym.ticker, tf)
                 continue
