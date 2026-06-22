@@ -22,7 +22,7 @@ SERVICES = [
         "description": "Signal-line crossovers combined with histogram strength.",
         "strategy_focus": (
             "Look for MACD line crossing its signal line with an expanding histogram, "
-            "in the direction of the EMA 200 trend, with price on the same side of the 20 SMA."
+            "in the direction of the EMA 200 trend."
         ),
     },
     {
@@ -50,13 +50,12 @@ SERVICES = [
         "name": "Trend Rider (EMA + RSI)",
         "slug": "trend-rider",
         "strategy_type": "trend",
-        "description": "Trade with the EMA 200 trend, fast EMAs and 20 SMA aligned, RSI confirming.",
+        "description": "Trade with the EMA 200 trend, fast EMAs aligned and RSI confirming.",
         "strategy_focus": (
-            "Trend-following setup: only go long when price is above the EMA 200 and the "
-            "20 SMA with EMA 9 above EMA 21 and RSI above 50; only go short when price is "
-            "below the EMA 200 and the 20 SMA with EMA 9 below EMA 21 and RSI below 50. "
-            "Strongest when MACD histogram agrees with the trend direction. Avoid "
-            "counter-trend calls."
+            "Trend-following setup: only go long when price is above the EMA 200 with "
+            "EMA 9 above EMA 21 and RSI above 50; only go short when price is below the "
+            "EMA 200 with EMA 9 below EMA 21 and RSI below 50. Strongest when MACD "
+            "histogram agrees with the trend direction. Avoid counter-trend calls."
         ),
     },
     {
@@ -117,8 +116,8 @@ SERVICES = [
         "strategy_type": "trend",
         "description": "Buy the dip / sell the rally inside an established EMA 200 trend.",
         "strategy_focus": (
-            "Trend-continuation pullback entry: in an uptrend (price above EMA 200 and the "
-            "20 SMA, EMA 9 above EMA 21) go long when RSI has cooled into the 40–50 pullback zone and is "
+            "Trend-continuation pullback entry: in an uptrend (price above EMA 200, EMA 9 "
+            "above EMA 21) go long when RSI has cooled into the 40–50 pullback zone and is "
             "turning back up; in a downtrend go short when RSI has bounced into the 50–60 "
             "zone and is rolling over. The idea is to join the trend on a dip, not to chase "
             "an extended move."

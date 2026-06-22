@@ -200,7 +200,6 @@ def compute_indicators(candles: list[dict]) -> dict:
         "volume_ma20": _sma([c["volume"] for c in candles], 20),
         "ema9": _ema(closes, 9)[-1],
         "ema21": _ema(closes, 21)[-1],
-        "sma20": _sma(closes, 20),
         "ema200": _ema(closes, 200)[-1],
         "rsi": _rsi(closes),
         "macd_line": macd_line,

@@ -45,13 +45,11 @@ def _momentum_crossover(ind: dict) -> bool:
 
 
 def _macd_trend_following(ind: dict) -> bool:
-    v = _vals(ind, "close", "sma20", "ema200", "macd_hist")
+    v = _vals(ind, "close", "ema200", "macd_hist")
     if v is None:
         return False
-    close, sma20, ema200, hist = v
-    return (close > ema200 and close > sma20 and hist > 0) or (
-        close < ema200 and close < sma20 and hist < 0
-    )
+    close, ema200, hist = v
+    return (close > ema200 and hist > 0) or (close < ema200 and hist < 0)
 
 
 def _bollinger_mean_reversion(ind: dict) -> bool:
@@ -74,14 +72,13 @@ def _volatility_breakout(ind: dict) -> bool:
 
 def _trend_rider(ind: dict) -> bool:
     # Trend-following with momentum confirmation: price on the right side of the
-    # EMA200 trend, fast EMAs aligned, price on the right side of the 20 SMA,
-    # RSI confirming.
-    v = _vals(ind, "close", "ema9", "ema21", "sma20", "ema200", "rsi")
+    # EMA200 trend, fast EMAs aligned, RSI confirming.
+    v = _vals(ind, "close", "ema9", "ema21", "ema200", "rsi")
     if v is None:
         return False
-    close, ema9, ema21, sma20, ema200, rsi = v
-    up = close > ema200 and ema9 > ema21 and close > sma20 and rsi >= 50
-    down = close < ema200 and ema9 < ema21 and close < sma20 and rsi <= 50
+    close, ema9, ema21, ema200, rsi = v
+    up = close > ema200 and ema9 > ema21 and rsi >= 50
+    down = close < ema200 and ema9 < ema21 and rsi <= 50
     return up or down
 
 
@@ -134,12 +131,12 @@ def _vwap_reversion(ind: dict) -> bool:
 def _trend_pullback(ind: dict) -> bool:
     # Buy the dip / sell the rally inside an established EMA200 trend, while RSI
     # has cooled into a pullback zone rather than running hot.
-    v = _vals(ind, "close", "ema9", "ema21", "sma20", "ema200", "rsi")
+    v = _vals(ind, "close", "ema9", "ema21", "ema200", "rsi")
     if v is None:
         return False
-    close, ema9, ema21, sma20, ema200, rsi = v
-    up = close > ema200 and ema9 > ema21 and close > sma20 and 40 <= rsi < 50
-    down = close < ema200 and ema9 < ema21 and close < sma20 and 50 < rsi <= 60
+    close, ema9, ema21, ema200, rsi = v
+    up = close > ema200 and ema9 > ema21 and 40 <= rsi < 50
+    down = close < ema200 and ema9 < ema21 and 50 < rsi <= 60
     return up or down
 
 
@@ -183,13 +180,13 @@ def _dir_momentum(ind: dict) -> str | None:
 
 
 def _dir_macd(ind: dict) -> str | None:
-    v = _vals(ind, "close", "sma20", "ema200", "macd_hist")
+    v = _vals(ind, "close", "ema200", "macd_hist")
     if v is None:
         return None
-    close, sma20, ema200, hist = v
-    if close > ema200 and close > sma20 and hist > 0:
+    close, ema200, hist = v
+    if close > ema200 and hist > 0:
         return "BUY"
-    if close < ema200 and close < sma20 and hist < 0:
+    if close < ema200 and hist < 0:
         return "SELL"
     return None
 
@@ -222,13 +219,13 @@ def _dir_breakout(ind: dict) -> str | None:
 
 
 def _dir_trend_rider(ind: dict) -> str | None:
-    v = _vals(ind, "close", "ema9", "ema21", "sma20", "ema200", "rsi")
+    v = _vals(ind, "close", "ema9", "ema21", "ema200", "rsi")
     if v is None:
         return None
-    close, ema9, ema21, sma20, ema200, rsi = v
-    if close > ema200 and ema9 > ema21 and close > sma20 and rsi >= 50:
+    close, ema9, ema21, ema200, rsi = v
+    if close > ema200 and ema9 > ema21 and rsi >= 50:
         return "BUY"
-    if close < ema200 and ema9 < ema21 and close < sma20 and rsi <= 50:
+    if close < ema200 and ema9 < ema21 and rsi <= 50:
         return "SELL"
     return None
 
@@ -286,13 +283,13 @@ def _dir_vwap_reversion(ind: dict) -> str | None:
 
 
 def _dir_trend_pullback(ind: dict) -> str | None:
-    v = _vals(ind, "close", "ema9", "ema21", "sma20", "ema200", "rsi")
+    v = _vals(ind, "close", "ema9", "ema21", "ema200", "rsi")
     if v is None:
         return None
-    close, ema9, ema21, sma20, ema200, rsi = v
-    if close > ema200 and ema9 > ema21 and close > sma20 and 40 <= rsi < 50:
+    close, ema9, ema21, ema200, rsi = v
+    if close > ema200 and ema9 > ema21 and 40 <= rsi < 50:
         return "BUY"
-    if close < ema200 and ema9 < ema21 and close < sma20 and 50 < rsi <= 60:
+    if close < ema200 and ema9 < ema21 and 50 < rsi <= 60:
         return "SELL"
     return None
 
@@ -334,22 +331,18 @@ def confidence_score(direction: str, ind: dict) -> int:
         v = ind.get(k)
         return float(v) if v is not None else None
 
-    close, ema9, ema21 = f("close"), f("ema9"), f("ema21")
-    sma20, ema200 = f("sma20"), f("ema200")
+    close, ema9, ema21, ema200 = f("close"), f("ema9"), f("ema21"), f("ema200")
     rsi, hist, vol, vol_ma = f("rsi"), f("macd_hist"), f("volume"), f("volume_ma20")
 
     score = 55.0
     ema_ok = ema9 is not None and ema21 is not None and (ema9 > ema21) == buy
     trend_ok = close is not None and ema200 is not None and (close > ema200) == buy
-    sma_ok = close is not None and sma20 is not None and (close > sma20) == buy
     macd_ok = hist is not None and (hist > 0) == buy
 
     if ema_ok:
         score += 8
     if trend_ok:
         score += 8   # price vs the 200 EMA (major trend)
-    if sma_ok:
-        score += 4   # price vs the 20 SMA (short-term trend)
     if macd_ok:
         score += 7
     if rsi is not None and (rsi >= 50) == buy:

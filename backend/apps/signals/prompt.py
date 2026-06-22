@@ -73,7 +73,6 @@ CURRENT MARKET DATA:
 INDICATOR VALUES (most recent completed candle):
 - EMA 9: {_fmt(ind.get("ema9"))}
 - EMA 21: {_fmt(ind.get("ema21"))}
-- SMA 20: {_fmt(ind.get("sma20"))}
 - EMA 200: {_fmt(ind.get("ema200"))}
 - RSI (14): {_fmt(ind.get("rsi"))}
 - MACD line: {_fmt(ind.get("macd_line"))}
@@ -117,7 +116,6 @@ CURRENT MARKET DATA:
 INDICATOR VALUES (most recent completed candle):
 - EMA 9: {_fmt(ind.get("ema9"))}
 - EMA 21: {_fmt(ind.get("ema21"))}
-- SMA 20: {_fmt(ind.get("sma20"))}
 - EMA 200: {_fmt(ind.get("ema200"))}
 - RSI (14): {_fmt(ind.get("rsi"))}
 - MACD line: {_fmt(ind.get("macd_line"))}
