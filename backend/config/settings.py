@@ -239,6 +239,13 @@ SIGNAL_MIN_CONFIDENCE = env.int("SIGNAL_MIN_CONFIDENCE", default=65)
 # conditions clearly aren't present (apps/signals/pregate.py). Big cost saver.
 SIGNAL_PREGATE_ENABLED = env.bool("SIGNAL_PREGATE_ENABLED", default=True)
 
+# Regime filter: only allow trend signals in a genuinely trending market —
+# ADX above SIGNAL_ADX_MIN (trend strength) AND the setup agreeing with the
+# higher-timeframe trend. Keeps trend strategies out of chop. Runs before the
+# LLM call, so it also saves tokens.
+SIGNAL_REGIME_FILTER_ENABLED = env.bool("SIGNAL_REGIME_FILTER_ENABLED", default=True)
+SIGNAL_ADX_MIN = env.float("SIGNAL_ADX_MIN", default=20.0)
+
 # Optional: your model's price per 1M tokens, so each scan can log estimated $.
 # Leave 0 to skip the dollar estimate (token counts are still logged).
 OPENAI_PRICE_IN_PER_1M = env.float("OPENAI_PRICE_IN_PER_1M", default=0.0)

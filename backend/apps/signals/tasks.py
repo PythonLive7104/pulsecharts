@@ -31,6 +31,59 @@ logger = logging.getLogger("signals.tasks")
 
 MIN_CANDLES = 60  # need enough history for EMA50 / swing windows
 
+# Each signal timeframe is checked against the next higher one for trend
+# agreement (regime filter). Frames absent here skip the alignment check, but
+# ADX strength still applies.
+_HTF_MAP = {
+    "1m": "15m", "3m": "15m", "5m": "1h", "15m": "1h",
+    "30m": "4h", "1h": "4h", "2h": "1d", "4h": "1d",
+}
+
+
+def _htf_direction(sym, htf: str, cache: dict) -> str | None:
+    """Higher-timeframe trend bias on the last closed candle: 'BUY' (up),
+    'SELL' (down), None (choppy), or 'ERR' if candles couldn't be fetched."""
+    key = (sym.id, htf)
+    if key in cache:
+        return cache[key]
+    direction = "ERR"
+    try:
+        candles = fetch_candles(sym.hl_coin, sym.ticker, htf, limit=200)
+        if len(candles) >= MIN_CANDLES:
+            ind = compute_indicators(candles)
+            close, ema9, ema21, ema50 = (
+                ind["close"], ind["ema9"], ind["ema21"], ind["ema50"],
+            )
+            if None not in (close, ema9, ema21, ema50):
+                if close > ema50 and ema9 > ema21:
+                    direction = "BUY"
+                elif close < ema50 and ema9 < ema21:
+                    direction = "SELL"
+                else:
+                    direction = None  # higher frame not clearly trending
+    except (requests.RequestException, ValueError):
+        direction = "ERR"
+    cache[key] = direction
+    return direction
+
+
+def _regime_ok(sym, tf: str, direction: str, indicators: dict, htf_cache: dict) -> bool:
+    """True if the market is trending (ADX) and the higher timeframe agrees with
+    `direction`. Fails open on a higher-timeframe fetch error so a transient API
+    hiccup doesn't silence the whole feed."""
+    adx = indicators.get("adx")
+    if adx is None or adx < settings.SIGNAL_ADX_MIN:
+        return False
+    htf = _HTF_MAP.get(tf)
+    if not htf:
+        return True  # no higher frame configured — ADX strength alone
+    htf_dir = _htf_direction(sym, htf, htf_cache)
+    if htf_dir == "ERR":
+        return True
+    if htf_dir is None:
+        return False  # higher timeframe is choppy → skip
+    return direction == htf_dir
+
 
 def run_scan(symbol_limit: int | None = None, use_pregate: bool | None = None) -> dict:
     """Evaluate active strategies across symbols/timeframes. Returns a summary
@@ -65,8 +118,10 @@ def run_scan(symbol_limit: int | None = None, use_pregate: bool | None = None) -
         open_dirs[(s["symbol_id"], s["service_id"])] = s["direction"]
 
     now = timezone.now()
-    created = scanned = deduped = invalidated = 0
+    created = scanned = deduped = invalidated = regime_skipped = 0
     stats = {"gated": 0, "llm_calls": 0, "in_tokens": 0, "out_tokens": 0}
+    regime_on = settings.SIGNAL_REGIME_FILTER_ENABLED
+    htf_cache: dict[tuple[int, str], str | None] = {}  # (symbol_id, htf) -> trend bias
     for sym in symbols:
         for tf in settings.SIGNAL_TIMEFRAMES:
             try:
@@ -80,13 +135,19 @@ def run_scan(symbol_limit: int | None = None, use_pregate: bool | None = None) -
 
             for svc in services:
                 pair = (sym.id, svc.id)
+                cand = candidate_direction(svc.slug, indicators)
                 open_dir = open_dirs.get(pair)
                 if open_dir:
                     # Open call exists: only proceed if the trend has flipped.
-                    cand = candidate_direction(svc.slug, indicators)
                     if cand is None or cand == open_dir:
                         deduped += 1
                         continue
+                # Regime filter: trending market (ADX) + higher-timeframe
+                # agreement, before paying for the LLM call. (cand is None means
+                # hybrid mode wouldn't emit anyway; let the engine handle that.)
+                if regime_on and cand is not None and not _regime_ok(sym, tf, cand, indicators, htf_cache):
+                    regime_skipped += 1
+                    continue
                 scanned += 1
                 try:
                     sig = generate_signal(
@@ -131,6 +192,7 @@ def run_scan(symbol_limit: int | None = None, use_pregate: bool | None = None) -
         "symbols": len(symbols),
         "deduped": deduped,               # skipped: same-direction call still open (free)
         "invalidated": invalidated,       # stale opposite calls closed on a trend flip
+        "regime_skipped": regime_skipped,  # skipped: ranging market / HTF disagreement (free)
         "gated": stats["gated"],          # skipped before any LLM call (free)
         "llm_calls": stats["llm_calls"],  # actual paid OpenAI calls
         "tokens_in": stats["in_tokens"],
@@ -139,8 +201,8 @@ def run_scan(symbol_limit: int | None = None, use_pregate: bool | None = None) -
     }
     logger.info(
         "signal scan: created=%(created)d scanned=%(scanned)d deduped=%(deduped)d "
-        "invalidated=%(invalidated)d gated=%(gated)d llm_calls=%(llm_calls)d "
-        "tokens=%(tokens_in)d/%(tokens_out)d est_cost=$%(est_cost_usd).5f",
+        "invalidated=%(invalidated)d regime_skipped=%(regime_skipped)d gated=%(gated)d "
+        "llm_calls=%(llm_calls)d tokens=%(tokens_in)d/%(tokens_out)d est_cost=$%(est_cost_usd).5f",
         summary,
     )
     return summary

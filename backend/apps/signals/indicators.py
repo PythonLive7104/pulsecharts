@@ -91,6 +91,54 @@ def _atr(candles: list[dict], period=14) -> float | None:
     return atr
 
 
+def _adx(candles: list[dict], period=14) -> float | None:
+    """Wilder's Average Directional Index — trend *strength* (direction-agnostic).
+
+    Rule of thumb: ADX < ~20 = ranging/choppy, > ~25 = trending. Used by the
+    regime filter to keep trend strategies out of sideways markets.
+    """
+    if len(candles) < period * 2 + 1:
+        return None
+    highs = [c["high"] for c in candles]
+    lows = [c["low"] for c in candles]
+    closes = [c["close"] for c in candles]
+
+    plus_dm, minus_dm, trs = [], [], []
+    for i in range(1, len(candles)):
+        up = highs[i] - highs[i - 1]
+        down = lows[i - 1] - lows[i]
+        plus_dm.append(up if (up > down and up > 0) else 0.0)
+        minus_dm.append(down if (down > up and down > 0) else 0.0)
+        trs.append(max(highs[i] - lows[i], abs(highs[i] - closes[i - 1]), abs(lows[i] - closes[i - 1])))
+
+    def _wilder(vals):
+        # Wilder running sum (RMA-style), one value per input from index period-1.
+        s = sum(vals[:period])
+        out = [s]
+        for v in vals[period:]:
+            s = s - s / period + v
+            out.append(s)
+        return out
+
+    atr_s, pdm_s, mdm_s = _wilder(trs), _wilder(plus_dm), _wilder(minus_dm)
+    dxs = []
+    for atr_v, pdm_v, mdm_v in zip(atr_s, pdm_s, mdm_s):
+        if atr_v == 0:
+            dxs.append(0.0)
+            continue
+        pdi = 100 * pdm_v / atr_v
+        mdi = 100 * mdm_v / atr_v
+        denom = pdi + mdi
+        dxs.append(100 * abs(pdi - mdi) / denom if denom else 0.0)
+
+    if len(dxs) < period:
+        return None
+    adx = sum(dxs[:period]) / period
+    for dx in dxs[period:]:
+        adx = (adx * (period - 1) + dx) / period
+    return round(adx, 2)
+
+
 def _stochastic(candles: list[dict], k_period=14, d_period=3):
     if len(candles) < k_period:
         return None, None
@@ -161,6 +209,7 @@ def compute_indicators(candles: list[dict]) -> dict:
         "bb_mid": bb_m,
         "bb_lower": bb_l,
         "atr": _atr(candles),
+        "adx": _adx(candles),
         "stoch_k": stoch_k,
         "stoch_d": stoch_d,
         "vwap": _vwap_session(candles),
