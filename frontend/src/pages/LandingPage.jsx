@@ -78,6 +78,7 @@ export default function LandingPage() {
       <header className="landing-nav">
         <span className="brand"><Logo /></span>
         <nav className="landing-nav-links">
+          <a href="#how">How it works</a>
           <a href="#features">Features</a>
           <a href="#indicators">Indicators</a>
           <a href="#pricing">Pricing</a>
@@ -129,23 +130,41 @@ export default function LandingPage() {
       </section>
 
       {/* How it works */}
-      <section className="how">
-        <h2>From signup to your first chart in seconds</h2>
+      <section id="how" className="how">
+        <h2>How to use PulseCharts</h2>
+        <p className="section-sub">
+          From sign-up to live trade signals in six simple steps — no setup, no card to start.
+        </p>
         <div className="steps">
           <div className="step">
             <span className="step-num">1</span>
-            <h3>Create a free account</h3>
-            <p>Email and a password — that's it. No card, no setup.</p>
+            <h3>Create your free account</h3>
+            <p>Just an email and password. Live candlestick charts for every Hyperliquid coin unlock instantly — no card required.</p>
           </div>
           <div className="step">
             <span className="step-num">2</span>
-            <h3>Pick a coin & timeframe</h3>
-            <p>Search any listed symbol and switch timeframes instantly.</p>
+            <h3>Chart any coin</h3>
+            <p>Search any listed symbol, switch timeframes from 1 minute to 1 day, and overlay SMA, EMA &amp; Volume for free.</p>
           </div>
           <div className="step">
             <span className="step-num">3</span>
-            <h3>Add indicators</h3>
-            <p>Drop on moving averages and volume, or upgrade for the full suite.</p>
+            <h3>Build your watchlist</h3>
+            <p>Add the coins you want to track. This matters: trade signals are generated <strong>only</strong> for the coins on your watchlist.</p>
+          </div>
+          <div className="step">
+            <span className="step-num">4</span>
+            <h3>Follow signal strategies</h3>
+            <p>Open the Signals page and follow the algorithmic strategies you like — Momentum, MACD Trend, Trend Rider, Breakouts and more. Your feed shows only the strategies you follow.</p>
+          </div>
+          <div className="step">
+            <span className="step-num">5</span>
+            <h3>Read your signal feed</h3>
+            <p>Each signal card gives the direction, entry, stop-loss and four take-profit targets (TP1–TP4), a conviction score, and a plain-English reason. Informational only — not financial advice.</p>
+          </div>
+          <div className="step">
+            <span className="step-num">6</span>
+            <h3>Get alerts on Telegram</h3>
+            <p>On a paid plan, connect Telegram in one tap and new signals are pushed straight to your phone — plus a heads-up when a trade hits its target or stop.</p>
           </div>
         </div>
       </section>
