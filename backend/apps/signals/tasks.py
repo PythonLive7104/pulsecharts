@@ -51,16 +51,12 @@ def _htf_direction(sym, htf: str, cache: dict) -> str | None:
         candles = fetch_candles(sym.hl_coin, sym.ticker, htf, limit=300)
         if len(candles) >= MIN_CANDLES:
             ind = compute_indicators(candles)
-            close, ema9, ema21, ema200 = (
-                ind["close"], ind["ema9"], ind["ema21"], ind["ema200"],
-            )
-            if None not in (close, ema9, ema21, ema200):
-                if close > ema200 and ema9 > ema21:
-                    direction = "BUY"
-                elif close < ema200 and ema9 < ema21:
-                    direction = "SELL"
-                else:
-                    direction = None  # higher frame not clearly trending
+            close, ema200 = ind["close"], ind["ema200"]
+            if None not in (close, ema200):
+                # Bias off the 200 EMA alone: above = bullish, below = bearish.
+                # Only blocks genuinely counter-trend signals — not every time the
+                # higher timeframe's fast EMAs are momentarily mixed.
+                direction = "BUY" if close > ema200 else "SELL"
     except (requests.RequestException, ValueError):
         direction = "ERR"
     cache[key] = direction
