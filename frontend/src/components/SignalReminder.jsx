@@ -1,14 +1,10 @@
-// Reminder shown when the chart workspace opens: the number of signals a user
-// receives scales with how many symbols they watch and how many strategies they
-// follow (signals are generated per watched-symbol × followed-strategy). Nudges
-// users to broaden both. Shows once per session; "Don't show again" opts out for
-// good (localStorage).
+// Reminder shown every time the chart workspace opens: the number of signals a
+// user receives scales with how many symbols they watch and how many strategies
+// they follow (signals are generated per watched-symbol × followed-strategy).
+// Nudges users to broaden both.
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { api } from "../api";
-
-const OFF_KEY = "pulsecharts.signalReminderOff";   // permanent opt-out
-const SEEN_KEY = "pulsecharts.signalReminderSeen"; // once per browser session
 
 function count(res) {
   if (Array.isArray(res)) return res.length;
@@ -21,9 +17,6 @@ export default function SignalReminder() {
   const [stats, setStats] = useState({ symbols: 0, strategies: 0 });
 
   useEffect(() => {
-    if (localStorage.getItem(OFF_KEY)) return;
-    if (sessionStorage.getItem(SEEN_KEY)) return;
-
     let alive = true;
     Promise.allSettled([api.watchlist(), api.signalSubscriptions()]).then(
       ([wl, subs]) => {
@@ -33,7 +26,6 @@ export default function SignalReminder() {
           strategies: subs.status === "fulfilled" ? count(subs.value) : 0,
         });
         setOpen(true);
-        sessionStorage.setItem(SEEN_KEY, "1");
       }
     );
     return () => { alive = false; };
@@ -42,10 +34,6 @@ export default function SignalReminder() {
   if (!open) return null;
 
   const close = () => setOpen(false);
-  const optOut = () => {
-    localStorage.setItem(OFF_KEY, "1");
-    setOpen(false);
-  };
 
   return (
     <div className="reminder-backdrop" role="dialog" aria-modal="true" aria-labelledby="reminder-title" onClick={close}>
@@ -81,8 +69,6 @@ export default function SignalReminder() {
           <Link to="/signals" className="btn-primary" onClick={close}>Follow strategies →</Link>
           <button className="btn-ghost" onClick={close}>Got it</button>
         </div>
-
-        <button className="reminder-optout" onClick={optOut}>Don't show this again</button>
       </div>
     </div>
   );
