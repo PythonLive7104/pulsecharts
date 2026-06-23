@@ -829,6 +829,57 @@ a.brand:hover { text-decoration: none; }
 .lock-icon { font-size: 40px; margin-bottom: 8px; }
 .lock-card h1 { font-size: 24px; margin: 0 0 12px; color: var(--text-strong); }
 .lock-card p { margin: 0 0 22px; }
+.lock-card .at-disclaimer { font-size: 12px; margin: 18px 0 0; }
+
+/* --- Auto-Trade page (Pro) --- */
+.nav-pro-tag { margin-left: 4px; font-size: 9px; padding: 1px 5px; vertical-align: middle; }
+.at-body { max-width: 760px; }
+.at-main { width: 100%; display: flex; flex-direction: column; gap: 18px; }
+.at-head h1 { font-size: 24px; margin: 0 0 4px; color: var(--text-strong); }
+.at-banner {
+  display: flex; flex-direction: column; gap: 3px; padding: 14px 16px;
+  background: var(--bg-elev); border: 1px solid var(--accent); border-radius: 12px;
+}
+.at-banner strong { color: var(--text-strong); }
+.at-panel {
+  padding: 18px 20px; background: var(--bg-elev);
+  border: 1px solid var(--border); border-radius: 12px;
+}
+.at-panel h3 { margin: 0 0 12px; color: var(--text-strong); font-size: 15px; }
+.at-panel-head { display: flex; align-items: center; justify-content: space-between; }
+.at-panel-head h3 { margin: 0; }
+.at-broker-connected { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
+.at-status { margin-left: 8px; font-size: 11px; font-weight: 600; padding: 2px 8px; border-radius: 6px; border: 1px solid var(--border); text-transform: capitalize; }
+.at-status-active { color: var(--green); border-color: var(--green); }
+.at-status-error { color: var(--red); border-color: var(--red); }
+.at-connect { display: flex; flex-direction: column; gap: 12px; }
+.at-connect label { display: flex; flex-direction: column; gap: 5px; font-size: 13px; color: var(--muted); }
+.at-connect input[type="text"], .at-connect input[type="password"], .at-connect input:not([type]) {
+  padding: 9px 11px; border: 1px solid var(--border); border-radius: 8px;
+  background: var(--bg); color: var(--text-strong); font-size: 14px;
+}
+.at-check { flex-direction: row !important; align-items: center; gap: 8px !important; }
+.at-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 14px; margin-top: 4px; }
+.at-grid label { display: flex; flex-direction: column; gap: 5px; font-size: 13px; color: var(--muted); }
+.at-grid input, .at-grid select {
+  padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px;
+  background: var(--bg); color: var(--text-strong); font-size: 14px;
+}
+.at-switch { display: flex; align-items: center; gap: 8px; font-size: 13px; font-weight: 600; color: var(--text-strong); }
+.at-actions { display: flex; align-items: center; gap: 12px; margin-top: 16px; }
+.at-panic { color: var(--red); border-color: var(--red); }
+.at-exec-table { display: flex; flex-direction: column; font-size: 13px; }
+.at-exec-row { display: grid; grid-template-columns: 1.2fr 0.7fr 1fr 0.8fr 0.9fr 0.8fr 1.4fr; gap: 8px; padding: 8px 0; border-bottom: 1px solid var(--border); align-items: center; }
+.at-exec-head { font-weight: 600; color: var(--muted); font-size: 11px; text-transform: uppercase; }
+.at-exstatus { font-size: 11px; font-weight: 600; text-transform: capitalize; }
+.at-exstatus-open { color: var(--green); }
+.at-exstatus-error, .at-exstatus-rejected { color: var(--red); }
+.at-exstatus-skipped { color: var(--muted); }
+@media (max-width: 640px) {
+  .at-grid { grid-template-columns: 1fr; }
+  .at-exec-row { grid-template-columns: 1fr 0.6fr 0.9fr; }
+  .at-exec-row span:nth-child(n+4) { display: none; }
+}
 
 /* Signal outcome badge */
 .outcome-badge { font-size: 11px; font-weight: 600; padding: 2px 7px; border-radius: 6px; border: 1px solid var(--border); }

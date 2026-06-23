@@ -64,6 +64,11 @@ export default function DashboardPage() {
         <div className="topbar-right">
           {isAuthed && <Link to="/signals" className="btn-ghost">Signals</Link>}
           {isAuthed && (
+            <Link to="/auto-trade" className="btn-ghost">
+              Auto-Trade <span className="feature-tag premium nav-pro-tag">Pro</span>
+            </Link>
+          )}
+          {isAuthed && (
             <Link to="/alerts" className="btn-ghost alerts-link">
               Alerts
               {alertsUnseen > 0 && <span className="alerts-badge">{alertsUnseen}</span>}

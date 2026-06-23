@@ -170,6 +170,9 @@ export default function SignalsPage() {
         <nav className="signals-nav">
           <Link to="/app" className="btn-ghost">Charts</Link>
           <span className="active-tab">Signals</span>
+          <Link to="/auto-trade" className="btn-ghost">
+            Auto-Trade <span className="feature-tag premium nav-pro-tag">Pro</span>
+          </Link>
         </nav>
         <div className="topbar-right">
           <ThemeToggle />

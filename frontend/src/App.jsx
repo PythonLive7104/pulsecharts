@@ -11,6 +11,7 @@ import ProfilePage from "./pages/account/ProfilePage";
 import BillingPage from "./pages/account/BillingPage";
 import SignalsPage from "./pages/SignalsPage";
 import AlertsPage from "./pages/AlertsPage";
+import AutoTradePage from "./pages/AutoTradePage";
 
 export default function App() {
   return (
@@ -41,6 +42,14 @@ export default function App() {
         element={
           <ProtectedRoute>
             <AlertsPage />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/auto-trade"
+        element={
+          <ProtectedRoute>
+            <AutoTradePage />
           </ProtectedRoute>
         }
       />
