@@ -13,6 +13,7 @@ import Watchlist from "../components/Watchlist";
 import Logo from "../components/Logo";
 import LayoutPanel from "../components/LayoutPanel";
 import ThemeToggle from "../components/ThemeToggle";
+import SignalReminder from "../components/SignalReminder";
 
 const LAYOUT_ICONS = { "1": "▢", "2": "▣▣", "4": "⊞" };
 
@@ -46,6 +47,7 @@ export default function DashboardPage() {
 
   return (
     <div className="app">
+      {isAuthed && <SignalReminder />}
       <header className="topbar">
         <Link to="/" className="brand"><Logo /></Link>
         <SymbolBar />
