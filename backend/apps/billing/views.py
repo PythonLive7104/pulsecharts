@@ -80,8 +80,11 @@ class WebhookView(APIView):
         self._handle_event(event)
         return Response({"received": True})
 
-    # Dodo subscription event types (Standard Webhooks).
-    _GRANT = {"subscription.active", "subscription.renewed"}
+    # Dodo event types (Standard Webhooks). `payment.succeeded` is what Dodo
+    # actually fires on a successful subscription charge (initial + renewals) —
+    # it's the event that grants/extends access. The subscription.* events are
+    # kept for lifecycle changes (and in case the account also emits them).
+    _GRANT = {"payment.succeeded", "subscription.active", "subscription.renewed"}
     _CANCEL = {"subscription.cancelled", "subscription.canceled"}
     _REVOKE = {"subscription.expired", "subscription.failed", "subscription.on_hold"}
 
@@ -103,11 +106,25 @@ class WebhookView(APIView):
         logger.warning("Webhook %s: could not resolve user (user_id=%s)", event_type, user_id)
         return None
 
+    def _resolve_plan(self, data, metadata):
+        """Determine the plan from checkout metadata, falling back to the product
+        id — which on a payment event may sit in a product_cart line item."""
+        from .dodo import product_tier_map
+
+        if metadata.get("plan"):
+            return metadata["plan"]
+        product_id = data.get("product_id")
+        if not product_id:
+            cart = data.get("product_cart") or []
+            if cart:
+                product_id = (cart[0] or {}).get("product_id")
+        return product_tier_map().get(product_id, "pro")
+
     def _handle_event(self, event: dict) -> None:
         """Update billing state from a Dodo event. Idempotent on subscription_id."""
-        from django.utils.dateparse import parse_datetime
+        from datetime import timedelta
 
-        from .dodo import product_tier_map
+        from django.utils.dateparse import parse_datetime
 
         event_type = event.get("type", "")
         data = event.get("data", {}) or {}
@@ -117,10 +134,14 @@ class WebhookView(APIView):
 
         if event_type in self._GRANT:
             metadata = data.get("metadata") or {}
-            plan = metadata.get("plan") or product_tier_map().get(data.get("product_id"), "pro")
+            plan = self._resolve_plan(data, metadata)
             tier = PlanTier.STARTER if plan == "starter" else PlanTier.PRO
             next_billing = data.get("next_billing_date") or ""
             renewal = parse_datetime(next_billing) if next_billing else None
+            if renewal is None:
+                # payment.succeeded carries no billing date — default a month out
+                # so access isn't indefinite; the next charge's event extends it.
+                renewal = timezone.now() + timedelta(days=31)
             ref = data.get("subscription_id") or data.get("payment_id") or ""
             customer_id = (data.get("customer") or {}).get("customer_id", "")
 
