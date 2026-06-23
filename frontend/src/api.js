@@ -163,6 +163,13 @@ export const api = {
   autoTradeExecutions: () => request("/me/auto-trade/executions/"),
   autoTradePanic: () => request("/me/auto-trade/panic/", { method: "POST" }),
 
+  // --- landing-page support chat (public, no LLM — curated knowledge base) ---
+  supportSuggestions: () => request("/support/chat/", { auth: false }),
+  supportChat: (message) =>
+    request("/support/chat/", { method: "POST", auth: false, body: { message } }),
+  supportContact: (email, message) =>
+    request("/support/contact/", { method: "POST", auth: false, body: { email, message } }),
+
   // --- price alerts (v2) ---
   alerts: () => request("/me/alerts/"),
   createAlert: (symbolId, condition, targetPrice) =>

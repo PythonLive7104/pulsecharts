@@ -15,6 +15,7 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from apps.accounts.models import PlanTier, Subscription
+from apps.common.email import send_payment_confirmation_email
 
 from .dodo import DodoError, create_checkout_session, verify_webhook_signature
 from .serializers import SubscriptionSerializer
@@ -160,6 +161,14 @@ class WebhookView(APIView):
                 user.dodo_customer_id = customer_id
             user.save(update_fields=["plan_tier", "plan_expiry", "dodo_customer_id"])
             logger.info("Webhook %s: %s -> %s (expiry=%s)", event_type, user.email, tier, renewal)
+
+            # Confirmation email only on the actual payment event — subscription.*
+            # grant events can fire alongside it for the same purchase, and we
+            # don't want to email the user twice for one charge.
+            if event_type == "payment.succeeded":
+                send_payment_confirmation_email(
+                    to=user.email, plan_label=tier.label, renewal=renewal
+                )
 
         elif event_type in self._CANCEL:
             # Cancelled but not yet expired: keep access until the paid period

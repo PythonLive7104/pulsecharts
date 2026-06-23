@@ -186,6 +186,18 @@ DODO_PAYMENTS_MODE = env("DODO_PAYMENTS_MODE", default="test")
 DODO_PRICE_STARTER = env("DODO_PRICE_STARTER", default="")
 DODO_PRICE_PRO = env("DODO_PRICE_PRO", default="")
 
+# --- Transactional email (Resend) -----------------------------------------
+# Used for password-reset links and payment confirmations. Email is optional:
+# with no RESEND_API_KEY the send helpers log and no-op, so local/dev runs work
+# without it. The From address must be on a domain verified in the Resend
+# dashboard (verify getpulsecharts.com there before going live).
+RESEND_API_KEY = env("RESEND_API_KEY", default="")
+RESEND_FROM_EMAIL = env(
+    "RESEND_FROM_EMAIL", default="PulseCharts <noreply@getpulsecharts.com>"
+)
+# Where the landing-page "Contact us" form delivers messages.
+CONTACT_US_EMAIL = env("CONTACT_US_EMAIL", default="")
+
 # --- Trading signals (Section 13, 19, 20) ---
 # Note: Section 20 of CLAUDE.md specs Claude/Anthropic; per the developer's
 # choice the signal engine runs on OpenAI instead. Update CLAUDE.md §20–21 to

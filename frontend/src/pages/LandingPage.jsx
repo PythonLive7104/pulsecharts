@@ -5,6 +5,7 @@ import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import ThemeToggle from "../components/ThemeToggle";
 import Logo from "../components/Logo";
+import SupportChat from "../components/SupportChat";
 import { useStore } from "../store/useStore";
 import { api } from "../api";
 import { PLAN_FALLBACK } from "../lib/plans";
@@ -337,6 +338,7 @@ export default function LandingPage() {
         </div>
       </footer>
     </div>
+    <SupportChat />
     </>
   );
 }

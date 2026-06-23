@@ -9,6 +9,7 @@ from rest_framework import generics, permissions, status
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
+from apps.common.email import send_password_reset_email
 from apps.market_data.indicators import entitlements_for
 
 from .serializers import (
@@ -288,9 +289,9 @@ class PasswordResetRequestView(APIView):
     """POST /api/auth/password-reset/ — start a reset.
 
     Always returns 200 with a generic message (never leak which emails exist).
-    Email delivery isn't wired yet (no transactional provider chosen — Section
-    13.7), so for now the reset link is logged server-side, and surfaced in the
-    response only when DEBUG is on so the flow is testable in dev.
+    The reset link is emailed via Resend (apps/common/email). It's also logged
+    server-side, and surfaced in the response only when DEBUG is on so the flow
+    stays testable locally without an email provider configured.
     """
 
     permission_classes = [permissions.AllowAny]
@@ -310,7 +311,7 @@ class PasswordResetRequestView(APIView):
         token = default_token_generator.make_token(user)
         reset_link = f"{settings.FRONTEND_URL}/reset-password?uid={uid}&token={token}"
 
-        # TODO (Section 13.7): send via a transactional email provider once chosen.
+        send_password_reset_email(to=user.email, reset_link=reset_link)
         logger.info("Password reset link for %s: %s", email, reset_link)
 
         if settings.DEBUG:

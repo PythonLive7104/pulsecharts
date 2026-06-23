@@ -23,6 +23,7 @@ api_patterns = [
     path("", include("apps.signals.urls")),
     path("", include("apps.alerts.urls")),
     path("", include("apps.auto_trade.urls")),
+    path("", include("apps.support.urls")),
     path("billing/", include("apps.billing.urls")),
 ]
 
