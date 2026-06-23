@@ -16,6 +16,7 @@ export default function BillingPage() {
   const [plans, setPlans] = useState(PLAN_FALLBACK);
   const [notice, setNotice] = useState(null);
   const [busy, setBusy] = useState(false);
+  const [history, setHistory] = useState(null);
 
   // Referral / earnings
   const [ref, setRef] = useState(null);
@@ -31,6 +32,7 @@ export default function BillingPage() {
     api.plans()
       .then((d) => { if (d?.plans?.length) setPlans(d.plans); })
       .catch(() => { /* keep fallback */ });
+    api.billingHistory().then(setHistory).catch(() => setHistory([]));
     loadRef();
   }, []);
 
@@ -198,7 +200,26 @@ export default function BillingPage() {
 
       <div className="card">
         <h2>Billing history</h2>
-        <p className="muted">No invoices yet.</p>
+        {history == null ? (
+          <p className="muted">Loading…</p>
+        ) : history.length === 0 ? (
+          <p className="muted">No invoices yet.</p>
+        ) : (
+          <div className="billing-history">
+            {history.map((h) => (
+              <div key={h.id} className="bh-row">
+                <span className="bh-plan">{h.tier_label}</span>
+                <span className={`bh-status bh-${h.status}`}>{h.status_label}</span>
+                <span className="muted bh-date">
+                  Started {new Date(h.created_at).toLocaleDateString()}
+                </span>
+                <span className="muted bh-date">
+                  {h.renewal_date ? `Renews ${new Date(h.renewal_date).toLocaleDateString()}` : "—"}
+                </span>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
     </div>
   );

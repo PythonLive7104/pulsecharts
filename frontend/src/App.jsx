@@ -12,6 +12,8 @@ import BillingPage from "./pages/account/BillingPage";
 import SignalsPage from "./pages/SignalsPage";
 import AlertsPage from "./pages/AlertsPage";
 import AutoTradePage from "./pages/AutoTradePage";
+import BillingSuccessPage from "./pages/BillingSuccessPage";
+import BillingCancelPage from "./pages/BillingCancelPage";
 
 export default function App() {
   return (
@@ -50,6 +52,22 @@ export default function App() {
         element={
           <ProtectedRoute>
             <AutoTradePage />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/billing/success"
+        element={
+          <ProtectedRoute>
+            <BillingSuccessPage />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/billing/cancel"
+        element={
+          <ProtectedRoute>
+            <BillingCancelPage />
           </ProtectedRoute>
         }
       />

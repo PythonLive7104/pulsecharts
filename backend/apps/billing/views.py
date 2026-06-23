@@ -10,14 +10,26 @@ import logging
 from django.conf import settings
 from django.utils import timezone
 from rest_framework import permissions, status
+from rest_framework.generics import ListAPIView
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from apps.accounts.models import PlanTier, Subscription
 
 from .dodo import DodoError, create_checkout_session, verify_webhook_signature
+from .serializers import SubscriptionSerializer
 
 logger = logging.getLogger("billing")
+
+
+class SubscriptionHistoryView(ListAPIView):
+    """GET /api/billing/history/ — the authenticated user's subscription records,
+    newest first (model Meta already orders by -created_at)."""
+
+    serializer_class = SubscriptionSerializer
+
+    def get_queryset(self):
+        return Subscription.objects.filter(user=self.request.user)
 
 
 class CheckoutView(APIView):
