@@ -2,15 +2,21 @@
 import { useEffect, useState } from "react";
 import { api } from "../../api";
 import { useTheme } from "../../theme";
+import { useStore } from "../../store/useStore";
 
 export default function ProfilePage() {
   const [me, setMe] = useState(null);
   const theme = useTheme((s) => s.theme);
   const toggle = useTheme((s) => s.toggle);
+  // Plan comes from entitlements (effective, expiry-aware) — the SAME source the
+  // dashboard pill uses — so the two never disagree. Refresh on mount.
+  const entitlements = useStore((s) => s.entitlements);
+  const loadEntitlements = useStore((s) => s.loadEntitlements);
 
   useEffect(() => {
     api.me().then(setMe).catch(() => {});
-  }, []);
+    loadEntitlements();
+  }, [loadEntitlements]);
 
   return (
     <div className="account-pages">
@@ -19,7 +25,7 @@ export default function ProfilePage() {
       <div className="card">
         <h2>Account</h2>
         <div className="field-row"><span className="field-label">Email</span><span>{me?.email || "…"}</span></div>
-        <div className="field-row"><span className="field-label">Plan</span><span>{me?.plan_tier ? me.plan_tier.charAt(0).toUpperCase() + me.plan_tier.slice(1) : "Free"}</span></div>
+        <div className="field-row"><span className="field-label">Plan</span><span>{entitlements?.plan_label || "Free"}</span></div>
       </div>
 
       <div className="card">
