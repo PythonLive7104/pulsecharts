@@ -56,6 +56,15 @@ export default function ChartPane({ pane }) {
           selectedId={selectedId}
           onActivate={() => setActivePane(pane.id)}
           onCommit={(drawing) => {
+            if (drawing.tool === "cross") {
+              // Single movable crosshair: reposition the existing cross instead of
+              // stacking duplicates, and stay in cross mode so each click moves it
+              // freely. (Other tools commit once and switch to select for editing.)
+              const existing = pane.drawings.find((d) => d.tool === "cross");
+              if (existing) updateDrawing(pane.id, existing.id, drawing.points);
+              else addDrawing(pane.id, drawing);
+              return;
+            }
             addDrawing(pane.id, drawing);
             setTool("select"); // jump to select so the new shape is editable
             selectDrawing(pane.id, drawing.id); // auto-select the new shape
