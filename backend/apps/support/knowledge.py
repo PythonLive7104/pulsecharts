@@ -14,9 +14,9 @@ the more specific topic when several entries partially match.
 # an unmatched question. Each must be answerable by an entry below.
 SUGGESTED_QUESTIONS = [
     "What is PulseCharts?",
+    "Do you support forex?",
     "Is it free?",
     "What's included in premium?",
-    "Where does the price data come from?",
     "Do you offer trading signals?",
 ]
 
@@ -26,10 +26,11 @@ KNOWLEDGE = [
         "id": "about",
         "keywords": ["what is", "pulsecharts", "what does", "purpose", "what's this", "what is this", "tell me about"],
         "answer": (
-            "PulseCharts is a TradingView-style charting app for crypto traders, "
-            "powered by Hyperliquid's live market data. You get real-time "
-            "candlestick charts on every timeframe for free, and a premium plan "
-            "unlocks advanced indicators, saved layouts, and trading signals."
+            "PulseCharts is a TradingView-style charting app for crypto AND forex "
+            "traders, powered by Hyperliquid's live crypto data and live forex "
+            "feeds. You get real-time candlestick charts on every timeframe for "
+            "free, and a premium plan unlocks advanced indicators, saved layouts, "
+            "and trading signals on both markets."
         ),
     },
     {
@@ -82,11 +83,21 @@ KNOWLEDGE = [
     },
     {
         "id": "coins",
-        "keywords": ["coin", "coins", "symbol", "symbols", "support", "which crypto", "tokens", "pairs", "btc", "eth", "altcoin"],
+        "keywords": ["coin", "coins", "symbol", "symbols", "which crypto", "tokens", "btc", "eth", "altcoin"],
         "answer": (
-            "We chart the perps and spot pairs listed on Hyperliquid, with more "
-            "added over time. It's a crypto-focused tool by design — no forex or "
-            "stocks."
+            "On crypto we chart the perps and spot pairs listed on Hyperliquid, "
+            "with more added over time. We also now support the major forex pairs "
+            "— flip between crypto and forex with the toggle above the chart."
+        ),
+    },
+    {
+        "id": "forex",
+        "keywords": ["forex", "fx", "currency", "currencies", "eur", "usd", "gbp", "jpy", "eurusd", "euro", "dollar", "pound", "yen", "pairs", "chf", "aud", "cad", "nzd"],
+        "answer": (
+            "Yes — forex is now live! 🎉 We support the major pairs: EUR/USD, "
+            "GBP/USD, USD/JPY, USD/CHF, AUD/USD, USD/CAD and NZD/USD. Use the "
+            "Crypto/Forex toggle above the chart to switch markets. The same "
+            "indicators and trading signals work on forex too."
         ),
     },
     {
@@ -102,9 +113,9 @@ KNOWLEDGE = [
         "keywords": ["signal", "signals", "buy sell", "trade signal", "alerts", "strategy", "strategies", "confidence"],
         "answer": (
             "Trading signals are a premium feature: algorithmic strategies scan "
-            "tracked coins and surface buy/sell setups with entry, stop-loss, take-"
-            "profit targets, and a confidence score. They're informational only — "
-            "not financial advice."
+            "tracked crypto AND forex pairs and surface buy/sell setups with entry, "
+            "stop-loss, take-profit targets, and a confidence score. They're "
+            "informational only — not financial advice."
         ),
     },
     {

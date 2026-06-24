@@ -28,8 +28,8 @@ const FAQS = [
     a: "Yes. Live charts, every timeframe, and the SMA/EMA/Volume indicators are free forever — no card required. Premium unlocks advanced indicators and saved layouts.",
   },
   {
-    q: "Do you support coins beyond the majors?",
-    a: "We chart the perps and spot pairs listed on Hyperliquid, with more added over time. It's a crypto-focused tool by design — no forex or stocks.",
+    q: "Do you support forex, or only crypto?",
+    a: "Both. We chart the perps and spot pairs listed on Hyperliquid, plus the major forex pairs (EUR/USD, GBP/USD, USD/JPY, USD/CHF, AUD/USD, USD/CAD, NZD/USD). Switch between crypto and forex with one toggle — the same indicators and trading signals work across both.",
   },
   {
     q: "Is this financial advice?",
@@ -103,12 +103,13 @@ export default function LandingPage() {
       {/* Hero */}
       <section className="hero">
         <div className="hero-text">
-          <span className="hero-pill">⚡ Powered by Hyperliquid market data</span>
-          <h1>Pro-grade crypto charts,<br />without the pro-grade price.</h1>
+          <span className="hero-pill">✨ New: Forex pairs now live alongside crypto</span>
+          <h1>Pro-grade crypto &amp; forex charts,<br />without the pro-grade price.</h1>
           <p className="hero-sub">
-            Real-time candlestick charting for Hyperliquid-listed coins. Start free
-            with live charts and core indicators — upgrade for advanced technical
-            analysis and saved layouts.
+            Real-time candlestick charting for Hyperliquid crypto <strong>and the
+            major forex pairs</strong> — switch between them in one click. Start free
+            with live charts and core indicators; upgrade for advanced analysis,
+            saved layouts, and trading signals on both.
           </p>
           <div className="hero-cta">
             {isAuthed ? (
@@ -120,7 +121,7 @@ export default function LandingPage() {
               </>
             )}
           </div>
-          <p className="hero-note">No card required · Crypto-focused · Cancel anytime</p>
+          <p className="hero-note">No card required · Crypto &amp; Forex · Cancel anytime</p>
         </div>
         <ChartMock />
       </section>
@@ -175,7 +176,7 @@ export default function LandingPage() {
 
       {/* Feature deep-dive */}
       <section id="features" className="features">
-        <h2>Everything a crypto trader needs</h2>
+        <h2>Everything a crypto &amp; forex trader needs</h2>
         <p className="section-sub">
           A focused, fast charting workspace — live data, the indicators that matter,
           algorithmic signals and the tools to act on them. Start free, upgrade when you want more.
@@ -184,7 +185,7 @@ export default function LandingPage() {
           <div className="feature">
             <div className="feature-icon">📈</div>
             <h3>Real-time candlestick charts <span className="feature-tag free">Free</span></h3>
-            <p>Live OHLC candles for every Hyperliquid-listed coin, streamed over a single low-latency WebSocket and drawn with TradingView's lightweight-charts. Flip between 1m and 1d timeframes instantly, and the feed auto-reconnects if your connection drops — no frozen charts.</p>
+            <p>Live OHLC candles for every Hyperliquid-listed coin <strong>and the major forex pairs</strong>, drawn with TradingView's lightweight-charts. Flip between 1m and 1d timeframes instantly, and the feed auto-reconnects if your connection drops — no frozen charts.</p>
           </div>
           <div className="feature">
             <div className="feature-icon">🧮</div>
@@ -194,7 +195,7 @@ export default function LandingPage() {
           <div className="feature">
             <div className="feature-icon">🤖</div>
             <h3>Algorithmic trading signals <span className="feature-tag premium">Premium</span></h3>
-            <p>An always-on engine scans the strategies you follow and surfaces buy/sell signals — each with an entry, a stop-loss, four take-profit targets (TP1–TP4), risk/reward math and a plain-English reason it was flagged. Get them in-app or pushed straight to your <strong>Telegram</strong>, with trade updates when a target or stop is hit. Informational only, never financial advice.</p>
+            <p>An always-on engine scans the strategies you follow — across <strong>both crypto and forex</strong> — and surfaces buy/sell signals, each with an entry, a stop-loss, four take-profit targets (TP1–TP4), risk/reward math and a plain-English reason it was flagged. Get them in-app or pushed straight to your <strong>Telegram</strong>, with trade updates when a target or stop is hit. Informational only, never financial advice.</p>
           </div>
           <div className="feature">
             <div className="feature-icon">🔔</div>
@@ -222,9 +223,9 @@ export default function LandingPage() {
             <p>A clean, distraction-free interface built for long sessions. Switch between dark and light any time — your preference is remembered the next time you open the app.</p>
           </div>
           <div className="feature">
-            <div className="feature-icon">⚡</div>
-            <h3>Crypto-focused & fast</h3>
-            <p>Built for crypto and nothing else — no stocks, no forex, no bloat. Just a fast, responsive charting workspace that works on desktop and adapts to your phone.</p>
+            <div className="feature-icon">💱</div>
+            <h3>Crypto + Forex <span className="feature-tag free">New</span></h3>
+            <p>Trade two markets in one fast workspace. Flip between Hyperliquid crypto and the major forex pairs (EUR/USD, GBP/USD, USD/JPY and more) with a single toggle — same charts, same indicators, same signals. Responsive on desktop and your phone.</p>
           </div>
         </div>
       </section>
@@ -317,7 +318,7 @@ export default function LandingPage() {
         <div className="footer-cols">
           <div className="footer-brand">
             <span className="brand"><Logo /></span>
-            <p className="muted">Affordable, crypto-focused charting powered by Hyperliquid.</p>
+            <p className="muted">Affordable crypto &amp; forex charting, powered by Hyperliquid and live FX data.</p>
           </div>
           <div className="footer-col">
             <h4>Product</h4>

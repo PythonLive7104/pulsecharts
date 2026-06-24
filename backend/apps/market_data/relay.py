@@ -202,7 +202,7 @@ async def _forex_poll_once(channel_layer) -> None:
 async def _forex_poll_forever() -> None:
     """Poll loop for forex charts. No-op (idle) when forex isn't configured."""
     if not forex.FOREX_ENABLED:
-        logger.info("Forex relay disabled (no TWELVE_DATA_API_KEY).")
+        logger.info("Forex relay disabled (FOREX_ENABLED=False).")
         return
     channel_layer = get_channel_layer()
     logger.info("Forex relay polling every %.0fs.", settings.FOREX_POLL_INTERVAL)
