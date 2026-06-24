@@ -34,6 +34,22 @@ export default function DashboardPage() {
     loadEntitlements();
   }, [initWorkspace, loadEntitlements]);
 
+  // Re-fetch entitlements when the tab regains focus, so a plan change made
+  // elsewhere (admin edit, another device, billing) reflects on the dashboard
+  // without a manual reload. Cheap — one request per focus.
+  useEffect(() => {
+    if (!isAuthed) return;
+    const refresh = () => {
+      if (document.visibilityState === "visible") loadEntitlements();
+    };
+    window.addEventListener("focus", refresh);
+    document.addEventListener("visibilitychange", refresh);
+    return () => {
+      window.removeEventListener("focus", refresh);
+      document.removeEventListener("visibilitychange", refresh);
+    };
+  }, [isAuthed, loadEntitlements]);
+
   // Poll the unseen-triggered-alert count for the nav badge.
   useEffect(() => {
     if (!isAuthed) return;
