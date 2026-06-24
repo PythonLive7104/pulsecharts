@@ -9,6 +9,7 @@ const TOOLS = [
   { id: "ray", label: "Ray", icon: "→" },
   { id: "horizontal", label: "Horizontal line", icon: "─" },
   { id: "vertical", label: "Vertical line", icon: "│" },
+  { id: "cross", label: "Cross line", icon: "✛" },
   { id: "fib", label: "Fibonacci", icon: "⋯" },
   { id: "channel", label: "Parallel channel", icon: "▰" },
   { id: "elliott", label: "Elliott wave", icon: "Ƹ" },

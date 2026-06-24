@@ -11,7 +11,7 @@
 import { useEffect, useRef } from "react";
 
 export const TOOL_POINTS = {
-  trendline: 2, ray: 2, horizontal: 1, vertical: 1, fib: 2, channel: 3, elliott: 6,
+  trendline: 2, ray: 2, horizontal: 1, vertical: 1, cross: 1, fib: 2, channel: 3, elliott: 6,
 };
 
 const FIB_LEVELS = [0, 0.236, 0.382, 0.5, 0.618, 0.786, 1];
@@ -79,6 +79,12 @@ export default function DrawingCanvas({
       case "vertical": {
         const x = tx(d.points[0].time);
         return x != null && Math.abs(mx - x) <= LINE_HIT ? { type: "body" } : null;
+      }
+      case "cross": {
+        const x = tx(d.points[0].time), y = ty(d.points[0].price);
+        const nearV = x != null && Math.abs(mx - x) <= LINE_HIT;
+        const nearH = y != null && Math.abs(my - y) <= LINE_HIT;
+        return nearV || nearH ? { type: "body" } : null;
       }
       case "trendline":
         return ok(px[0]) && ok(px[1]) && distToSeg(mx, my, px[0].x, px[0].y, px[1].x, px[1].y) <= LINE_HIT
@@ -154,6 +160,12 @@ export default function DrawingCanvas({
     switch (d.tool) {
       case "horizontal": { const y = ty(d.points[0].price); if (y != null) { line(0, y, w, y); label(d.points[0].price.toPrecision(6), 4, y - 4); } break; }
       case "vertical": { const x = tx(d.points[0].time); if (x != null) line(x, 0, x, h); break; }
+      case "cross": {
+        const x = tx(d.points[0].time), y = ty(d.points[0].price);
+        if (x != null) line(x, 0, x, h);
+        if (y != null) { line(0, y, w, y); label(d.points[0].price.toPrecision(6), 4, y - 4); }
+        break;
+      }
       case "trendline": if (ok(px[0]) && ok(px[1])) { line(px[0].x, px[0].y, px[1].x, px[1].y); } break;
       case "ray": if (ok(px[0]) && ok(px[1])) { const dx = px[1].x - px[0].x, dy = px[1].y - px[0].y; line(px[0].x, px[0].y, px[0].x + dx * 1000, px[0].y + dy * 1000); } break;
       case "fib": if (ok(px[0]) && ok(px[1])) {
