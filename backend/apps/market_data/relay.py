@@ -26,7 +26,7 @@ from asgiref.sync import sync_to_async
 from channels.layers import get_channel_layer
 from django.conf import settings
 
-from . import demand
+from . import demand, forex
 from .consumers import group_name
 from .models import Symbol
 from .normalize import normalize_candle
@@ -43,13 +43,25 @@ _BACKOFF_MAX = 30.0
 
 @sync_to_async
 def _active_symbol_map() -> dict[str, str]:
-    """ticker -> hl_coin for active symbols (refreshed each reconcile so newly
-    synced coins are picked up without a relay restart)."""
+    """ticker -> hl_coin for active CRYPTO symbols (refreshed each reconcile so
+    newly synced coins are picked up without a relay restart)."""
     return {
         ticker: coin
-        for ticker, coin in Symbol.objects.filter(is_active=True).values_list(
-            "ticker", "hl_coin"
-        )
+        for ticker, coin in Symbol.objects.filter(
+            is_active=True, asset_class=Symbol.AssetClass.CRYPTO
+        ).values_list("ticker", "hl_coin")
+    }
+
+
+@sync_to_async
+def _active_forex_map() -> dict[str, str]:
+    """ticker -> feed_symbol for active FOREX symbols."""
+    return {
+        ticker: feed
+        for ticker, feed in Symbol.objects.filter(
+            is_active=True, asset_class=Symbol.AssetClass.FOREX
+        ).values_list("ticker", "feed_symbol")
+        if feed
     }
 
 
@@ -149,8 +161,8 @@ async def _run_once() -> None:
                 task.cancel()
 
 
-async def run_relay_forever() -> None:
-    """Reconnect loop with exponential backoff (Section 16)."""
+async def _crypto_relay_forever() -> None:
+    """Hyperliquid WS reconnect loop with exponential backoff (Section 16)."""
     backoff = _BACKOFF_START
     while True:
         try:
@@ -162,3 +174,49 @@ async def run_relay_forever() -> None:
             logger.exception("Relay connection dropped; reconnecting in %.1fs", backoff)
             await asyncio.sleep(backoff)
             backoff = min(backoff * 2, _BACKOFF_MAX)
+
+
+async def _forex_poll_once(channel_layer) -> None:
+    """Poll Twelve Data for the latest candle on each demanded forex topic and
+    broadcast it to that (symbol, interval) group — the forex analogue of the
+    crypto WS push, but pull-based (no forex WS in scope)."""
+    forex_map = await _active_forex_map()
+    if not forex_map:
+        return
+    for topic in await demand.demanded():
+        ticker, _, interval = topic.partition("|")
+        feed = forex_map.get(ticker)
+        if not feed or interval not in forex.SUPPORTED_INTERVALS:
+            continue
+        try:
+            candles = await sync_to_async(forex.fetch_forex_latest)(
+                feed, ticker, interval
+            )
+        except Exception:
+            logger.exception("Forex poll failed for %s %s", ticker, interval)
+            continue
+        if candles:
+            await _broadcast(channel_layer, ticker, interval, candles[-1])
+
+
+async def _forex_poll_forever() -> None:
+    """Poll loop for forex charts. No-op (idle) when forex isn't configured."""
+    if not forex.FOREX_ENABLED:
+        logger.info("Forex relay disabled (no TWELVE_DATA_API_KEY).")
+        return
+    channel_layer = get_channel_layer()
+    logger.info("Forex relay polling every %.0fs.", settings.FOREX_POLL_INTERVAL)
+    while True:
+        try:
+            await _forex_poll_once(channel_layer)
+        except asyncio.CancelledError:
+            raise
+        except Exception:
+            logger.exception("Forex poll cycle errored; continuing.")
+        await asyncio.sleep(settings.FOREX_POLL_INTERVAL)
+
+
+async def run_relay_forever() -> None:
+    """Run the crypto WS relay and the forex poll loop side by side. If either
+    exits unexpectedly, surface it so the supervisor restarts the process."""
+    await asyncio.gather(_crypto_relay_forever(), _forex_poll_forever())

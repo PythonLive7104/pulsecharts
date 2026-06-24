@@ -83,6 +83,8 @@ export const useStore = create((set, get) => ({
 
   // --- workspace ---
   symbols: [],
+  // UI filter for the symbol search/picker: "crypto" | "forex". Transient.
+  assetClass: "crypto",
   layout: _persisted?.layout || "1",
   panes: _persisted?.panes || [makePane()],
   activePaneId: _persisted?.activePaneId || null,
@@ -196,6 +198,22 @@ export const useStore = create((set, get) => ({
     set({ layout, panes, activePaneId });
     // Load candles for any freshly-added pane that has a symbol but no data.
     for (const p of panes) if (p.symbol && p.candles.length === 0) get().loadCandlesFor(p.id);
+  },
+
+  // Switch the symbol picker between crypto and forex. If the active pane is
+  // showing the other asset class, jump it to the first symbol of the new class
+  // so the toggle has an immediate effect.
+  setAssetClass(cls) {
+    if (cls === get().assetClass) return;
+    set({ assetClass: cls });
+    const { symbols, activePane, selectSymbol } = get();
+    const pane = activePane();
+    if (!pane) return;
+    const current = symbols.find((s) => s.ticker === pane.symbol);
+    if (!current || current.asset_class !== cls) {
+      const first = symbols.find((s) => s.asset_class === cls);
+      if (first) selectSymbol(pane.id, first.ticker);
+    }
   },
 
   async selectSymbol(paneId, ticker) {

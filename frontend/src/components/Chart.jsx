@@ -22,7 +22,7 @@ const CHART_THEME = {
 const OSC_ORDER = ["rsi", "macd", "stoch", "atr"];
 const VOLUME_KEY = "__volume__:vol";
 
-export default function Chart({ candles, activeIndicators, indicatorParams, onReady }) {
+export default function Chart({ candles, activeIndicators, indicatorParams, precision = 2, onReady }) {
   const containerRef = useRef(null);
   const chartRef = useRef(null);
   const candleSeriesRef = useRef(null);
@@ -71,6 +71,15 @@ export default function Chart({ candles, activeIndicators, indicatorParams, onRe
       grid: { vertLines: { color: c.grid }, horzLines: { color: c.grid } },
     });
   }, [theme]);
+
+  // Price precision: forex needs 3–5 dp, crypto 2. lightweight-charts defaults
+  // to 2 dp / 0.01 minMove, which would round EUR/USD's 1.08542 to 1.08.
+  useEffect(() => {
+    if (!candleSeriesRef.current) return;
+    candleSeriesRef.current.applyOptions({
+      priceFormat: { type: "price", precision, minMove: 1 / 10 ** precision },
+    });
+  }, [precision]);
 
   // Sync candles + indicator series + pane layout.
   useEffect(() => {

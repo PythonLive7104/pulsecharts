@@ -473,6 +473,27 @@ a.brand:hover { text-decoration: none; }
 .result-ticker { font-weight: 600; font-size: 13px; }
 .result-name { color: var(--muted); font-size: 12px; }
 .no-match { padding: 8px 9px; }
+/* Crypto/Forex asset-class toggle in the symbol bar. */
+.asset-toggle {
+  display: inline-flex;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 2px;
+  gap: 2px;
+}
+.asset-btn {
+  background: transparent;
+  color: var(--muted);
+  border: none;
+  border-radius: 6px;
+  padding: 5px 12px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.asset-btn.active { background: var(--accent); color: #fff; }
+
 .timeframes { display: flex; gap: 4px; }
 .tf {
   background: var(--panel);

@@ -16,7 +16,8 @@ from celery import shared_task
 from django.conf import settings
 from django.utils import timezone
 
-from apps.market_data.client import fetch_candles, fetch_candles_since
+from apps.market_data.feeds import get_candles, get_candles_since
+from apps.market_data.forex import market_open as forex_market_open
 from apps.market_data.models import Symbol
 from apps.watchlists.models import WatchlistItem
 
@@ -48,7 +49,7 @@ def _htf_direction(sym, htf: str, cache: dict) -> str | None:
         return cache[key]
     direction = "ERR"
     try:
-        candles = fetch_candles(sym.hl_coin, sym.ticker, htf, limit=300)
+        candles = get_candles(sym, htf, limit=300)
         if len(candles) >= MIN_CANDLES:
             ind = compute_indicators(candles)
             close, ema200 = ind["close"], ind["ema200"]
@@ -118,10 +119,15 @@ def run_scan(symbol_limit: int | None = None, use_pregate: bool | None = None) -
     stats = {"gated": 0, "llm_calls": 0, "in_tokens": 0, "out_tokens": 0}
     regime_on = settings.SIGNAL_REGIME_FILTER_ENABLED
     htf_cache: dict[tuple[int, str], str | None] = {}  # (symbol_id, htf) -> trend bias
+    forex_is_open = forex_market_open()  # evaluated once per scan
     for sym in symbols:
+        # Forex trades ~24/5: skip its symbols on weekends so we don't generate
+        # setups off stale closed-market candles (crypto trades 24/7 — unaffected).
+        if sym.is_forex and not forex_is_open:
+            continue
         for tf in settings.SIGNAL_TIMEFRAMES:
             try:
-                candles = fetch_candles(sym.hl_coin, sym.ticker, tf, limit=300)
+                candles = get_candles(sym, tf, limit=300)
             except (requests.RequestException, ValueError):
                 logger.warning("candle fetch failed: %s %s", sym.ticker, tf)
                 continue
@@ -258,7 +264,7 @@ def run_evaluation(limit: int | None = None) -> dict:
         gen_ms = int(sig.generated_at.timestamp() * 1000)
         gen_s = sig.generated_at.timestamp()
         try:
-            candles = fetch_candles_since(sig.symbol.hl_coin, sig.symbol.ticker, sig.timeframe, gen_ms)
+            candles = get_candles_since(sig.symbol, sig.timeframe, gen_ms)
         except (requests.RequestException, ValueError):
             continue
         eval_candles = [c for c in candles if c["time"] > gen_s]

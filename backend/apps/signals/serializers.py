@@ -35,6 +35,7 @@ class SignalSerializer(serializers.ModelSerializer):
     """Full signal card (Section 19.1)."""
 
     symbol = serializers.CharField(source="symbol.ticker", read_only=True)
+    asset_class = serializers.CharField(source="symbol.asset_class", read_only=True)
     strategy = serializers.CharField(source="service.name", read_only=True)
     strategy_slug = serializers.CharField(source="service.slug", read_only=True)
 

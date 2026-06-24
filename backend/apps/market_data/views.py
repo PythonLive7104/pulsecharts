@@ -3,7 +3,7 @@ from rest_framework import generics, permissions, status
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from .client import SUPPORTED_INTERVALS, fetch_candles
+from .feeds import get_candles, supported_intervals
 from .models import Symbol
 from .serializers import SymbolSerializer
 
@@ -33,9 +33,9 @@ class CandlesView(APIView):
             )
 
         interval = request.query_params.get("interval", "1m")
-        if interval not in SUPPORTED_INTERVALS:
+        if interval not in supported_intervals(symbol):
             return Response(
-                {"detail": f"Unsupported interval '{interval}'."},
+                {"detail": f"Unsupported interval '{interval}' for this symbol."},
                 status=status.HTTP_400_BAD_REQUEST,
             )
         try:
@@ -44,7 +44,7 @@ class CandlesView(APIView):
             limit = 500
 
         try:
-            candles = fetch_candles(symbol.hl_coin, symbol.ticker, interval, limit)
+            candles = get_candles(symbol, interval, limit)
         except requests.RequestException:
             return Response(
                 {"detail": "Upstream market data unavailable."},

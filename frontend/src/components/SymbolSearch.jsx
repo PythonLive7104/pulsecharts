@@ -7,6 +7,7 @@ const MAX_RESULTS = 50; // cap the rendered list for snappy filtering
 
 export default function SymbolSearch() {
   const symbols = useStore((s) => s.symbols);
+  const assetClass = useStore((s) => s.assetClass);
   const activePane = useStore((s) => s.activePane());
   const selectSymbol = useStore((s) => s.selectSymbol);
   const activeSymbol = activePane?.symbol || null;
@@ -18,15 +19,17 @@ export default function SymbolSearch() {
 
   const results = useMemo(() => {
     const q = query.trim().toUpperCase();
+    // Scope to the selected asset class (Crypto/Forex), then text-filter.
+    const scoped = symbols.filter((s) => (s.asset_class || "crypto") === assetClass);
     const list = q
-      ? symbols.filter(
+      ? scoped.filter(
           (s) =>
             s.ticker.toUpperCase().includes(q) ||
             (s.display_name || "").toUpperCase().includes(q)
         )
-      : symbols;
+      : scoped;
     return list.slice(0, MAX_RESULTS);
-  }, [symbols, query]);
+  }, [symbols, query, assetClass]);
 
   // Close on outside click.
   useEffect(() => {

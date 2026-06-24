@@ -176,6 +176,18 @@ HYPERLIQUID_WS_URL = env(
     "HYPERLIQUID_WS_URL", default="wss://api.hyperliquid.xyz/ws"
 )
 
+# --- Forex data (Yahoo Finance) -------------------------------------------
+# Forex pairs use Yahoo Finance's public chart API (Hyperliquid is crypto-only).
+# It needs no API key/account and works from any region — unlike broker APIs
+# (e.g. OANDA) which aren't available everywhere. It's an unofficial endpoint, so
+# flip FOREX_ENABLED=False to disable forex entirely if it gets unreliable
+# (crypto is unaffected either way).
+FOREX_ENABLED = env.bool("FOREX_ENABLED", default=True)
+# How often (seconds) the relay polls Yahoo for fresh candles on watched forex
+# charts. Forex moves slower intrabar than crypto, so a 15s tail is fine — and
+# keeps request volume low against the public endpoint.
+FOREX_POLL_INTERVAL = env.float("FOREX_POLL_INTERVAL", default=15.0)
+
 # --- Dodo Payments (Section 3, 15) ----------------------------------------
 
 DODO_PAYMENTS_API_KEY = env("DODO_PAYMENTS_API_KEY", default="")

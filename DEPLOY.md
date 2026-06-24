@@ -71,6 +71,9 @@ service runs database migrations automatically on startup.
 # Populate the full Hyperliquid symbol list (fast now — server is near the DB)
 docker compose exec web python manage.py sync_symbols
 
+# Seed the 7 major forex pairs (only if OANDA_API_KEY is set — see backend/.env)
+docker compose exec web python manage.py seed_forex
+
 # Seed the signal strategies (the 10 services)
 docker compose exec web python manage.py seed_signal_services
 

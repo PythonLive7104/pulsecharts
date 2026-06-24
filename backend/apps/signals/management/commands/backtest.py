@@ -24,7 +24,7 @@ import requests
 from django.conf import settings
 from django.core.management.base import BaseCommand
 
-from apps.market_data.client import fetch_candles
+from apps.market_data.feeds import get_candles
 from apps.market_data.models import Symbol
 from apps.signals.engine import generate_judgment
 from apps.signals.evaluate import walk
@@ -145,7 +145,7 @@ class Command(BaseCommand):
                 if llm_on and budget["left"] <= 0:
                     break
                 try:
-                    candles = fetch_candles(sym.hl_coin, sym.ticker, tf, limit=opts["candles"])
+                    candles = get_candles(sym, tf, limit=opts["candles"])
                 except (requests.RequestException, ValueError):
                     continue
                 if len(candles) < MIN_CANDLES + 5:

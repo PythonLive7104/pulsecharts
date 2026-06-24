@@ -4,6 +4,7 @@ import { useState } from "react";
 import Chart from "./Chart";
 import DrawingCanvas from "./DrawingCanvas";
 import { useStore } from "../store/useStore";
+import { priceDecimals } from "../lib/price";
 
 export default function ChartPane({ pane }) {
   const activePaneId = useStore((s) => s.activePaneId);
@@ -19,9 +20,14 @@ export default function ChartPane({ pane }) {
   const updateDrawing = useStore((s) => s.updateDrawing);
   const deleteDrawing = useStore((s) => s.deleteDrawing);
 
+  const symbols = useStore((s) => s.symbols);
+
   const [api, setApi] = useState(null);
   const isActive = pane.id === activePaneId;
   const selectedId = selected?.paneId === pane.id ? selected.id : null;
+  // Price precision depends on the symbol's asset class (forex needs 3–5 dp).
+  const sym = symbols.find((x) => x.ticker === pane.symbol);
+  const precision = priceDecimals(sym?.asset_class, pane.symbol);
 
   return (
     <div
@@ -37,6 +43,7 @@ export default function ChartPane({ pane }) {
         candles={pane.candles}
         activeIndicators={pane.indicators}
         indicatorParams={pane.params}
+        precision={precision}
         onReady={setApi}
       />
       {api && (

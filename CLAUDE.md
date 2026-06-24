@@ -10,8 +10,10 @@ yet final — confirm with the developer before building around it.
 A TradingView-style web app for retail crypto traders, powered by
 Hyperliquid's market data. Free tier gives live charting; premium
 tier (paid subscription) unlocks advanced technical indicators and
-saved layouts. Built and shipped solo. Forex was considered and
-dropped — crypto-only for v1. A paid trading-signals feature is
+saved layouts. Built and shipped solo. Forex was originally dropped for
+v1 (crypto-only) but has since been ADDED back by user demand — see
+Section 22 for the forex data layer (Yahoo Finance feed, Crypto/Forex
+toggle, signals on the same strategies). A paid trading-signals feature is
 planned for v2 (Section 13) — documented now, not part of the MVP build.
 
 ## 2. Developer Context
@@ -88,8 +90,8 @@ Explicitly out of scope for MVP (don't build unless asked):
 - Backtesting or paper trading.
 - Native mobile app — responsive web only.
 - Social features (sharing charts, public layouts).
-- Forex — deliberately dropped for v1; revisit only if there's
-  demand once crypto v1 has traction.
+- Forex — was dropped for v1, but NOW ADDED (user demand). No longer out
+  of scope. See Section 22 for the implementation.
 - Trading signals (buy/sell signal feed with selectable strategies)
   — fully spec'd as a v2 feature in Section 13, intentionally kept
   out of the MVP build to protect the lean timeline.
@@ -742,3 +744,64 @@ DODO_PAYMENTS_WEBHOOK_SECRET=
 FRONTEND_URL=
 OPENAI_API_KEY=<your-openai-api-key>
 ```
+
+## 22. Forex Support (added post-MVP — reverses the Section 5 crypto-only call)
+
+Forex was originally dropped (Sections 1, 5, 16) but added back on user
+demand. Crypto remains the primary market; forex is a second asset class
+alongside it, deliberately built so the rest of the pipeline stays
+source-agnostic.
+
+### 22.1 Data source — Yahoo Finance (not a broker)
+
+Hyperliquid is crypto-only, so forex needs a separate feed. Broker APIs
+(OANDA, etc.) were ruled out: they require a KYC account and aren't
+available in every region (e.g. Nigeria). The chosen feed is **Yahoo
+Finance's public chart API** — no account, no API key, works anywhere.
+Caveat: it's an unofficial endpoint (can rate-limit / change without
+notice). `FOREX_ENABLED` (env, default true) is a kill-switch that
+disables forex without touching crypto. If a contractual feed is wanted
+later, Polygon.io (~$29/mo, commercial license) is a drop-in swap — only
+`apps/market_data/forex.py` + env would change.
+
+### 22.2 How it's wired (provider-isolated)
+
+- `Symbol.asset_class` ("crypto"|"forex") + `Symbol.feed_symbol` (Yahoo FX
+  ticker, e.g. "EURUSD=X"; crypto keeps using `hl_coin`). `source_symbol`
+  / `is_forex` helpers on the model.
+- `apps/market_data/forex.py` — the ONLY file that talks to Yahoo: candle
+  fetch, a lightweight latest-candle fetch for the relay poll, a single-
+  pair price fetch for alerts, and `market_open()` (forex trades ~24/5).
+  Yahoo has no 4h granularity, so 4h is aggregated from 1h candles.
+- `apps/market_data/feeds.py` — `get_candles` / `get_candles_since`
+  dispatch by asset class. Candles endpoint, signal engine, evaluator, and
+  backtest all call this, so none of them branch on market type.
+- Relay (`relay.py`) runs the crypto WS loop and a forex polling loop
+  side by side; forex candles broadcast through the same Channels groups,
+  so the browser WS code is unchanged.
+- Frontend: a Crypto/Forex toggle in the symbol bar filters the picker;
+  price precision (`lib/price.js`) shows forex to 5 dp (3 dp for JPY).
+
+### 22.3 Symbols, signals, alerts
+
+- Forex symbols are a curated set of the 7 majors, seeded with
+  `python manage.py seed_forex` (vs crypto's live `sync_symbols`).
+- Signals use the SAME strategies — they run on normalized candles, so no
+  strategy changes were needed. The scan skips forex symbols on weekends
+  (market closed) to avoid stale-candle setups.
+- Price alerts work for forex too (one Yahoo request per alerted pair).
+
+### 22.4 Env vars (additions to Section 21)
+
+```
+FOREX_ENABLED=true          # kill-switch; false = crypto-only
+FOREX_POLL_INTERVAL=15      # seconds between relay polls of Yahoo
+```
+(No API key — Yahoo needs none.)
+
+### 22.5 Open flags
+
+- Yahoo is unofficial — monitor reliability; flip `FOREX_ENABLED=false`
+  or move to Polygon if it degrades under real traffic.
+- Paid forex signals carry the SAME regulatory/disclaimer exposure as
+  crypto signals (Section 13.7) — not financial advice, etc.

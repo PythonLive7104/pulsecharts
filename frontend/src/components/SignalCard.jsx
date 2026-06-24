@@ -2,8 +2,7 @@
 // confidence, price levels, risk/reward in dollars (per $100 illustrative),
 // reasoning, and the not-financial-advice disclaimer.
 import { useState } from "react";
-
-const fmt = (n) => (n == null ? "—" : Number(n).toLocaleString(undefined, { maximumFractionDigits: 2 }));
+import { formatPrice } from "../lib/price";
 
 // Illustrative position size for the $ figures. Derived from the signal's
 // scale-invariant risk/reward percentages so the display is always consistent —
@@ -24,6 +23,7 @@ export default function SignalCard({ s }) {
   const [open, setOpen] = useState(false);
   const buy = s.direction === "BUY";
   const [outLabel, outClass] = OUTCOME[s.outcome] || OUTCOME.PENDING;
+  const fmt = (n) => formatPrice(n, s.asset_class, s.symbol);
 
   return (
     <div className={`signal-card ${buy ? "buy" : "sell"}`}>
