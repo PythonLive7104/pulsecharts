@@ -129,6 +129,21 @@ def _aggregate_4h(candles_1h: list[dict]) -> list[dict]:
     return [buckets[k] for k in sorted(buckets)]
 
 
+def _repair_daily_opens(candles: list[dict]) -> list[dict]:
+    """Yahoo's DAILY forex (=X) candles have an unreliable open (open≈close), so
+    every daily candle renders as a doji/thin stick. FX is a continuous market,
+    so the real open of each day is effectively the previous day's close — rebuild
+    it that way and clamp high/low so the candle stays valid. Intraday candles are
+    fine and untouched. (Daily is chart-only; signals run on 1h/4h.)"""
+    for i in range(1, len(candles)):
+        prev_close = candles[i - 1]["close"]
+        c = candles[i]
+        c["open"] = prev_close
+        c["high"] = max(c["high"], prev_close)
+        c["low"] = min(c["low"], prev_close)
+    return candles
+
+
 def fetch_forex_candles(yahoo_symbol: str, ticker: str, interval: str = "1h",
                         limit: int = 300, *, timeout: float = 10.0) -> list[dict]:
     """Up to `limit` normalized forex candles, oldest first."""
@@ -145,6 +160,8 @@ def fetch_forex_candles(yahoo_symbol: str, ticker: str, interval: str = "1h",
             yahoo_symbol, _YF_INTERVAL[interval], ticker, interval,
             range_=_RANGE[interval], timeout=timeout,
         )
+        if interval == "1d":
+            candles = _repair_daily_opens(candles)
     return candles[-limit:]
 
 
@@ -180,8 +197,9 @@ def fetch_forex_latest(yahoo_symbol: str, ticker: str, interval: str, *,
                          period1=now - 3 * _4H_SECONDS, period2=now, timeout=timeout)
         return _aggregate_4h(base)
     p1 = now - 4 * _INTERVAL_SECONDS[interval]
-    return _download(yahoo_symbol, _YF_INTERVAL[interval], ticker, interval,
-                     period1=p1, period2=now, timeout=timeout)
+    candles = _download(yahoo_symbol, _YF_INTERVAL[interval], ticker, interval,
+                        period1=p1, period2=now, timeout=timeout)
+    return _repair_daily_opens(candles) if interval == "1d" else candles
 
 
 def fetch_forex_price(yahoo_symbol: str, *, timeout: float = 10.0) -> float | None:

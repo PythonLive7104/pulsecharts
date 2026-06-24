@@ -177,11 +177,24 @@ export const useStore = create((set, get) => ({
           await get().loadCandlesFor(p.id); // fetch candles for a restored pane
         }
       }
+      get()._syncAssetClass(); // toggle should match the restored active symbol
     }
   },
 
   setActivePane(id) {
-    if (get().paneById(id)) set({ activePaneId: id });
+    if (!get().paneById(id)) return;
+    set({ activePaneId: id });
+    get()._syncAssetClass();
+  },
+
+  // Keep the Crypto/Forex toggle in step with the symbol the active pane is
+  // actually showing (e.g. after a reload restores a forex chart).
+  _syncAssetClass() {
+    const pane = get().activePane();
+    const sym = get().symbols.find((s) => s.ticker === pane?.symbol);
+    if (sym?.asset_class && sym.asset_class !== get().assetClass) {
+      set({ assetClass: sym.asset_class });
+    }
   },
 
   setLayout(layout) {
