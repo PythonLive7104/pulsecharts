@@ -2,8 +2,8 @@
 
 Aggregates resolved Signal outcomes into honest win-rate metrics. A "win" is any
 signal that reached at least TP1 before being stopped out; a "loss" is a stop hit
-with no TP. A trend-flip invalidation is a breakeven close (0% P/L) — counted as
-neither a win nor a loss. EXPIRED, PENDING and breakeven are reported separately
+with no TP. A trend-flip invalidation closes the call flat at 0 P/L — counted as
+neither a win nor a loss. EXPIRED, PENDING and invalidated are reported separately
 so the win rate isn't flattered or penalised by them.
 """
 
@@ -58,6 +58,6 @@ def accuracy_stats() -> dict:
     return {
         "overall": _summarize(overall_counts),
         "strategies": strategies,
-        "note": "Win = reached TP1+ before stop. Breakeven (trend flipped), "
+        "note": "Win = reached TP1+ before stop. Invalidated (trend flipped), "
                 "expired and pending are excluded from win rate.",
     }

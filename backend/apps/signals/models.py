@@ -80,10 +80,10 @@ class Signal(models.Model):
         TP4 = "TP4", "Hit TP4"
         SL = "SL", "Stopped out"
         EXPIRED = "EXPIRED", "Expired"
-        # Trend flipped before TP or SL was hit: the call is closed flat. Treated
-        # as a breakeven close (0% P/L) — NOT a loss. Only an actual stop-loss hit
-        # (SL) counts as a stopped-out / losing trade.
-        INVALIDATED = "INVALID", "Closed — breakeven (trend flipped)"
+        # Trend flipped before TP or SL was hit: the call is closed flat at 0 P/L
+        # — NOT a loss. Only an actual stop-loss hit (SL) counts as a stopped-out /
+        # losing trade.
+        INVALIDATED = "INVALID", "Invalidated — trend flipped"
 
     outcome = models.CharField(
         max_length=8, choices=Outcome.choices, default=Outcome.PENDING, db_index=True

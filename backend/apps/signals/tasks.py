@@ -371,7 +371,7 @@ _CLOSURE_STATUS = {
     Signal.Outcome.TP3: "✅ hit TP3",
     Signal.Outcome.TP4: "✅ hit TP4",
     Signal.Outcome.SL: "🛑 stopped out",
-    Signal.Outcome.INVALIDATED: "⚪ closed at breakeven — trend flipped (0% P/L)",
+    Signal.Outcome.INVALIDATED: "⚠️ invalidated — trend flipped",
     Signal.Outcome.EXPIRED: "⌛ expired",
 }
 
@@ -387,10 +387,7 @@ def format_closure_for_telegram(s: Signal) -> str:
         f"{status}.  <i>{html.escape(s.service.name)}</i>",
     ]
     if s.outcome == Signal.Outcome.INVALIDATED:
-        lines.append(
-            "The trend flipped before TP or SL, so this call is closed flat (counts "
-            "as breakeven, not a loss) — a fresh signal follows if a new setup forms."
-        )
+        lines.append("Consider closing this trade — a fresh signal follows if a new setup forms.")
     lines.append("<i>Informational only. Not financial advice.</i>")
     return "\n".join(lines)
 

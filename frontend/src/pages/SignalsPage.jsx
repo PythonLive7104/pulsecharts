@@ -115,7 +115,7 @@ export default function SignalsPage() {
   // who don't use Telegram still see when a trade hit TP/SL or the trend flipped.
   const CLOSURE_MSG = {
     TP1: "✅ Hit TP1", TP2: "✅ Hit TP2", TP3: "✅ Hit TP3", TP4: "✅ Hit TP4",
-    SL: "🛑 Stopped out", INVALID: "⚪ Closed at breakeven — trend flipped (0% P/L)",
+    SL: "🛑 Stopped out", INVALID: "⚠️ Invalidated — trend flipped",
     EXPIRED: "⌛ Expired",
   };
   const recentClosures = (feed?.resolved || [])
@@ -257,7 +257,7 @@ export default function SignalsPage() {
                     <span className="acc-rate">{accuracy.overall.win_rate}%</span>
                     <span className="muted">
                       {accuracy.overall.wins}W / {accuracy.overall.losses}L ({accuracy.overall.resolved} resolved)
-                      {accuracy.overall.breakeven > 0 && ` · ${accuracy.overall.breakeven} breakeven`}
+                      {accuracy.overall.breakeven > 0 && ` · ${accuracy.overall.breakeven} invalidated`}
                     </span>
                   </div>
                   <div className="acc-strats">

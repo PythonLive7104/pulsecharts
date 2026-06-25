@@ -13,6 +13,6 @@ class Migration(migrations.Migration):
         migrations.AlterField(
             model_name='signal',
             name='outcome',
-            field=models.CharField(choices=[('PENDING', 'Pending'), ('TP1', 'Hit TP1'), ('TP2', 'Hit TP2'), ('TP3', 'Hit TP3'), ('TP4', 'Hit TP4'), ('SL', 'Stopped out'), ('EXPIRED', 'Expired'), ('INVALID', 'Closed — breakeven (trend flipped)')], db_index=True, default='PENDING', max_length=8),
+            field=models.CharField(choices=[('PENDING', 'Pending'), ('TP1', 'Hit TP1'), ('TP2', 'Hit TP2'), ('TP3', 'Hit TP3'), ('TP4', 'Hit TP4'), ('SL', 'Stopped out'), ('EXPIRED', 'Expired'), ('INVALID', 'Invalidated — trend flipped')], db_index=True, default='PENDING', max_length=8),
         ),
     ]
