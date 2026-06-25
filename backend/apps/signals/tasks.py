@@ -267,12 +267,18 @@ def run_evaluation(limit: int | None = None) -> dict:
         # Otherwise the call remains Active, no matter how long it's been open.
         label = outcome_label(res)
         if label:
-            sig.outcome = label
-            sig.resolved_at = now
-            sig.mfe_pct = res["mfe_pct"]
-            sig.mae_pct = res["mae_pct"]
-            sig.save(update_fields=["outcome", "resolved_at", "mfe_pct", "mae_pct"])
-            resolved += 1
+            # Guard against a race: the candle fetch above is slow, and a
+            # concurrent scan may have already closed this call as a breakeven
+            # trend-flip invalidation. Only write the SL/TP outcome if the call is
+            # STILL open — an invalidated (closed) trade must never be re-recorded
+            # as stopped out.
+            updated = Signal.objects.filter(
+                id=sig.id, outcome=Signal.Outcome.PENDING
+            ).update(
+                outcome=label, resolved_at=now,
+                mfe_pct=res["mfe_pct"], mae_pct=res["mae_pct"],
+            )
+            resolved += updated  # 0 if it was already closed elsewhere
         else:
             still += 1
 
@@ -365,7 +371,7 @@ _CLOSURE_STATUS = {
     Signal.Outcome.TP3: "✅ hit TP3",
     Signal.Outcome.TP4: "✅ hit TP4",
     Signal.Outcome.SL: "🛑 stopped out",
-    Signal.Outcome.INVALIDATED: "⚠️ invalidated — trend flipped",
+    Signal.Outcome.INVALIDATED: "⚪ closed at breakeven — trend flipped (0% P/L)",
     Signal.Outcome.EXPIRED: "⌛ expired",
 }
 
@@ -381,7 +387,10 @@ def format_closure_for_telegram(s: Signal) -> str:
         f"{status}.  <i>{html.escape(s.service.name)}</i>",
     ]
     if s.outcome == Signal.Outcome.INVALIDATED:
-        lines.append("Consider closing this trade — a fresh signal follows if a new setup forms.")
+        lines.append(
+            "The trend flipped before TP or SL, so this call is closed flat (counts "
+            "as breakeven, not a loss) — a fresh signal follows if a new setup forms."
+        )
     lines.append("<i>Informational only. Not financial advice.</i>")
     return "\n".join(lines)
 

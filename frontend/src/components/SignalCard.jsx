@@ -16,7 +16,8 @@ const OUTCOME = {
   PENDING: ["Active", "pending"],
   TP1: ["✓ TP1", "win"], TP2: ["✓ TP2", "win"], TP3: ["✓ TP3", "win"], TP4: ["✓ TP4", "win"],
   SL: ["✕ Stopped", "loss"], EXPIRED: ["Expired", "expired"],
-  INVALID: ["Trend changed", "expired"],
+  // Trend flipped before TP/SL — closed flat at breakeven (0% P/L), not a loss.
+  INVALID: ["Closed · 0%", "closed"],
 };
 
 export default function SignalCard({ s }) {

@@ -920,6 +920,8 @@ a.brand:hover { text-decoration: none; }
 .outcome-badge.win { color: var(--green); border-color: var(--green); }
 .outcome-badge.loss { color: var(--red); border-color: var(--red); }
 .outcome-badge.expired { color: var(--muted); opacity: 0.7; }
+/* Breakeven close (trend flipped) — neutral, clearly not a loss. */
+.outcome-badge.closed { color: var(--accent); border-color: var(--accent); }
 
 /* Realized accuracy panel */
 .accuracy-panel { background: var(--bg-elev); border: 1px solid var(--border); border-radius: 12px; padding: 16px; margin: 14px 0; }
