@@ -104,9 +104,14 @@ class User(AbstractUser):
     def telegram_connected(self) -> bool:
         return bool(self.telegram_chat_id)
 
-    # A connect link is good for this long after it's issued. Short on purpose:
-    # if the user forwards the link, a stranger can't redeem it minutes later.
-    TELEGRAM_LINK_TOKEN_TTL = timedelta(minutes=15)
+    # A connect link is good for this long after it's issued. Long enough that a
+    # user who taps "Connect", switches to the Telegram app, and presses Start a
+    # bit later (or disconnects and reconnects) still lands on a valid link — the
+    # 30s status poll re-mints the token at this boundary, so too short a TTL
+    # rotated the token out from under an in-flight link and broke reconnects.
+    # Forwarded-link abuse is still bounded by one-time use + the
+    # already-linked-to-another-chat guard in the webhook.
+    TELEGRAM_LINK_TOKEN_TTL = timedelta(hours=1)
 
     def _telegram_token_fresh(self) -> bool:
         return bool(

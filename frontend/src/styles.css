@@ -624,6 +624,17 @@ a.brand:hover { text-decoration: none; }
 @media (max-width: 700px) {
   .account-body { flex-direction: column; }
   .account-nav { width: 100%; flex-direction: row; flex-wrap: wrap; }
+
+  /* Refer & earn: stack so the code input + Save/Cancel and the share link +
+     Copy don't overflow the card on narrow screens. */
+  .referral-code { width: 100%; }
+  .referral-edit { flex-wrap: wrap; }
+  .referral-edit input { flex: 1 1 100%; min-width: 0; }
+  .referral-edit code { flex: 1 1 auto; min-width: 0; overflow-wrap: anywhere; }
+  .referral-share { flex-wrap: wrap; }
+  .referral-share input { flex: 1 1 100%; min-width: 0; }
+  .referral-redeem { flex-direction: column; }
+  .referral-redeem .btn-primary { width: 100%; }
 }
 
 .layout { display: flex; flex: 1; min-height: 0; }
