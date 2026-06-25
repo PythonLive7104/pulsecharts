@@ -181,6 +181,11 @@ class WebhookView(APIView):
             user.plan_tier = PlanTier.FREE
             user.plan_expiry = timezone.now()
             user.save(update_fields=["plan_tier", "plan_expiry"])
+            # Drop saved watchlist symbols / chart layouts back to the Free caps
+            # right away (the daily sweep catches silent lapses too).
+            from apps.accounts.tasks import trim_to_plan_limits
+
+            trim_to_plan_limits(user)
             logger.info("Webhook %s: %s downgraded to Free", event_type, user.email)
 
         else:

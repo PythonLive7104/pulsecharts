@@ -345,6 +345,12 @@ CELERY_BEAT_SCHEDULE = {
         "task": "apps.signals.tasks.purge_old_data",
         "schedule": env.float("PURGE_INTERVAL", default=86400.0),  # once a day
     },
+    # Trim watchlists / saved layouts back to plan caps for users whose paid plan
+    # has lapsed to Free (catches silent expiries with no billing webhook).
+    "enforce-plan-limits": {
+        "task": "apps.accounts.tasks.enforce_plan_limits",
+        "schedule": env.float("PLAN_ENFORCE_INTERVAL", default=86400.0),  # once a day
+    },
 }
 
 # --- i18n / static --------------------------------------------------------
