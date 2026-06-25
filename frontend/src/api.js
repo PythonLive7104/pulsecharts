@@ -149,20 +149,6 @@ export const api = {
   telegramStatus: () => request("/me/telegram/"),
   telegramDisconnect: () => request("/me/telegram/disconnect/", { method: "POST" }),
 
-  // --- auto-trade / broker execution (Pro, v2) ---
-  brokerStatus: () => request("/me/broker/"),
-  brokerConnect: (apiKey, apiSecret, testnet, authorize) =>
-    request("/me/broker/", {
-      method: "POST",
-      body: { api_key: apiKey, api_secret: apiSecret, testnet, authorize },
-    }),
-  brokerDisconnect: () => request("/me/broker/", { method: "DELETE" }),
-  autoTradeConfig: () => request("/me/auto-trade/config/"),
-  saveAutoTradeConfig: (payload) =>
-    request("/me/auto-trade/config/", { method: "PUT", body: payload }),
-  autoTradeExecutions: () => request("/me/auto-trade/executions/"),
-  autoTradePanic: () => request("/me/auto-trade/panic/", { method: "POST" }),
-
   // --- landing-page support chat (public, no LLM — curated knowledge base) ---
   supportSuggestions: () => request("/support/chat/", { auth: false }),
   supportChat: (message) =>

@@ -33,9 +33,3 @@ djangorestframework-simplejwt>=5.3
 # --- v2 Trading Signals (Section 13, 20) ---
 openai>=1.50
 celery>=5.4
-
-# --- v2 Auto-trade / broker execution (Section 13 follow-on) ---
-# Fernet symmetric encryption for broker API keys at rest (never store raw).
-cryptography>=42.0
-# Bybit V5 unified-trading official SDK (scoped to Bybit for now).
-pybit>=5.7

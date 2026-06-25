@@ -59,10 +59,6 @@ class EntitlementsView(APIView):
             "strategies_allowed": plan["strategies"],
             "watchlist_limit": plan["watchlist_limit"],
             "layout_limit": plan["layout_limit"],
-            # Auto-trade is Pro-only; the global flag tells the UI whether the
-            # feature is live yet (off until accuracy + legal review are done).
-            "auto_trade": plan["key"] == "pro",
-            "auto_trade_live": settings.AUTO_TRADE_ENABLED,
         }
         return Response(data)
 

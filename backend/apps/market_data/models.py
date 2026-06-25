@@ -27,10 +27,6 @@ class Symbol(models.Model):
     # Provider-native symbol for non-Hyperliquid feeds, e.g. Twelve Data forex
     # "EUR/USD". Blank for crypto (hl_coin is the feed code there instead).
     feed_symbol = models.CharField(max_length=32, blank=True, default="")
-    # Bybit V5 instrument used for auto-trade execution, e.g. "BTCUSDT". Blank
-    # means this coin is charted/signalled but NOT auto-tradable on Bybit — the
-    # execution engine skips signals whose symbol has no mapping.
-    bybit_symbol = models.CharField(max_length=32, blank=True, default="")
     display_name = models.CharField(max_length=64, blank=True, default="")
     is_active = models.BooleanField(default=True)
     sort_order = models.PositiveIntegerField(default=0)

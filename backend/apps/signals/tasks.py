@@ -173,31 +173,18 @@ def run_scan(symbol_limit: int | None = None, use_pregate: bool | None = None) -
                         continue
                     if open_dir:
                         # Trend flipped — close out the now-stale opposite call(s).
-                        stale_qs = Signal.objects.filter(
+                        n = Signal.objects.filter(
                             symbol=sym, service=svc, outcome=Signal.Outcome.PENDING
-                        )
-                        # Grab the ids before the bulk update so the auto-trade
-                        # layer can flatten any live positions on these calls.
-                        stale_ids = list(stale_qs.values_list("id", flat=True))
-                        n = stale_qs.update(
+                        ).update(
                             outcome=Signal.Outcome.INVALIDATED, resolved_at=now
                         )
                         invalidated += n
-                        from apps.auto_trade.tasks import enqueue_invalidation_close
-
-                        enqueue_invalidation_close(stale_ids)
-                    sig_row = Signal.objects.create(
+                    Signal.objects.create(
                         symbol=sym, service=svc, timeframe=tf,
                         generated_at=timezone.now(), **sig,
                     )
                     open_dirs[pair] = sig["direction"]
                     created += 1
-                    # Auto-trade: fan the new signal out to Pro users who've opted
-                    # in (no-op unless AUTO_TRADE_ENABLED). Kept out of the signals
-                    # app proper to avoid a hard dependency on the broker layer.
-                    from apps.auto_trade.tasks import enqueue_execution
-
-                    enqueue_execution(sig_row.id)
 
     cost = (
         stats["in_tokens"] / 1e6 * settings.OPENAI_PRICE_IN_PER_1M

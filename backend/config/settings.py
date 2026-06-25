@@ -55,7 +55,6 @@ LOCAL_APPS = [
     "apps.chart_layouts",
     "apps.signals",  # v2 — trading signals (Section 13, 19, 20)
     "apps.alerts",   # v2 — price alerts (Section 12)
-    "apps.auto_trade",  # v2 — broker auto-execution of signals
 ]
 
 INSTALLED_APPS = DJANGO_APPS + THIRD_PARTY_APPS + LOCAL_APPS
@@ -309,36 +308,6 @@ SIGNAL_SHADOW_MODE = env.bool("SIGNAL_SHADOW_MODE", default=False)
 # (e.g. 30) if you want a longer accuracy track record, lower it to free more DB.
 SIGNAL_RETENTION_DAYS = env.int("SIGNAL_RETENTION_DAYS", default=30)
 
-# --- Auto-trade / broker execution (v2 follow-on) -------------------------
-# Master kill switch for the whole feature. OFF by default: no order is ever
-# placed on any account until this is explicitly turned on. Keep it off until
-# strategy accuracy is validated (see signals-tuning notes) and the legal/
-# authorization review is done.
-AUTO_TRADE_ENABLED = env.bool("AUTO_TRADE_ENABLED", default=False)
-
-# Fernet key used to encrypt broker API secrets at rest. Generate with:
-#   python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
-# Required before any BrokerConnection can be saved; rotating it invalidates all
-# stored credentials (users must reconnect).
-BROKER_ENCRYPTION_KEY = env("BROKER_ENCRYPTION_KEY", default="")
-
-# Per-trade risk envelope defaults (a user's AutoTradeConfig overrides these).
-# Sizing model is risk-% of balance: qty = (risk% × balance) / (entry→SL dist).
-AUTO_TRADE_DEFAULT_RISK_PCT = env.float("AUTO_TRADE_DEFAULT_RISK_PCT", default=1.0)
-AUTO_TRADE_DEFAULT_LEVERAGE = env.int("AUTO_TRADE_DEFAULT_LEVERAGE", default=3)
-AUTO_TRADE_MAX_OPEN_POSITIONS = env.int("AUTO_TRADE_MAX_OPEN_POSITIONS", default=5)
-AUTO_TRADE_MAX_DAILY_TRADES = env.int("AUTO_TRADE_MAX_DAILY_TRADES", default=10)
-# Skip an entry if live price has already moved more than this % past the
-# signal's entry (the "chase guard" for market entries).
-AUTO_TRADE_MAX_SLIPPAGE_PCT = env.float("AUTO_TRADE_MAX_SLIPPAGE_PCT", default=0.5)
-# Don't act on a signal older than this many seconds — entries are time-sensitive
-# (signals fire on closed candles; stale ones have already moved).
-AUTO_TRADE_MAX_SIGNAL_AGE_SEC = env.int("AUTO_TRADE_MAX_SIGNAL_AGE_SEC", default=600)
-
-# How often the reconciler polls the broker for OPEN positions (seconds). 60s is
-# a reasonable balance between timely close-out detection and API rate limits.
-AUTO_TRADE_RECONCILE_INTERVAL = env.float("AUTO_TRADE_RECONCILE_INTERVAL", default=60.0)
-
 # --- Celery (Section 3, 13.6) ---
 
 CELERY_BROKER_URL = env("CELERY_BROKER_URL", default=REDIS_URL)
@@ -375,12 +344,6 @@ CELERY_BEAT_SCHEDULE = {
     "purge-old-data": {
         "task": "apps.signals.tasks.purge_old_data",
         "schedule": env.float("PURGE_INTERVAL", default=86400.0),  # once a day
-    },
-    # Reconcile open auto-trades against the broker: close finished positions,
-    # record PnL, and move stops to break-even. No-op unless AUTO_TRADE_ENABLED.
-    "reconcile-auto-trades": {
-        "task": "apps.auto_trade.tasks.reconcile_open_trades",
-        "schedule": env.float("AUTO_TRADE_RECONCILE_INTERVAL", default=60.0),
     },
 }
 
