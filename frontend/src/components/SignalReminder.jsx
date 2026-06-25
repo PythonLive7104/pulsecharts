@@ -42,10 +42,10 @@ export default function SignalReminder() {
         <div className="reminder-icon">📡</div>
         <h2 id="reminder-title">Want more signals?</h2>
         <p className="reminder-text">
-          Signals are generated for <strong>each symbol you watch</strong> across{" "}
-          <strong>each strategy you follow</strong>. The more you add to your
+          Signals are generated for <strong>each symbol you add to your watchlist on this page</strong> across{" "}
+          <strong>each strategy you follow on the signal page</strong>. The more you add to your
           watchlist and the more strategies you follow, the more signals land in
-          your feed.
+          your feed and Telegram.
         </p>
 
         <div className="reminder-stats">
