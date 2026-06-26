@@ -126,13 +126,38 @@ SERVICES = [
 
 
 class Command(BaseCommand):
-    help = "Seed the starter signal services."
+    help = "Seed/reconcile the signal services to the canonical list above."
 
     def handle(self, *args, **options):
         created = 0
         for s in SERVICES:
             _, was_created = SignalService.objects.update_or_create(slug=s["slug"], defaults=s)
             created += int(was_created)
+
+        # Reconcile: drop services no longer in the canonical list so a removed
+        # strategy doesn't linger after deploy (update_or_create never deletes).
+        # Preserve history — a stale service WITH signals is deactivated, not
+        # cascade-deleted; only a truly orphaned one (no signals) is hard-deleted.
+        keep = {s["slug"] for s in SERVICES}
+        deleted = deactivated = 0
+        for svc in SignalService.objects.exclude(slug__in=keep):
+            if svc.signals.exists():
+                if svc.is_active:
+                    svc.is_active = False
+                    svc.save(update_fields=["is_active"])
+                deactivated += 1
+                self.stdout.write(self.style.WARNING(
+                    f"  '{svc.slug}' removed from list but has signal history — deactivated, kept."
+                ))
+            else:
+                svc.delete()
+                deleted += 1
+                self.stdout.write(f"  removed stale service '{svc.slug}'.")
+
+        tail = "".join([
+            f", {deleted} stale removed" if deleted else "",
+            f", {deactivated} stale deactivated" if deactivated else "",
+        ])
         self.stdout.write(
-            self.style.SUCCESS(f"Seeded {len(SERVICES)} signal services ({created} new).")
+            self.style.SUCCESS(f"Seeded {len(SERVICES)} signal services ({created} new{tail}).")
         )
