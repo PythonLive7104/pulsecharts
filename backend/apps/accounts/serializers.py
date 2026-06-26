@@ -25,14 +25,25 @@ class RegisterSerializer(serializers.ModelSerializer):
         return code
 
     def create(self, validated_data):
+        import logging
+
         from .models import ReferralCode
+        from .onboarding import provision_default_setup
 
         code = validated_data.pop("referral_code", "")
         user = User.objects.create_user(**validated_data)
         if code:
             rc = ReferralCode.objects.filter(code=code).first()
             if rc and rc.is_usable:  # re-check (race-safe enough at this scale)
-                rc.redeem(user)
+                rc.redeem(user)  # may upgrade plan_tier, so provision *after* this
+        # Seed a default watchlist + followed strategies sized by the user's plan
+        # so they don't land on an empty dashboard. Never let this break signup.
+        try:
+            provision_default_setup(user)
+        except Exception:
+            logging.getLogger("accounts").exception(
+                "Default provisioning failed for new user %s", user.pk
+            )
         return user
 
 

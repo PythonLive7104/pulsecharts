@@ -162,6 +162,16 @@ class WebhookView(APIView):
             user.save(update_fields=["plan_tier", "plan_expiry", "dodo_customer_id"])
             logger.info("Webhook %s: %s -> %s (expiry=%s)", event_type, user.email, tier, renewal)
 
+            # Top the user's watchlist + followed strategies up to the new plan's
+            # defaults (idempotent — only adds what's missing, the mirror image of
+            # the trim-on-downgrade below). Never let it break webhook processing.
+            try:
+                from apps.accounts.onboarding import provision_default_setup
+
+                provision_default_setup(user)
+            except Exception:
+                logger.exception("Upgrade provisioning failed for %s", user.email)
+
             # Confirmation email only on the actual payment event — subscription.*
             # grant events can fire alongside it for the same purchase, and we
             # don't want to email the user twice for one charge.

@@ -9,6 +9,12 @@ Single source of truth for what each plan unlocks. Three tiers:
 Everything plan-gated (signal quota, strategies you can follow, indicators,
 watchlist size, saved layouts) is derived from here so there's one place to tune
 pricing/limits. -1 means "unlimited".
+
+New users (and existing ones, via `manage.py provision_defaults`) are seeded with
+a ready-made watchlist and a set of followed strategies sized by their plan —
+`default_watchlist` / `default_strategies` below — so they land on a useful
+dashboard instead of an empty one (apps.accounts.onboarding). `default_strategies`
+of -1 means "follow every active strategy".
 """
 
 from __future__ import annotations
@@ -29,14 +35,16 @@ PLANS: dict[str, dict] = {
         "tagline": "Live crypto charts and a taste of signals.",
         "strategies": 1,            # strategies a user can follow
         "signal_daily_quota": 5,    # signals/day in the feed (-1 = unlimited)
-        "watchlist_limit": 1,
+        "watchlist_limit": 20,
         "layout_limit": 1,
+        "default_watchlist": 20,    # symbols pre-loaded at signup (onboarding)
+        "default_strategies": 1,    # strategies followed by default
         "indicator_tiers": [FREE],
         "features": [
             "Live candlestick charts, all timeframes",
             "SMA, EMA & Volume overlays",
-            "Watchlist: 1 symbol",
-            "Follow 1 signal strategy",
+            "Starter watchlist of 20 coins, ready to go",
+            "1 signal strategy followed for you",
             "Up to 5 signals/day",
         ],
     },
@@ -50,14 +58,16 @@ PLANS: dict[str, dict] = {
         "signal_daily_quota": 30,
         "watchlist_limit": 40,
         "layout_limit": 10,
+        "default_watchlist": 40,    # symbols pre-loaded at signup (onboarding)
+        "default_strategies": 4,    # strategies followed by default
         "indicator_tiers": [FREE, STARTER],
         "features": [
             "Everything in Free",
             "RSI, MACD, Bollinger Bands & VWAP",
-            "Follow up to 4 signal strategies",
+            "Watchlist of 40 coins, set up for you",
+            "4 signal strategies followed by default",
             "Up to 30 signals/day",
             "Telegram signal alerts",
-            "Watchlist up to 40 symbols",
             "Save up to 10 chart layouts",
         ],
     },
@@ -69,16 +79,18 @@ PLANS: dict[str, dict] = {
         "tagline": "Every indicator and strategy, unlimited signals.",
         "strategies": 10,
         "signal_daily_quota": -1,
-        "watchlist_limit": 100,
+        "watchlist_limit": 150,
         "layout_limit": 50,
+        "default_watchlist": 150,   # symbols pre-loaded at signup (onboarding)
+        "default_strategies": -1,   # follow every active strategy
         "indicator_tiers": [FREE, STARTER, PRO],
         "features": [
             "Everything in Starter",
             "Stochastic, ATR, Fibonacci & Ichimoku Cloud",
-            "Follow every signal strategy",
+            "Watchlist of 150 coins, set up for you",
+            "Every signal strategy followed by default",
             "Unlimited daily signals",
             "Telegram signal alerts",
-            "Watchlist up to 100 symbols",
             "Save up to 50 chart layouts",
         ],
     },

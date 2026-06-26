@@ -149,6 +149,16 @@ class ReferralRedeemView(APIView):
         user.plan_tier = plan
         user.plan_expiry = base + timedelta(days=30)
         user.save(update_fields=["referral_credits", "plan_tier", "plan_expiry"])
+
+        # Top watchlist + followed strategies up to the new plan's defaults
+        # (idempotent; never block the redeem on a provisioning hiccup).
+        try:
+            from .onboarding import provision_default_setup
+
+            provision_default_setup(user)
+        except Exception:
+            logger.exception("Upgrade provisioning failed for %s", user.email)
+
         return Response({
             "plan_tier": user.plan_tier,
             "plan_expiry": user.plan_expiry,
