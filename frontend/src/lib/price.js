@@ -3,6 +3,9 @@
 // 3 dp. Crypto keeps the existing 2-dp behaviour.
 
 export function priceDecimals(assetClass, ticker) {
+  // Metals (gold/silver) quote in dollars, not pips — keep 2 dp despite riding
+  // the forex feed; the 5-dp FX default would be wrong for a ~$4000 price.
+  if (/XAU|XAG/.test(ticker || "")) return 2;
   if (assetClass === "forex") return /JPY/.test(ticker || "") ? 3 : 5;
   return 2; // crypto / default
 }

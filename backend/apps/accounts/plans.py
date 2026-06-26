@@ -101,6 +101,10 @@ _ALIASES = {"premium": PRO}
 
 PAID_TIERS = {STARTER, PRO}
 
+# Tiers from least to most privileged. Used to compare a user's plan against a
+# minimum-plan requirement (e.g. a Pro-only symbol — apps.market_data).
+PLAN_ORDER = [FREE, STARTER, PRO]
+
 
 def plan_key(user) -> str:
     """Resolve a user's *effective* plan key, honoring expiry.
@@ -125,3 +129,23 @@ def plan_for(user) -> dict:
 
 def is_paid(user) -> bool:
     return plan_key(user) in PAID_TIERS
+
+
+def plan_rank(key: str) -> int:
+    """Position of a plan key in PLAN_ORDER (higher = more privileged).
+
+    Unknown/blank keys rank as Free (0), so an unset minimum never gates anything.
+    """
+    try:
+        return PLAN_ORDER.index(_ALIASES.get(key, key))
+    except ValueError:
+        return 0
+
+
+def plan_allows(user, min_plan_key: str) -> bool:
+    """True if the user's effective plan meets a minimum-plan requirement.
+
+    Used to gate access to plan-restricted resources like Pro-only symbols.
+    Anonymous users resolve to Free, so anything above Free is blocked for them.
+    """
+    return plan_rank(plan_key(user)) >= plan_rank(min_plan_key or FREE)

@@ -13,15 +13,19 @@ from django.core.management.base import BaseCommand
 
 from apps.market_data.models import Symbol
 
-# ticker, Yahoo Finance FX ticker, display name
+# ticker, Yahoo Finance ticker, display name, min_plan
+# The 7 majors are free. Gold (XAU-USD) rides the same Yahoo/forex pipeline but
+# is gated to Pro — note Yahoo serves gold as the COMEX future "GC=F" ("XAUUSD=X"
+# is not listed), which tracks spot closely enough for charting.
 MAJORS = [
-    ("EUR-USD", "EURUSD=X", "Euro / US Dollar"),
-    ("GBP-USD", "GBPUSD=X", "British Pound / US Dollar"),
-    ("USD-JPY", "USDJPY=X", "US Dollar / Japanese Yen"),
-    ("USD-CHF", "USDCHF=X", "US Dollar / Swiss Franc"),
-    ("AUD-USD", "AUDUSD=X", "Australian Dollar / US Dollar"),
-    ("USD-CAD", "USDCAD=X", "US Dollar / Canadian Dollar"),
-    ("NZD-USD", "NZDUSD=X", "New Zealand Dollar / US Dollar"),
+    ("EUR-USD", "EURUSD=X", "Euro / US Dollar", Symbol.MinPlan.FREE),
+    ("GBP-USD", "GBPUSD=X", "British Pound / US Dollar", Symbol.MinPlan.FREE),
+    ("USD-JPY", "USDJPY=X", "US Dollar / Japanese Yen", Symbol.MinPlan.FREE),
+    ("USD-CHF", "USDCHF=X", "US Dollar / Swiss Franc", Symbol.MinPlan.FREE),
+    ("AUD-USD", "AUDUSD=X", "Australian Dollar / US Dollar", Symbol.MinPlan.FREE),
+    ("USD-CAD", "USDCAD=X", "US Dollar / Canadian Dollar", Symbol.MinPlan.FREE),
+    ("NZD-USD", "NZDUSD=X", "New Zealand Dollar / US Dollar", Symbol.MinPlan.FREE),
+    ("XAU-USD", "GC=F", "Gold / US Dollar (Pro)", Symbol.MinPlan.PRO),
 ]
 
 # Forex sorts after crypto in the picker.
@@ -29,11 +33,11 @@ _SORT_BASE = 10_000
 
 
 class Command(BaseCommand):
-    help = "Seed the 7 major forex pairs (Twelve Data)."
+    help = "Seed the major forex pairs + gold (Yahoo Finance)."
 
     def handle(self, *args, **options):
         created = 0
-        for i, (ticker, feed, name) in enumerate(MAJORS):
+        for i, (ticker, feed, name, min_plan) in enumerate(MAJORS):
             _, was_created = Symbol.objects.update_or_create(
                 ticker=ticker,
                 defaults={
@@ -43,11 +47,12 @@ class Command(BaseCommand):
                     "display_name": name,
                     "is_active": True,
                     "sort_order": _SORT_BASE + i,
+                    "min_plan": min_plan,
                 },
             )
             created += int(was_created)
         self.stdout.write(
             self.style.SUCCESS(
-                f"Seeded {len(MAJORS)} forex majors ({created} new)."
+                f"Seeded {len(MAJORS)} forex/metal symbols ({created} new)."
             )
         )

@@ -1,3 +1,17 @@
+// Plan tiers, least to most privileged (mirrors PLAN_ORDER in plans.py). Used to
+// gate plan-restricted resources like Pro-only symbols.
+export const PLAN_ORDER = ["free", "starter", "pro"];
+
+export function planRank(key) {
+  const i = PLAN_ORDER.indexOf(key === "premium" ? "pro" : key);
+  return i === -1 ? 0 : i;
+}
+
+// True if `planKey` meets the `minPlan` requirement (blank/unknown min = free).
+export function planAllows(planKey, minPlan) {
+  return planRank(planKey || "free") >= planRank(minPlan || "free");
+}
+
 // Static plan catalog mirroring backend apps/accounts/plans.py. Used as a
 // fallback so pricing/billing UIs render the three tiers even if /api/plans/ is
 // unreachable; the live endpoint (api.plans()) is the source of truth at runtime.

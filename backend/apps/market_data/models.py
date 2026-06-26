@@ -13,6 +13,11 @@ class Symbol(models.Model):
         CRYPTO = "crypto", "Crypto"
         FOREX = "forex", "Forex"
 
+    class MinPlan(models.TextChoices):
+        FREE = "free", "Free"
+        STARTER = "starter", "Starter"
+        PRO = "pro", "Pro"
+
     # Internal normalized ticker, e.g. "BTC-USD" / "EUR-USD" (Section 6.2).
     ticker = models.CharField(max_length=32, unique=True)
     # Which market this symbol belongs to. Drives the data feed (crypto =
@@ -30,6 +35,14 @@ class Symbol(models.Model):
     display_name = models.CharField(max_length=64, blank=True, default="")
     is_active = models.BooleanField(default=True)
     sort_order = models.PositiveIntegerField(default=0)
+    # Minimum plan required to chart / watchlist this symbol. Default "free" =
+    # available to everyone (all existing symbols). Set to "pro" to make a symbol
+    # Pro-only (e.g. XAU-USD gold); enforced server-side in the candles endpoint
+    # and watchlist add, and shown locked in the picker (apps.accounts.plans
+    # .plan_allows is the single check).
+    min_plan = models.CharField(
+        max_length=16, choices=MinPlan.choices, default=MinPlan.FREE
+    )
 
     class Meta:
         ordering = ["sort_order", "ticker"]

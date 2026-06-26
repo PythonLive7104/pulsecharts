@@ -32,6 +32,16 @@ class CandlesView(APIView):
                 {"detail": "Unknown symbol."}, status=status.HTTP_404_NOT_FOUND
             )
 
+        # Plan gate: a Pro-only symbol (e.g. gold) returns no history to anyone
+        # below the required plan, so the chart can't load for them.
+        from apps.accounts.plans import plan_allows
+
+        if not plan_allows(request.user, symbol.min_plan):
+            return Response(
+                {"detail": f"{symbol.ticker} is available on the {symbol.get_min_plan_display()} plan. Upgrade to chart it."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
         interval = request.query_params.get("interval", "1m")
         if interval not in supported_intervals(symbol):
             return Response(

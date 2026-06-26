@@ -1,7 +1,9 @@
 // Type-to-filter symbol picker (Section 9 — SymbolSearch). Replaces the plain
 // dropdown, which doesn't scale to the full Hyperliquid perp universe (~180).
 import { useEffect, useMemo, useRef, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { useStore } from "../store/useStore";
+import { planAllows } from "../lib/plans";
 
 const MAX_RESULTS = 50; // cap the rendered list for snappy filtering
 
@@ -10,6 +12,9 @@ export default function SymbolSearch() {
   const assetClass = useStore((s) => s.assetClass);
   const activePane = useStore((s) => s.activePane());
   const selectSymbol = useStore((s) => s.selectSymbol);
+  const entitlements = useStore((s) => s.entitlements);
+  const navigate = useNavigate();
+  const planKey = entitlements?.plan_key || "free";
   const activeSymbol = activePane?.symbol || null;
 
   const [open, setOpen] = useState(false);
@@ -40,8 +45,18 @@ export default function SymbolSearch() {
     return () => document.removeEventListener("mousedown", onClick);
   }, []);
 
-  function choose(ticker) {
-    if (activePane) selectSymbol(activePane.id, ticker);
+  function choose(sym) {
+    // `sym` may be a ticker string (keyboard path) or the symbol object.
+    const s = typeof sym === "string" ? symbols.find((x) => x.ticker === sym) : sym;
+    if (!s) return;
+    // Plan-gated symbol the user can't access → send them to upgrade instead of
+    // loading a chart the backend would refuse anyway.
+    if (!planAllows(planKey, s.min_plan)) {
+      setOpen(false);
+      navigate("/account/billing");
+      return;
+    }
+    if (activePane) selectSymbol(activePane.id, s.ticker);
     setQuery("");
     setOpen(false);
   }
@@ -85,22 +100,30 @@ export default function SymbolSearch() {
       {open && (
         <ul className="symbol-results">
           {results.length === 0 && <li className="muted no-match">No matches</li>}
-          {results.map((s, i) => (
-            <li
-              key={s.id}
-              className={`symbol-result ${i === highlight ? "highlight" : ""} ${
-                s.ticker === activeSymbol ? "current" : ""
-              }`}
-              onMouseEnter={() => setHighlight(i)}
-              onMouseDown={(e) => {
-                e.preventDefault(); // keep focus so onClick fires before blur
-                choose(s.ticker);
-              }}
-            >
-              <span className="result-ticker">{s.ticker}</span>
-              <span className="result-name">{s.display_name}</span>
-            </li>
-          ))}
+          {results.map((s, i) => {
+            const locked = !planAllows(planKey, s.min_plan);
+            return (
+              <li
+                key={s.id}
+                className={`symbol-result ${i === highlight ? "highlight" : ""} ${
+                  s.ticker === activeSymbol ? "current" : ""
+                } ${locked ? "locked" : ""}`}
+                onMouseEnter={() => setHighlight(i)}
+                onMouseDown={(e) => {
+                  e.preventDefault(); // keep focus so onClick fires before blur
+                  choose(s);
+                }}
+              >
+                <span className="result-ticker">{s.ticker}</span>
+                <span className="result-name">{s.display_name}</span>
+                {locked && (
+                  <span className="result-lock" title="Upgrade to access">
+                    🔒 {(s.min_plan || "pro").toUpperCase()}
+                  </span>
+                )}
+              </li>
+            );
+          })}
         </ul>
       )}
     </div>

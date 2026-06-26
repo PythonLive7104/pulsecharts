@@ -6,4 +6,4 @@ from .models import Symbol
 class SymbolSerializer(serializers.ModelSerializer):
     class Meta:
         model = Symbol
-        fields = ("id", "ticker", "display_name", "hl_coin", "asset_class")
+        fields = ("id", "ticker", "display_name", "hl_coin", "asset_class", "min_plan")
