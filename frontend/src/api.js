@@ -101,10 +101,12 @@ export const api = {
       body: { uid, token, password },
     }),
 
-  // --- market data (public) ---
-  symbols: () => request("/symbols/", { auth: false }),
+  // --- market data (public endpoints, but send the token when present so the
+  // backend can apply per-user plan gates like Pro-only symbols; anonymous
+  // visitors still work — the header is only attached when a token exists) ---
+  symbols: () => request("/symbols/", { auth: true }),
   candles: (ticker, interval = "1m", limit = 500) =>
-    request(`/symbols/${ticker}/candles/?interval=${interval}&limit=${limit}`, { auth: false }),
+    request(`/symbols/${ticker}/candles/?interval=${interval}&limit=${limit}`, { auth: true }),
 
   // --- user (auth) ---
   me: () => request("/me/"),
