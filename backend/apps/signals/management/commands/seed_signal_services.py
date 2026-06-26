@@ -26,17 +26,6 @@ SERVICES = [
         ),
     },
     {
-        "name": "Bollinger Band Mean Reversion",
-        "slug": "bollinger-mean-reversion",
-        "is_active": False,  # disabled: negative expectancy in backtest (mean-reversion)
-        "strategy_type": "mean_reversion",
-        "description": "Price touching/exceeding a band combined with RSI at an extreme.",
-        "strategy_focus": (
-            "Look for price touching or exceeding the upper/lower Bollinger Band while "
-            "RSI is at an extreme (overbought/oversold), anticipating reversion to the mean."
-        ),
-    },
-    {
         "name": "Volatility Breakout",
         "slug": "volatility-breakout",
         "strategy_type": "breakout",
@@ -56,20 +45,6 @@ SERVICES = [
             "EMA 9 above EMA 21 and RSI above 50; only go short when price is below the "
             "EMA 200 with EMA 9 below EMA 21 and RSI below 50. Strongest when MACD "
             "histogram agrees with the trend direction. Avoid counter-trend calls."
-        ),
-    },
-    {
-        "name": "Stochastic Reversal",
-        "slug": "stochastic-reversal",
-        "is_active": False,  # disabled: negative expectancy in backtest (mean-reversion)
-        "strategy_type": "mean_reversion",
-        "description": "Stochastic %K/%D crossover out of overbought/oversold zones.",
-        "strategy_focus": (
-            "Reversal setup for range-bound conditions: go long when Stochastic %K is in "
-            "the oversold zone (below 25) and crossing up over %D; go short when %K is in "
-            "the overbought zone (above 75) and crossing down below %D. Prefer setups where "
-            "RSI is also leaving an extreme and price is near a swing level. Skip when a "
-            "strong trend (price far from VWAP/EMA 200) would override a reversion."
         ),
     },
     {
@@ -98,19 +73,6 @@ SERVICES = [
         ),
     },
     {
-        "name": "VWAP Reversion",
-        "slug": "vwap-reversion",
-        "is_active": False,  # disabled: negative expectancy in backtest (mean-reversion)
-        "strategy_type": "mean_reversion",
-        "description": "Price stretched far from VWAP with RSI extreme — snap back to the mean.",
-        "strategy_focus": (
-            "Mean reversion to VWAP: go long when price is stretched at least one ATR below "
-            "VWAP with RSI oversold (around 40 or lower); go short when price is stretched at "
-            "least one ATR above VWAP with RSI overbought (around 60 or higher). Expect a "
-            "reversion toward VWAP. Skip if a strong trend is likely to keep price extended."
-        ),
-    },
-    {
         "name": "Trend Pullback",
         "slug": "trend-pullback",
         "strategy_type": "trend",
@@ -121,6 +83,43 @@ SERVICES = [
             "turning back up; in a downtrend go short when RSI has bounced into the 50–60 "
             "zone and is rolling over. The idea is to join the trend on a dip, not to chase "
             "an extended move."
+        ),
+    },
+    {
+        "name": "EMA Ribbon",
+        "slug": "ema-ribbon",  # active: +0.03R in backtest, on par with active peers
+        "strategy_type": "trend",
+        "description": "Fully-stacked EMA 9/21/200 alignment with price riding the ribbon.",
+        "strategy_focus": (
+            "Strong-trend continuation: go long only when the EMAs are fully stacked up "
+            "(EMA 9 above EMA 21 above EMA 200) and price is holding above the ribbon; go "
+            "short when fully stacked down with price below it. The cleaner and wider the "
+            "stack, the stronger the trend — skip when the EMAs are tangled with no clear order."
+        ),
+    },
+    {
+        "name": "Donchian Turtle Trend",
+        "slug": "donchian-trend",
+        "is_active": False,  # disabled: negative expectancy in backtest (-0.10R, n=29)
+        "strategy_type": "trend",
+        "description": "Turtle-style channel breakout aligned with the EMA 200 trend.",
+        "strategy_focus": (
+            "Classic Turtle trend-following: go long when price breaks above the recent "
+            "swing-high channel while above the EMA 200; go short when it breaks the swing-low "
+            "channel while below the EMA 200. Trade the breakout only in the direction of the "
+            "major trend — ignore counter-trend channel pokes."
+        ),
+    },
+    {
+        "name": "ADX Directional Trend",
+        "slug": "adx-trend",  # active: +0.15R in backtest, best of the roster
+        "strategy_type": "trend",
+        "description": "Trade only confirmed strong trends (ADX > 25), direction from the EMAs.",
+        "strategy_focus": (
+            "Trend-strength filtered entry: only act when ADX is above 25 (a genuinely strong "
+            "trend, not chop). Then go long when price is above the EMA 200 with EMA 9 above "
+            "EMA 21, or short when below the EMA 200 with EMA 9 below EMA 21. A rising ADX "
+            "strengthens the case; a falling ADX warns the trend is fading."
         ),
     },
 ]

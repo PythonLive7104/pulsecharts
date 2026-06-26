@@ -16,11 +16,8 @@ Keyed by SignalService.slug. Unknown slugs default to "ask the LLM" (no gating).
 from __future__ import annotations
 
 # Tunables.
-RSI_OVERBOUGHT = 65
-RSI_OVERSOLD = 35
 BREAKOUT_EPS = 0.001  # within 0.1% of the swing extreme counts as a break
-STOCH_OVERSOLD = 25
-STOCH_OVERBOUGHT = 75
+ADX_TREND_MIN = 25    # ADX above this = a trend with enough strength to trade
 
 
 def _vals(ind: dict, *keys):
@@ -52,14 +49,6 @@ def _macd_trend_following(ind: dict) -> bool:
     return (close > ema200 and hist > 0) or (close < ema200 and hist < 0)
 
 
-def _bollinger_mean_reversion(ind: dict) -> bool:
-    v = _vals(ind, "close", "bb_upper", "bb_lower", "rsi")
-    if v is None:
-        return False
-    close, upper, lower, rsi = v
-    return (close >= upper and rsi >= RSI_OVERBOUGHT) or (close <= lower and rsi <= RSI_OVERSOLD)
-
-
 def _volatility_breakout(ind: dict) -> bool:
     v = _vals(ind, "close", "swing_high", "swing_low", "volume", "volume_ma20")
     if v is None:
@@ -80,18 +69,6 @@ def _trend_rider(ind: dict) -> bool:
     up = close > ema200 and ema9 > ema21 and rsi >= 50
     down = close < ema200 and ema9 < ema21 and rsi <= 50
     return up or down
-
-
-def _stochastic_reversal(ind: dict) -> bool:
-    # Stochastic %K/%D crossover out of an extreme zone — earlier reversal signal
-    # than RSI in range-bound markets.
-    v = _vals(ind, "stoch_k", "stoch_d")
-    if v is None:
-        return False
-    k, d = v
-    bull = k <= STOCH_OVERSOLD and k > d       # turning up from oversold
-    bear = k >= STOCH_OVERBOUGHT and k < d     # turning down from overbought
-    return bull or bear
 
 
 def _vwap_trend(ind: dict) -> bool:
@@ -116,18 +93,6 @@ def _bollinger_breakout(ind: dict) -> bool:
     return (close >= upper and rsi >= 55) or (close <= lower and rsi <= 45)
 
 
-def _vwap_reversion(ind: dict) -> bool:
-    # Price stretched at least 1×ATR away from VWAP with RSI extreme — snap back
-    # toward the volume-weighted mean.
-    v = _vals(ind, "close", "vwap", "atr", "rsi")
-    if v is None:
-        return False
-    close, vwap, atr, rsi = v
-    if atr <= 0 or abs(close - vwap) < atr:
-        return False
-    return (close < vwap and rsi <= 40) or (close > vwap and rsi >= 60)
-
-
 def _trend_pullback(ind: dict) -> bool:
     # Buy the dip / sell the rally inside an established EMA200 trend, while RSI
     # has cooled into a pullback zone rather than running hot.
@@ -140,17 +105,55 @@ def _trend_pullback(ind: dict) -> bool:
     return up or down
 
 
+def _ema_ribbon(ind: dict) -> bool:
+    # Fully-stacked EMA alignment (9 > 21 > 200, or reversed) with price riding the
+    # ribbon — a clean, strong trend. Tangled EMAs (no clear order) don't qualify.
+    v = _vals(ind, "close", "ema9", "ema21", "ema200")
+    if v is None:
+        return False
+    close, ema9, ema21, ema200 = v
+    up = ema9 > ema21 > ema200 and close > ema9
+    down = ema9 < ema21 < ema200 and close < ema9
+    return up or down
+
+
+def _donchian_trend(ind: dict) -> bool:
+    # Turtle-style channel breakout in the direction of the EMA 200 trend: price
+    # pushing the recent swing extreme while aligned with the major trend.
+    v = _vals(ind, "close", "swing_high", "swing_low", "ema200")
+    if v is None:
+        return False
+    close, hi, lo, ema200 = v
+    up = close >= hi * (1 - BREAKOUT_EPS) and close > ema200
+    down = close <= lo * (1 + BREAKOUT_EPS) and close < ema200
+    return up or down
+
+
+def _adx_trend(ind: dict) -> bool:
+    # Only trade when ADX confirms a genuinely strong trend; direction comes from
+    # the EMA 200 / fast-EMA alignment.
+    v = _vals(ind, "close", "ema9", "ema21", "ema200", "adx")
+    if v is None:
+        return False
+    close, ema9, ema21, ema200, adx = v
+    if adx < ADX_TREND_MIN:
+        return False
+    up = close > ema200 and ema9 > ema21
+    down = close < ema200 and ema9 < ema21
+    return up or down
+
+
 PREGATES = {
     "momentum-crossover": _momentum_crossover,
     "macd-trend-following": _macd_trend_following,
-    "bollinger-mean-reversion": _bollinger_mean_reversion,
     "volatility-breakout": _volatility_breakout,
     "trend-rider": _trend_rider,
-    "stochastic-reversal": _stochastic_reversal,
     "vwap-trend": _vwap_trend,
     "bollinger-breakout": _bollinger_breakout,
-    "vwap-reversion": _vwap_reversion,
     "trend-pullback": _trend_pullback,
+    "ema-ribbon": _ema_ribbon,
+    "donchian-trend": _donchian_trend,
+    "adx-trend": _adx_trend,
 }
 
 
@@ -191,19 +194,6 @@ def _dir_macd(ind: dict) -> str | None:
     return None
 
 
-def _dir_bollinger(ind: dict) -> str | None:
-    # Mean reversion: a tag of the upper band is a SELL setup, lower band a BUY.
-    v = _vals(ind, "close", "bb_upper", "bb_lower", "rsi")
-    if v is None:
-        return None
-    close, upper, lower, rsi = v
-    if close >= upper and rsi >= RSI_OVERBOUGHT:
-        return "SELL"
-    if close <= lower and rsi <= RSI_OVERSOLD:
-        return "BUY"
-    return None
-
-
 def _dir_breakout(ind: dict) -> str | None:
     v = _vals(ind, "close", "swing_high", "swing_low", "volume", "volume_ma20")
     if v is None:
@@ -226,18 +216,6 @@ def _dir_trend_rider(ind: dict) -> str | None:
     if close > ema200 and ema9 > ema21 and rsi >= 50:
         return "BUY"
     if close < ema200 and ema9 < ema21 and rsi <= 50:
-        return "SELL"
-    return None
-
-
-def _dir_stochastic(ind: dict) -> str | None:
-    v = _vals(ind, "stoch_k", "stoch_d")
-    if v is None:
-        return None
-    k, d = v
-    if k <= STOCH_OVERSOLD and k > d:
-        return "BUY"
-    if k >= STOCH_OVERBOUGHT and k < d:
         return "SELL"
     return None
 
@@ -268,20 +246,6 @@ def _dir_bollinger_breakout(ind: dict) -> str | None:
     return None
 
 
-def _dir_vwap_reversion(ind: dict) -> str | None:
-    v = _vals(ind, "close", "vwap", "atr", "rsi")
-    if v is None:
-        return None
-    close, vwap, atr, rsi = v
-    if atr <= 0 or abs(close - vwap) < atr:
-        return None
-    if close < vwap and rsi <= 40:
-        return "BUY"   # stretched below VWAP — expect a bounce up
-    if close > vwap and rsi >= 60:
-        return "SELL"  # stretched above VWAP — expect a fade down
-    return None
-
-
 def _dir_trend_pullback(ind: dict) -> str | None:
     v = _vals(ind, "close", "ema9", "ema21", "ema200", "rsi")
     if v is None:
@@ -294,27 +258,88 @@ def _dir_trend_pullback(ind: dict) -> str | None:
     return None
 
 
+def _dir_ema_ribbon(ind: dict) -> str | None:
+    v = _vals(ind, "close", "ema9", "ema21", "ema200")
+    if v is None:
+        return None
+    close, ema9, ema21, ema200 = v
+    if ema9 > ema21 > ema200 and close > ema9:
+        return "BUY"
+    if ema9 < ema21 < ema200 and close < ema9:
+        return "SELL"
+    return None
+
+
+def _dir_donchian_trend(ind: dict) -> str | None:
+    v = _vals(ind, "close", "swing_high", "swing_low", "ema200")
+    if v is None:
+        return None
+    close, hi, lo, ema200 = v
+    if close >= hi * (1 - BREAKOUT_EPS) and close > ema200:
+        return "BUY"
+    if close <= lo * (1 + BREAKOUT_EPS) and close < ema200:
+        return "SELL"
+    return None
+
+
+def _dir_adx_trend(ind: dict) -> str | None:
+    v = _vals(ind, "close", "ema9", "ema21", "ema200", "adx")
+    if v is None:
+        return None
+    close, ema9, ema21, ema200, adx = v
+    if adx < ADX_TREND_MIN:
+        return None
+    if close > ema200 and ema9 > ema21:
+        return "BUY"
+    if close < ema200 and ema9 < ema21:
+        return "SELL"
+    return None
+
+
 DIRECTIONS = {
     "momentum-crossover": _dir_momentum,
     "macd-trend-following": _dir_macd,
-    "bollinger-mean-reversion": _dir_bollinger,
     "volatility-breakout": _dir_breakout,
     "trend-rider": _dir_trend_rider,
-    "stochastic-reversal": _dir_stochastic,
     "vwap-trend": _dir_vwap,
     "bollinger-breakout": _dir_bollinger_breakout,
-    "vwap-reversion": _dir_vwap_reversion,
     "trend-pullback": _dir_trend_pullback,
+    "ema-ribbon": _dir_ema_ribbon,
+    "donchian-trend": _dir_donchian_trend,
+    "adx-trend": _dir_adx_trend,
 }
+
+
+def ema_trend_aligned(ind: dict, direction: str) -> bool:
+    """Every signal must agree with the 9/21/200 EMA structure: price on the right
+    side of the 200 EMA (the major trend) with the fast EMAs (9 vs 21) aligned the
+    same way. Returns False if the EMAs are missing or the call fights the trend —
+    no strategy is allowed to signal counter to the EMA stack."""
+    v = _vals(ind, "close", "ema9", "ema21", "ema200")
+    if v is None:
+        return False
+    close, ema9, ema21, ema200 = v
+    if direction == "BUY":
+        return close > ema200 and ema9 > ema21
+    if direction == "SELL":
+        return close < ema200 and ema9 < ema21
+    return False
 
 
 def candidate_direction(strategy_slug: str, indicators: dict) -> str | None:
     """Cheap directional bias ("BUY"/"SELL"/None) implied by the indicators for a
-    strategy — no LLM. Used to detect a trend flip against an open signal."""
+    strategy — no LLM. Used to detect a trend flip against an open signal.
+
+    Every strategy's call is filtered through the 9/21/200 EMA alignment, so no
+    signal is ever emitted against the major trend regardless of which strategy
+    triggered it."""
     fn = DIRECTIONS.get(strategy_slug)
     if fn is None:
         return None
-    return fn(indicators)
+    direction = fn(indicators)
+    if direction and not ema_trend_aligned(indicators, direction):
+        return None
+    return direction
 
 
 def confidence_score(direction: str, ind: dict) -> int:

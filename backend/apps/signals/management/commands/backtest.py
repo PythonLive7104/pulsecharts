@@ -105,15 +105,19 @@ class Command(BaseCommand):
                             help="Also run the real LLM on a sample and compare (uses OpenAI).")
         parser.add_argument("--llm-sample", type=int, default=80,
                             help="Max LLM calls when --llm is set (cost cap; default 80).")
+        parser.add_argument("--include-inactive", action="store_true",
+                            help="Also backtest is_active=False strategies (validate before activating).")
 
     def handle(self, *args, **opts):
         timeframes = (
             [t.strip() for t in opts["timeframes"].split(",") if t.strip()]
             if opts["timeframes"] else list(settings.SIGNAL_TIMEFRAMES)
         )
-        services = list(SignalService.objects.filter(is_active=True))
+        svc_qs = SignalService.objects.all() if opts["include_inactive"] \
+            else SignalService.objects.filter(is_active=True)
+        services = list(svc_qs)
         if not services:
-            self.stderr.write(self.style.ERROR("No active signal services — run seed_signal_services."))
+            self.stderr.write(self.style.ERROR("No signal services — run seed_signal_services."))
             return
         symbols = list(Symbol.objects.filter(is_active=True)[:opts["max_symbols"]])
         if not symbols:

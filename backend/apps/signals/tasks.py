@@ -100,19 +100,20 @@ def run_scan(symbol_limit: int | None = None, use_pregate: bool | None = None) -
     if limit:
         symbols = symbols[:limit]
 
-    # Dedup: while a strategy has an open (PENDING) call on a symbol, don't issue
-    # another in the *same* direction — one live call per strategy per symbol
-    # until it hits SL/TP. A fresh call is only allowed when the trend flips
-    # (the cheap directional bias points the opposite way), in which case the
-    # stale opposite call is invalidated. The same-direction skip happens before
-    # the paid LLM call, so it also saves tokens.
-    open_dirs: dict[tuple[int, int], str] = {}
+    # Dedup: while a strategy has an open (PENDING) call on a symbol+timeframe,
+    # don't issue another in the *same* direction — one live call per strategy per
+    # symbol per timeframe until it hits SL/TP. A fresh call is only allowed when
+    # the trend flips (the cheap directional bias points the opposite way), in
+    # which case the stale opposite call is invalidated. Keying by timeframe is
+    # essential: a 1h and a 4h call are different trades, so a flip on one frame
+    # must not invalidate — or re-fire against — an open call on another.
+    open_dirs: dict[tuple[int, int, str], str] = {}
     for s in (
         Signal.objects.filter(outcome=Signal.Outcome.PENDING)
         .order_by("generated_at")
-        .values("symbol_id", "service_id", "direction")
+        .values("symbol_id", "service_id", "timeframe", "direction")
     ):
-        open_dirs[(s["symbol_id"], s["service_id"])] = s["direction"]
+        open_dirs[(s["symbol_id"], s["service_id"], s["timeframe"])] = s["direction"]
 
     now = timezone.now()
     created = scanned = deduped = invalidated = regime_skipped = 0
@@ -136,7 +137,7 @@ def run_scan(symbol_limit: int | None = None, use_pregate: bool | None = None) -
             indicators = compute_indicators(candles)
 
             for svc in services:
-                pair = (sym.id, svc.id)
+                pair = (sym.id, svc.id, tf)
                 cand = candidate_direction(svc.slug, indicators)
                 open_dir = open_dirs.get(pair)
                 if open_dir:
@@ -172,9 +173,11 @@ def run_scan(symbol_limit: int | None = None, use_pregate: bool | None = None) -
                         deduped += 1
                         continue
                     if open_dir:
-                        # Trend flipped — close out the now-stale opposite call(s).
+                        # Trend flipped — close out the now-stale opposite call on
+                        # THIS timeframe only (a 4h flip must not touch a 1h call).
                         n = Signal.objects.filter(
-                            symbol=sym, service=svc, outcome=Signal.Outcome.PENDING
+                            symbol=sym, service=svc, timeframe=tf,
+                            outcome=Signal.Outcome.PENDING,
                         ).update(
                             outcome=Signal.Outcome.INVALIDATED, resolved_at=now
                         )
