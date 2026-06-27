@@ -270,6 +270,13 @@ SIGNAL_PREGATE_ENABLED = env.bool("SIGNAL_PREGATE_ENABLED", default=True)
 SIGNAL_REGIME_FILTER_ENABLED = env.bool("SIGNAL_REGIME_FILTER_ENABLED", default=True)
 SIGNAL_ADX_MIN = env.float("SIGNAL_ADX_MIN", default=20.0)
 
+# EMA-alignment gate every non-breakout signal must pass (apps/signals/pregate.py).
+# Switchable without a deploy; defaults to the backtest winner (stack50).
+#   stack50   : EMA9 > EMA21 > EMA50   (default — best volume/quality balance)
+#   stack200  : EMA9 > EMA21 > EMA200  (strict major-trend stack — fewest signals)
+#   filter200 : close > EMA200 and EMA9 > EMA21
+SIGNAL_EMA_GATE = env("SIGNAL_EMA_GATE", default="stack50")
+
 # Optional: your model's price per 1M tokens, so each scan can log estimated $.
 # Leave 0 to skip the dollar estimate (token counts are still logged).
 OPENAI_PRICE_IN_PER_1M = env.float("OPENAI_PRICE_IN_PER_1M", default=0.0)

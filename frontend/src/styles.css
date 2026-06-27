@@ -1345,3 +1345,119 @@ a.brand:hover { text-decoration: none; }
   .reminder-actions .btn-primary,
   .reminder-actions .btn-ghost { width: 100%; text-align: center; }
 }
+
+/* ============================================================
+   Motion hero (landing) — real 3D stage (React Three Fiber):
+   spinning coin + 3D particle field + wireframe terrain. The
+   <Canvas> is lazy-loaded into its own chunk. Copy sits on the
+   left; the 3D coin renders to the right (and below on mobile).
+   ============================================================ */
+.hero-motion {
+  position: relative;
+  isolation: isolate;
+  overflow: hidden;
+  min-height: clamp(620px, 86vh, 880px);
+  display: flex;
+  align-items: center;
+  /* full-bleed across the viewport regardless of the 1100px container */
+  margin-left: calc(50% - 50vw);
+  margin-right: calc(50% - 50vw);
+  padding: 96px 24px 110px;
+  background: radial-gradient(125% 95% at 50% -10%, #0c1230 0%, #06070f 55%, #050509 100%);
+  /* local dark palette so child buttons render correctly on the dark stage */
+  --text: #c9d2e3;
+  --text-strong: #ffffff;
+  --muted: #94a0bb;
+  --border: rgba(255, 255, 255, 0.14);
+  --bg-elev: rgba(255, 255, 255, 0.05);
+  --accent: #3b82f6;
+  --accent-hover: #5a95f5;
+}
+/* the R3F canvas fills the stage behind the copy */
+.hero-canvas {
+  position: absolute !important;
+  inset: 0;
+  z-index: 0;
+}
+/* CSS post-processing: purple vignette + inner shadow blends the canvas edges */
+.hero-vignette {
+  position: absolute; inset: 0; z-index: 1; pointer-events: none;
+  background: radial-gradient(circle at 62% 48%, rgba(124, 58, 237, 0.12), transparent 58%);
+  box-shadow: inset 0 0 150px rgba(3, 3, 8, 0.9);
+}
+/* soft fade into the page below (theme-aware: fades to the page --bg) */
+.hero-motion::after {
+  content: "";
+  position: absolute; left: 0; right: 0; bottom: 0; height: 150px;
+  background: linear-gradient(to bottom, transparent, var(--bg));
+  z-index: 2; pointer-events: none;
+}
+
+/* --- copy --- */
+.hero-inner {
+  position: relative; z-index: 3;
+  width: 100%; max-width: 1100px; margin: 0 auto;
+}
+.hero-copy { text-align: left; max-width: 540px; }
+
+.hero-motion h1 {
+  font-size: clamp(34px, 5vw, 60px); line-height: 1.08; letter-spacing: -0.02em;
+  font-weight: 800; color: #fff; margin: 0 0 18px;
+}
+.hero-motion h1 .grad {
+  position: relative;
+  background: linear-gradient(100deg, #7c3aed, #3b82f6);
+  -webkit-background-clip: text; background-clip: text; color: transparent;
+}
+.hero-motion h1 .grad::after {
+  content: ""; position: absolute; inset: -12% -8%; z-index: -1;
+  background: linear-gradient(100deg, #7c3aed, #3b82f6);
+  filter: blur(28px); opacity: 0.5; border-radius: 40%;
+}
+.hero-motion .hero-sub { color: #aeb9d2; max-width: 520px; }
+
+/* scroll indicator */
+.hero-scroll {
+  position: absolute; left: 50%; bottom: 26px; transform: translateX(-50%); z-index: 3;
+  display: flex; flex-direction: column; align-items: center; gap: 10px;
+}
+.hero-scroll-pill {
+  width: 22px; height: 36px; border: 1px solid rgba(255, 255, 255, 0.25);
+  border-radius: 999px; display: flex; justify-content: center; padding-top: 7px;
+}
+.hero-scroll-dot {
+  width: 5px; height: 5px; border-radius: 50%; background: #7c3aed;
+  box-shadow: 0 0 8px rgba(124, 58, 237, 0.9);
+  animation: scrollDot 2s ease-in-out infinite;
+}
+@keyframes scrollDot { 0%, 100% { transform: translateY(0); opacity: 1; } 50% { transform: translateY(8px); opacity: 0.4; } }
+.hero-scroll-text { font-size: 10px; letter-spacing: 0.2em; text-transform: uppercase; color: #6b7794; }
+
+/* staggered entrance for the copy (after the canvas mounts) */
+.hero-anim { opacity: 0; animation: heroRise 0.8s cubic-bezier(0.22, 1, 0.36, 1) both; }
+.hero-copy h1.hero-anim { animation-delay: 0.5s; }
+.hero-copy .hero-sub.hero-anim { animation-delay: 0.64s; }
+.hero-copy .hero-cta.hero-anim { animation-delay: 0.78s; }
+.hero-copy .hero-note.hero-anim { animation-delay: 0.9s; }
+@keyframes heroRise { from { opacity: 0; transform: translateY(22px); } to { opacity: 1; transform: none; } }
+
+@media (max-width: 860px) {
+  /* coin shifts to lower-centre (handled in 3D); copy goes top + centred */
+  .hero-motion { min-height: 760px; padding: 96px 20px 56px; align-items: flex-start; }
+  .hero-inner { text-align: center; }
+  .hero-copy { max-width: 100%; text-align: center; margin: 0 auto; }
+  .hero-motion .hero-sub { margin-left: auto; margin-right: auto; }
+  .hero-cta { justify-content: center; }
+}
+@media (max-width: 560px) {
+  .hero-motion { padding: 84px 16px 48px; }
+  .hero-cta { width: 100%; }
+  .hero-cta .btn-lg { flex: 1; text-align: center; }
+}
+
+/* accessibility: kill the CSS entrance/scroll motion for users who ask for it
+   (the 3D scene keeps a slow, non-jarring idle rotation) */
+@media (prefers-reduced-motion: reduce) {
+  .hero-anim { opacity: 1 !important; animation: none !important; transform: none !important; }
+  .hero-scroll-dot { animation: none !important; }
+}

@@ -1,7 +1,7 @@
 // Marketing landing page (Section 1, 5, 12). Positions PulseCharts as the
 // affordable, crypto-focused charting tool. Crypto-only by design (Section 5).
 // Honest copy: no accuracy/return claims (signals are v2 and out of scope here).
-import { useEffect, useState } from "react";
+import { lazy, Suspense, useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import ThemeToggle from "../components/ThemeToggle";
 import Logo from "../components/Logo";
@@ -9,6 +9,10 @@ import SupportChat from "../components/SupportChat";
 import { useStore } from "../store/useStore";
 import { api } from "../api";
 import { PLAN_FALLBACK } from "../lib/plans";
+
+// Lazy so three.js + R3F load in their own chunk only on the landing page,
+// keeping the trading app bundle lean.
+const ThreeScene = lazy(() => import("../components/hero3d/ThreeScene"));
 
 const FREE_INDICATORS = ["SMA", "EMA", "Volume"];
 const PREMIUM_INDICATORS = [
@@ -37,35 +41,6 @@ const FAQS = [
   },
 ];
 
-// A lightweight CSS-only candlestick mockup for the hero.
-function ChartMock() {
-  const candles = [
-    [40, 22, "up"], [55, 30, "down"], [30, 38, "up"], [62, 18, "up"],
-    [48, 26, "down"], [70, 20, "up"], [44, 34, "down"], [58, 24, "up"],
-    [36, 30, "up"], [66, 16, "down"], [52, 28, "up"], [74, 22, "up"],
-  ];
-  return (
-    <div className="chart-mock" aria-hidden="true">
-      <div className="chart-mock-grid" />
-      <div className="chart-mock-candles">
-        {candles.map(([h, top, dir], i) => (
-          <div key={i} className="mock-candle" style={{ height: `${h}%`, marginTop: `${top}%` }}>
-            <span className={`mock-body ${dir}`} />
-          </div>
-        ))}
-      </div>
-      <svg className="mock-line" viewBox="0 0 100 100" preserveAspectRatio="none">
-        <polyline
-          points="0,70 9,60 18,64 27,40 36,48 45,30 54,42 63,34 72,46 81,26 90,34 100,20"
-          fill="none"
-          stroke="var(--accent)"
-          strokeWidth="1.4"
-        />
-      </svg>
-    </div>
-  );
-}
-
 export default function LandingPage() {
   const isAuthed = useStore((s) => s.isAuthed);
   const [plans, setPlans] = useState(PLAN_FALLBACK);
@@ -74,6 +49,7 @@ export default function LandingPage() {
       .then((d) => { if (d?.plans?.length) setPlans(d.plans); })
       .catch(() => { /* keep fallback */ });
   }, []);
+
   return (
     <>
       <header className="landing-nav">
@@ -100,30 +76,43 @@ export default function LandingPage() {
 
       <div className="landing">
       <main>
-      {/* Hero */}
-      <section className="hero">
-        <div className="hero-text">
-          <span className="hero-pill">✨ New: Forex pairs now live alongside crypto</span>
-          <h1>Pro-grade crypto &amp; forex charts,<br />without the pro-grade price.</h1>
-          <p className="hero-sub">
-            Real-time candlestick charting for Hyperliquid crypto <strong>and the
-            major forex pairs</strong> — switch between them in one click. Start free
-            with live charts and core indicators; upgrade for advanced analysis,
-            saved layouts, and trading signals on both.
-          </p>
-          <div className="hero-cta">
-            {isAuthed ? (
-              <Link to="/app" className="btn-primary btn-lg">Open dashboard →</Link>
-            ) : (
-              <>
-                <Link to="/signup" className="btn-primary btn-lg">Start charting free</Link>
-                <Link to="/login" className="btn-ghost btn-lg">Sign in →</Link>
-              </>
-            )}
+      {/* Hero — real-3D stage: spinning coin + particle field + wireframe terrain */}
+      <section className="hero-motion">
+        <Suspense fallback={null}>
+          <ThreeScene />
+        </Suspense>
+        <div className="hero-vignette" aria-hidden="true" />
+
+        <div className="hero-inner">
+          <div className="hero-copy">
+            <h1 className="hero-anim">
+              Pro-grade crypto &amp; forex <span className="grad">charts</span>,<br />
+              without the pro-grade price.
+            </h1>
+            <p className="hero-sub hero-anim">
+              Real-time candlestick charting for Hyperliquid crypto and the major
+              forex pairs — switch between them in one click. Start free with live
+              charts and core indicators; upgrade for advanced analysis, saved
+              layouts, and trading signals on both.
+            </p>
+            <div className="hero-cta hero-anim">
+              {isAuthed ? (
+                <Link to="/app" className="btn-primary btn-lg">Open dashboard →</Link>
+              ) : (
+                <>
+                  <Link to="/signup" className="btn-primary btn-lg">Start charting free</Link>
+                  <Link to="/login" className="btn-ghost btn-lg">Sign in →</Link>
+                </>
+              )}
+            </div>
+            <p className="hero-note hero-anim">No card required · Crypto &amp; Forex · Cancel anytime</p>
           </div>
-          <p className="hero-note">No card required · Crypto &amp; Forex · Cancel anytime</p>
         </div>
-        <ChartMock />
+
+        <div className="hero-scroll" aria-hidden="true">
+          <span className="hero-scroll-pill"><span className="hero-scroll-dot" /></span>
+          <span className="hero-scroll-text">Scroll to discover</span>
+        </div>
       </section>
 
       {/* Trust band */}

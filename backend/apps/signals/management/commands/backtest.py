@@ -107,8 +107,15 @@ class Command(BaseCommand):
                             help="Max LLM calls when --llm is set (cost cap; default 80).")
         parser.add_argument("--include-inactive", action="store_true",
                             help="Also backtest is_active=False strategies (validate before activating).")
+        parser.add_argument("--ema-gate", default=None,
+                            choices=["stack200", "stack50", "filter200"],
+                            help="Override the EMA-alignment gate for this run (compare trend strictness).")
 
     def handle(self, *args, **opts):
+        if opts.get("ema_gate"):
+            from apps.signals import pregate
+            pregate.EMA_GATE_MODE = opts["ema_gate"]
+            self.stdout.write(self.style.WARNING(f"EMA gate override: {opts['ema_gate']}"))
         timeframes = (
             [t.strip() for t in opts["timeframes"].split(",") if t.strip()]
             if opts["timeframes"] else list(settings.SIGNAL_TIMEFRAMES)

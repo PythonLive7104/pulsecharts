@@ -310,26 +310,44 @@ DIRECTIONS = {
 }
 
 
+# Which EMA-alignment gate non-breakout signals must pass. Switchable so the
+# trend-strictness vs signal-volume trade-off can be backtested head-to-head
+# (backtest --ema-gate ...). The live value is set from settings.SIGNAL_EMA_GATE
+# at startup (SignalsConfig.ready); this module default is the backtest winner.
+#   "stack200"  : EMA9 > EMA21 > EMA200            full major-trend stack (strictest, fewest signals)
+#   "stack50"   : EMA9 > EMA21 > EMA50             full intermediate stack (more signals — chosen default)
+#   "filter200" : close > EMA200 AND EMA9 > EMA21  major-trend filter (tested worst)
+EMA_GATE_MODE = "stack50"
+
+
 def ema_trend_aligned(ind: dict, direction: str) -> bool:
-    """Every signal must agree with the FULL 9/21/200 EMA stack — all three EMAs
-    ordered in the trade direction, not just the fast pair:
+    """Whether `direction` agrees with the EMA structure under EMA_GATE_MODE. No
+    non-breakout strategy may emit a signal unless this passes. Returns False if a
+    needed EMA is missing."""
+    buy = direction == "BUY"
+    if direction not in ("BUY", "SELL"):
+        return False
 
-        BUY  → EMA 9 > EMA 21 > EMA 200   (fully stacked up)
-        SELL → EMA 9 < EMA 21 < EMA 200   (fully stacked down)
+    if EMA_GATE_MODE == "stack50":
+        v = _vals(ind, "ema9", "ema21", "ema50")
+        if v is None:
+            return False
+        ema9, ema21, ema50 = v
+        return ema9 > ema21 > ema50 if buy else ema9 < ema21 < ema50
 
-    Returns False if any EMA is missing or the stack isn't fully ordered. No
-    strategy may emit a signal unless all three EMAs line up behind the direction
-    first — in particular the 21 EMA must be on the correct side of the 200 EMA,
-    not merely the 9 above/below the 21."""
+    if EMA_GATE_MODE == "filter200":
+        v = _vals(ind, "close", "ema9", "ema21", "ema200")
+        if v is None:
+            return False
+        close, ema9, ema21, ema200 = v
+        return (close > ema200 and ema9 > ema21) if buy else (close < ema200 and ema9 < ema21)
+
+    # default: "stack200" — full major-trend stack
     v = _vals(ind, "ema9", "ema21", "ema200")
     if v is None:
         return False
     ema9, ema21, ema200 = v
-    if direction == "BUY":
-        return ema9 > ema21 > ema200
-    if direction == "SELL":
-        return ema9 < ema21 < ema200
-    return False
+    return ema9 > ema21 > ema200 if buy else ema9 < ema21 < ema200
 
 
 # Breakout strategies trade range expansions and legitimately fire BEFORE the EMA
