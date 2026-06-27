@@ -28,6 +28,7 @@ SERVICES = [
     {
         "name": "Volatility Breakout",
         "slug": "volatility-breakout",
+        "is_active": False,  # disabled: negative expectancy in 3 straight backtests (~-0.5R), gated AND native
         "strategy_type": "breakout",
         "description": "ATR expansion combined with a break of a recent price range.",
         "strategy_focus": (

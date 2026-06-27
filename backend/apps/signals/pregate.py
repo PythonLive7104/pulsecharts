@@ -311,33 +311,54 @@ DIRECTIONS = {
 
 
 def ema_trend_aligned(ind: dict, direction: str) -> bool:
-    """Every signal must agree with the 9/21/200 EMA structure: price on the right
-    side of the 200 EMA (the major trend) with the fast EMAs (9 vs 21) aligned the
-    same way. Returns False if the EMAs are missing or the call fights the trend —
-    no strategy is allowed to signal counter to the EMA stack."""
-    v = _vals(ind, "close", "ema9", "ema21", "ema200")
+    """Every signal must agree with the FULL 9/21/200 EMA stack — all three EMAs
+    ordered in the trade direction, not just the fast pair:
+
+        BUY  → EMA 9 > EMA 21 > EMA 200   (fully stacked up)
+        SELL → EMA 9 < EMA 21 < EMA 200   (fully stacked down)
+
+    Returns False if any EMA is missing or the stack isn't fully ordered. No
+    strategy may emit a signal unless all three EMAs line up behind the direction
+    first — in particular the 21 EMA must be on the correct side of the 200 EMA,
+    not merely the 9 above/below the 21."""
+    v = _vals(ind, "ema9", "ema21", "ema200")
     if v is None:
         return False
-    close, ema9, ema21, ema200 = v
+    ema9, ema21, ema200 = v
     if direction == "BUY":
-        return close > ema200 and ema9 > ema21
+        return ema9 > ema21 > ema200
     if direction == "SELL":
-        return close < ema200 and ema9 < ema21
+        return ema9 < ema21 < ema200
     return False
+
+
+# Breakout strategies trade range expansions and legitimately fire BEFORE the EMA
+# stack lines up — gating them on the full trend stack defeats their purpose (and
+# they backtest negative under it). They're exempt from the EMA-stack gate; every
+# trend/momentum strategy still requires the full stack.
+EMA_STACK_EXEMPT = {"bollinger-breakout", "volatility-breakout"}
+
+
+def passes_ema_gate(strategy_slug: str, indicators: dict, direction: str) -> bool:
+    """Whether `direction` is allowed for this strategy. Breakout strategies are
+    exempt; every other strategy must be fully stacked behind the direction."""
+    if strategy_slug in EMA_STACK_EXEMPT:
+        return True
+    return ema_trend_aligned(indicators, direction)
 
 
 def candidate_direction(strategy_slug: str, indicators: dict) -> str | None:
     """Cheap directional bias ("BUY"/"SELL"/None) implied by the indicators for a
     strategy — no LLM. Used to detect a trend flip against an open signal.
 
-    Every strategy's call is filtered through the 9/21/200 EMA alignment, so no
-    signal is ever emitted against the major trend regardless of which strategy
-    triggered it."""
+    Non-breakout strategies are filtered through the full 9/21/200 EMA stack, so a
+    trend/momentum signal is never emitted against the stack. Breakout strategies
+    (EMA_STACK_EXEMPT) keep their own logic — see passes_ema_gate."""
     fn = DIRECTIONS.get(strategy_slug)
     if fn is None:
         return None
     direction = fn(indicators)
-    if direction and not ema_trend_aligned(indicators, direction):
+    if direction and not passes_ema_gate(strategy_slug, indicators, direction):
         return None
     return direction
 

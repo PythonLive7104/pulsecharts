@@ -14,7 +14,7 @@ import logging
 from django.conf import settings
 
 from .levels import compute_levels
-from .pregate import candidate_direction, confidence_score, ema_trend_aligned, passes_pregate
+from .pregate import candidate_direction, confidence_score, passes_ema_gate, passes_pregate
 from .prompt import (
     ANNOTATION_SCHEMA,
     ANNOTATE_SYSTEM_PROMPT,
@@ -161,9 +161,9 @@ def generate_signal(
     if direction == "NEUTRAL" or confidence < threshold:
         return None
 
-    # Every signal must agree with the 9/21/200 EMA structure, even when the LLM
-    # picked the direction — no counter-trend calls slip through in llm_gate mode.
-    if not ema_trend_aligned(indicators, direction):
+    # Non-breakout signals must agree with the 9/21/200 EMA stack, even when the
+    # LLM picked the direction — breakout strategies are exempt (passes_ema_gate).
+    if not passes_ema_gate(strategy_slug, indicators, direction):
         return None
 
     entry = float(indicators["close"])
