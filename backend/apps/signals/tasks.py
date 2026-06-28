@@ -385,11 +385,33 @@ def format_closure_for_telegram(s: Signal) -> str:
 
     side = "BUY" if s.direction == Signal.Direction.BUY else "SELL"
     status = _CLOSURE_STATUS.get(s.outcome, str(s.outcome))
+
+    def p(x):
+        return f"{x:,.2f}" if x is not None else "—"
+
     lines = [
         f"📌 <b>Trade update — {html.escape(s.symbol.ticker)} {side}</b> · {html.escape(s.timeframe)}",
         f"{status}.  <i>{html.escape(s.service.name)}</i>",
+        "",
+        f"Entry: <b>{p(s.entry_price)}</b>",
     ]
+
+    # Show only the level relevant to how the trade closed, alongside entry.
+    tp_hit = {
+        Signal.Outcome.TP1: ("TP1", s.tp1),
+        Signal.Outcome.TP2: ("TP2", s.tp2),
+        Signal.Outcome.TP3: ("TP3", s.tp3),
+        Signal.Outcome.TP4: ("TP4", s.tp4),
+    }
+    if s.outcome in tp_hit:
+        label, price = tp_hit[s.outcome]
+        lines.append(f"{label} hit: <b>{p(price)}</b>")
+    else:
+        # SL / INVALIDATED / EXPIRED — the stop is the relevant risk level.
+        lines.append(f"Stop loss: <b>{p(s.stop_loss)}</b>")
+
     if s.outcome == Signal.Outcome.INVALIDATED:
+        lines.append("")
         lines.append("Consider closing this trade — a fresh signal follows if a new setup forms.")
     lines.append("<i>Informational only. Not financial advice.</i>")
     return "\n".join(lines)
