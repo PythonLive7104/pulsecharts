@@ -150,6 +150,7 @@ export const api = {
   // --- telegram signal delivery (premium) ---
   telegramStatus: () => request("/me/telegram/"),
   telegramDisconnect: () => request("/me/telegram/disconnect/", { method: "POST" }),
+  telegramReconnect: () => request("/me/telegram/reconnect/", { method: "POST" }),
 
   // --- landing-page support chat (public, no LLM — curated knowledge base) ---
   supportSuggestions: () => request("/support/chat/", { auth: false }),

@@ -418,8 +418,8 @@ def run_telegram_close_updates() -> dict:
     done_ids = []
     for d in pending:
         chat = d.user.telegram_chat_id
-        if not chat:
-            done_ids.append(d.id)  # can't deliver (unlinked) — stop tracking
+        if not chat or not d.user.telegram_active:
+            done_ids.append(d.id)  # unlinked or delivery off — stop tracking
             continue
         if telegram.send_message(chat, format_closure_for_telegram(d.signal)):
             done_ids.append(d.id)
@@ -458,7 +458,7 @@ def run_telegram_push() -> dict:
     min_conf = settings.SIGNAL_MIN_CONFIDENCE
 
     sent = 0
-    for user in User.objects.exclude(telegram_chat_id=""):
+    for user in User.objects.filter(telegram_active=True).exclude(telegram_chat_id=""):
         # Telegram delivery is PREMIUM-ONLY. is_premium is expiry-aware, so an
         # expired subscription stops pushes automatically; pushes resume (no
         # re-linking needed) once the user resubscribes. The free tier's small

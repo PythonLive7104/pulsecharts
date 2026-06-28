@@ -62,7 +62,14 @@ class User(AbstractUser):
     # /start deep link; link_token is the one-time payload in that deep link, and
     # link_token_at is when it was issued (the token expires after a short TTL so
     # a forwarded link can't be redeemed by a stranger later).
+    #
+    # telegram_active is the on/off switch for delivery. Disconnecting flips this
+    # to False but KEEPS the chat_id, because Telegram won't re-send /start for a
+    # chat that already started the bot (no START button appears the second time),
+    # which made deep-link reconnects silently fail. Remembering the chat lets the
+    # dashboard reconnect in one click with no Telegram round-trip.
     telegram_chat_id = models.CharField(max_length=32, blank=True, default="", db_index=True)
+    telegram_active = models.BooleanField(default=True)
     telegram_link_token = models.CharField(max_length=64, blank=True, default="")
     telegram_link_token_at = models.DateTimeField(null=True, blank=True)
 
@@ -102,7 +109,13 @@ class User(AbstractUser):
 
     @property
     def telegram_connected(self) -> bool:
-        return bool(self.telegram_chat_id)
+        return bool(self.telegram_chat_id) and self.telegram_active
+
+    @property
+    def telegram_can_reconnect(self) -> bool:
+        """A chat we still remember but that delivery is currently switched off
+        for — reconnectable in one click without going back through Telegram."""
+        return bool(self.telegram_chat_id) and not self.telegram_active
 
     # A connect link is good for this long after it's issued. Long enough that a
     # user who taps "Connect", switches to the Telegram app, and presses Start a

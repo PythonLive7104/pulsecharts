@@ -12,6 +12,7 @@ from .views import (
     ReferralView,
     RegisterView,
     TelegramDisconnectView,
+    TelegramReconnectView,
     TelegramStatusView,
     TelegramWebhookView,
 )
@@ -32,6 +33,7 @@ urlpatterns = [
     path("me/referral/redeem/", ReferralRedeemView.as_view(), name="referral-redeem"),
     path("me/telegram/", TelegramStatusView.as_view(), name="telegram-status"),
     path("me/telegram/disconnect/", TelegramDisconnectView.as_view(), name="telegram-disconnect"),
+    path("me/telegram/reconnect/", TelegramReconnectView.as_view(), name="telegram-reconnect"),
     path("telegram/webhook/<str:secret>/", TelegramWebhookView.as_view(), name="telegram-webhook"),
     path("plans/", PlansView.as_view(), name="plans"),
 ]

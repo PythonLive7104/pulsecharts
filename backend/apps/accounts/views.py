@@ -180,25 +180,62 @@ class TelegramStatusView(APIView):
         data = {
             "configured": telegram.is_configured(),  # bot set up server-side at all
             "connected": user.telegram_connected,
+            "can_reconnect": user.telegram_can_reconnect,  # one-click, no deep link
             "is_premium": user.is_premium,
             "bot_username": settings.TELEGRAM_USERNAME,
             "link_url": None,
         }
-        if telegram.is_configured() and user.is_premium and not user.telegram_connected:
+        # Offer the deep link only when there's no remembered chat to reconnect to;
+        # a remembered chat is reactivated via the one-click reconnect endpoint
+        # instead (Telegram won't re-send /start for an already-started chat).
+        if (
+            telegram.is_configured()
+            and user.is_premium
+            and not user.telegram_connected
+            and not user.telegram_can_reconnect
+        ):
             data["link_url"] = telegram.deep_link(user.ensure_telegram_link_token())
         return Response(data)
 
 
 class TelegramDisconnectView(APIView):
-    """POST /api/me/telegram/disconnect/ — unlink the user's Telegram."""
+    """POST /api/me/telegram/disconnect/ — stop delivery, but remember the chat so
+    the user can reconnect in one click (see TelegramReconnectView)."""
 
     def post(self, request):
         user = request.user
-        user.telegram_chat_id = ""
+        user.telegram_active = False
         user.telegram_link_token = ""
         user.telegram_link_token_at = None
-        user.save(update_fields=["telegram_chat_id", "telegram_link_token", "telegram_link_token_at"])
-        return Response({"connected": False})
+        user.save(update_fields=["telegram_active", "telegram_link_token", "telegram_link_token_at"])
+        return Response({"connected": False, "can_reconnect": user.telegram_can_reconnect})
+
+
+class TelegramReconnectView(APIView):
+    """POST /api/me/telegram/reconnect/ — re-enable delivery to a remembered chat.
+
+    No Telegram round-trip needed: the chat_id is still on file from before the
+    disconnect, so flipping telegram_active back on resumes delivery immediately.
+    If there's no remembered chat (never linked, or the user deleted the chat),
+    the client should fall back to the deep link from the status endpoint.
+    """
+
+    def post(self, request):
+        from apps.accounts import telegram
+
+        user = request.user
+        if not user.telegram_chat_id:
+            return Response(
+                {"detail": "No Telegram chat on file — use the connect link instead."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        user.telegram_active = True
+        user.save(update_fields=["telegram_active"])
+        telegram.send_message(
+            user.telegram_chat_id,
+            "✅ <b>Reconnected.</b> You'll receive PulseCharts signals here again.",
+        )
+        return Response({"connected": True})
 
 
 class TelegramWebhookView(APIView):
@@ -228,7 +265,26 @@ class TelegramWebhookView(APIView):
         if text.startswith("/start"):
             parts = text.split(maxsplit=1)
             token = parts[1].strip() if len(parts) > 1 else ""
-            user = User.objects.filter(telegram_link_token=token).first() if token else None
+            if not token:
+                # Bare /start (no payload). If we still remember this chat from a
+                # previous link, treat it as a reconnect; otherwise point them at
+                # the dashboard to get a proper connect link.
+                existing = User.objects.filter(telegram_chat_id=chat_id).first()
+                if existing:
+                    if not existing.telegram_active:
+                        existing.telegram_active = True
+                        existing.save(update_fields=["telegram_active"])
+                    telegram.send_message(
+                        chat_id,
+                        "✅ <b>Reconnected.</b> You'll receive PulseCharts signals here again.",
+                    )
+                else:
+                    telegram.send_message(
+                        chat_id,
+                        "Open PulseCharts → Signals → Connect Telegram to link your account.",
+                    )
+                return Response({"ok": True})
+            user = User.objects.filter(telegram_link_token=token).first()
             if not user or not user.telegram_token_valid(token):
                 # No match, or the link has expired (TTL) — a forwarded/stale link
                 # lands here instead of binding someone else's account.
@@ -246,10 +302,12 @@ class TelegramWebhookView(APIView):
                 )
             else:
                 user.telegram_chat_id = chat_id
+                user.telegram_active = True
                 user.telegram_link_token = ""  # one-time use
                 user.telegram_link_token_at = None
                 user.save(update_fields=[
-                    "telegram_chat_id", "telegram_link_token", "telegram_link_token_at",
+                    "telegram_chat_id", "telegram_active",
+                    "telegram_link_token", "telegram_link_token_at",
                 ])
                 telegram.send_message(
                     chat_id,
@@ -258,9 +316,17 @@ class TelegramWebhookView(APIView):
                     "<i>Informational only. Not financial advice.</i>",
                 )
         elif text.startswith("/stop"):
-            n = User.objects.filter(telegram_chat_id=chat_id).update(telegram_chat_id="")
+            # Switch delivery off but keep the chat on file, so the user can turn
+            # it back on from the dashboard (or by sending /start) in one step.
+            n = User.objects.filter(telegram_chat_id=chat_id, telegram_active=True).update(
+                telegram_active=False
+            )
             if n:
-                telegram.send_message(chat_id, "🔕 Unlinked. You won't receive signals here anymore.")
+                telegram.send_message(
+                    chat_id,
+                    "🔕 Paused. You won't receive signals here. Send /start or reconnect "
+                    "in PulseCharts → Signals to resume.",
+                )
 
         return Response({"ok": True})
 

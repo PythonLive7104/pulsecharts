@@ -92,6 +92,11 @@ export default function SignalsPage() {
     await load();
   }
 
+  async function reconnectTelegram() {
+    await api.telegramReconnect();
+    await load();
+  }
+
   const WIN_OUTCOMES = new Set(["TP1", "TP2", "TP3", "TP4"]);
   const resolved = feed?.resolved || [];
   const winCount = resolved.filter((s) => WIN_OUTCOMES.has(s.outcome)).length;
@@ -136,6 +141,14 @@ export default function SignalsPage() {
               <span className="muted">New signals from your followed strategies are sent to your Telegram.</span>
             </div>
             <button className="btn-ghost" onClick={disconnectTelegram}>Disconnect</button>
+          </>
+        ) : tg.can_reconnect ? (
+          <>
+            <div className="tg-text">
+              <strong>Telegram disconnected</strong>
+              <span className="muted">We still have your chat on file — reconnect to start receiving signals again.</span>
+            </div>
+            <button className="btn-primary" onClick={reconnectTelegram}>Reconnect</button>
           </>
         ) : (
           <>
