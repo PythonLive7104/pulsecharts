@@ -53,6 +53,13 @@ docker compose exec -T web python manage.py sync_symbols \
 say "$c_info" "▶ Seeding signal strategies…"
 docker compose exec -T web python manage.py seed_signal_services
 
+# 5b. Register the Telegram webhook (idempotent). Without this Telegram has no
+# URL to deliver /start to, so "Connect Telegram" silently does nothing. Skips
+# cleanly when TELEGRAM_BOT_TOKEN isn't configured.
+say "$c_info" "▶ Registering Telegram webhook…"
+docker compose exec -T web python manage.py set_telegram_webhook \
+  || say "$c_warn" "  Telegram webhook not set (token unconfigured?) — continuing."
+
 # 6. Done -------------------------------------------------------------------
 say "$c_ok" "✓ PulseCharts is up to date and running."
 docker compose ps
