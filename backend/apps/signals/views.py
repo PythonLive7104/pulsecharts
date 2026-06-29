@@ -146,20 +146,33 @@ class SignalFeedView(APIView):
         # confluence first, so a coin firing on several strategies costs one
         # delivery (one card) rather than flooding the quota with near-duplicates.
         if followed_ids and (unlimited or remaining > 0):
-            already = SignalDelivery.objects.filter(user=user).values_list("signal_id", flat=True)
+            # Dedup deliveries at the TRADE grain (symbol, timeframe, direction), NOT
+            # per signal_id. The scan stores one signal per strategy and collapse
+            # picks a representative, so as strategies joined a setup over successive
+            # opens a new rep was delivered each time — duplicate cards + wasted quota
+            # for the SAME trade. Skip any group the user already has an open delivery
+            # for; it's deliverable again only once the group resolves.
+            open_delivered = set(
+                SignalDelivery.objects.filter(
+                    user=user, signal__outcome=Signal.Outcome.PENDING,
+                ).values_list("signal__symbol_id", "signal__timeframe", "signal__direction")
+            )
             candidates = list(
                 Signal.objects.filter(
                     service_id__in=followed_ids,
                     symbol_id__in=watched_ids,
                     direction__in=[Signal.Direction.BUY, Signal.Direction.SELL],
+                    outcome=Signal.Outcome.PENDING,
                     confidence_pct__gte=settings.SIGNAL_MIN_CONFIDENCE,
                     generated_at__gte=now - FEED_LOOKBACK,
                 )
-                .exclude(id__in=already)
                 .select_related("service")
                 .order_by("-generated_at")
             )
-            reps = confluence.collapse(candidates)  # one per symbol+tf, newest first
+            reps = [
+                r for r in confluence.collapse(candidates)  # one per symbol+tf, newest first
+                if (r.symbol_id, r.timeframe, r.direction) not in open_delivered
+            ]
             if not unlimited:
                 reps = reps[:remaining]
             SignalDelivery.objects.bulk_create(
@@ -185,6 +198,17 @@ class SignalFeedView(APIView):
             .select_related("symbol", "service")
             .order_by("-generated_at")
         )
+        # One card per (symbol, timeframe, direction): pre-fix duplicate deliveries
+        # (and any future edge) must not render the same trade as multiple cards.
+        # Keeps the newest signal per group; the agreement count is filled by
+        # annotate() below from the full sibling pool.
+        seen, deduped = set(), []
+        for s in active:
+            key = (s.symbol_id, s.timeframe, s.direction)
+            if key not in seen:
+                seen.add(key)
+                deduped.append(s)
+        active = deduped
         # Annotate each shown signal with how many followed strategies currently
         # agree on it (the sibling pool within the feed lookback), for the card's
         # "N strategies agree" badge.
