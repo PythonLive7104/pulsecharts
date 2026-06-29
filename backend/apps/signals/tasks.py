@@ -359,14 +359,22 @@ from datetime import timedelta  # noqa: E402
 TELEGRAM_LOOKBACK = timedelta(hours=6)  # don't push signals older than this
 
 
+def _fmt_price(x) -> str:
+    """Price with precision suited to magnitude, so sub-dollar coins (DOGE, kPEPE)
+    and FX pairs don't collapse to '0.00' under a fixed 2-dp format."""
+    if x is None:
+        return "—"
+    a = abs(x)
+    d = 2 if a >= 100 else 4 if a >= 1 else 5 if a >= 0.01 else 8
+    return f"{x:,.{d}f}"
+
+
 def format_signal_for_telegram(s: Signal) -> str:
     """HTML-formatted signal card for a Telegram message."""
     import html
 
     head = "🟢 BUY" if s.direction == Signal.Direction.BUY else "🔴 SELL"
-
-    def p(x):
-        return f"{x:,.2f}" if x is not None else "—"
+    p = _fmt_price
 
     lines = [
         f"<b>{head} {html.escape(s.symbol.ticker)}</b> · {html.escape(s.timeframe)} · {s.confidence_pct}% conviction",
@@ -410,9 +418,7 @@ def format_closure_for_telegram(s: Signal) -> str:
 
     side = "BUY" if s.direction == Signal.Direction.BUY else "SELL"
     status = _CLOSURE_STATUS.get(s.outcome, str(s.outcome))
-
-    def p(x):
-        return f"{x:,.2f}" if x is not None else "—"
+    p = _fmt_price
 
     lines = [
         f"📌 <b>Trade update — {html.escape(s.symbol.ticker)} {side}</b> · {html.escape(s.timeframe)}",
@@ -536,7 +542,18 @@ def run_telegram_push() -> dict:
             if remaining <= 0:
                 continue
 
-        already = TelegramDelivery.objects.filter(user=user).values_list("signal_id", flat=True)
+        # Dedup at the TRADE grain (symbol, timeframe, direction) — NOT per signal.
+        # The scan stores one Signal per strategy, and confluence.collapse picks a
+        # representative; as more strategies join a setup over successive scans the
+        # rep changes, so a per-signal_id guard re-sent the SAME trade every scan
+        # (and later fired one closure per delivered rep). Skip any group the user
+        # already has an OPEN delivered trade for; it becomes deliverable again only
+        # after the whole group resolves.
+        open_delivered = set(
+            TelegramDelivery.objects.filter(
+                user=user, signal__outcome=Signal.Outcome.PENDING,
+            ).values_list("signal__symbol_id", "signal__timeframe", "signal__direction")
+        )
         candidates = list(
             Signal.objects.filter(
                 service_id__in=followed,
@@ -546,20 +563,26 @@ def run_telegram_push() -> dict:
                 confidence_pct__gte=min_conf,
                 generated_at__gte=now - TELEGRAM_LOOKBACK,
             )
-            .exclude(id__in=already)
             .select_related("symbol", "service")
         )
         # Collapse by confluence: one card per (symbol, timeframe), surfaced only
-        # when enough strategies agree. Send oldest-first so the quota fills in
-        # chronological order, same as before.
-        reps = confluence.collapse(candidates)
+        # when enough strategies agree. Drop groups already delivered & still open,
+        # then send oldest-first so the quota fills chronologically.
+        reps = [
+            r for r in confluence.collapse(candidates)
+            if (r.symbol_id, r.timeframe, r.direction) not in open_delivered
+        ]
         reps.sort(key=lambda s: s.generated_at)
         if not unlimited:
             reps = reps[:remaining]
 
         for sig in reps:
+            key = (sig.symbol_id, sig.timeframe, sig.direction)
+            if key in open_delivered:  # guard against a duplicate within this run
+                continue
             if telegram.send_message(user.telegram_chat_id, format_signal_for_telegram(sig)):
                 TelegramDelivery.objects.create(user=user, signal=sig)
+                open_delivered.add(key)
                 sent += 1
 
     summary = {"sent": sent, "closed": closed}
