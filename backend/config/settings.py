@@ -252,7 +252,10 @@ SIGNAL_ENGINE_ENABLED = env.bool("SIGNAL_ENGINE_ENABLED", default=False)
 #                measures) and ALWAYS generates the signal; the LLM only writes the
 #                reasoning/invalidation + a confidence read for the card. Best of
 #                both: rule-based hit-rate + volume, plus LLM explanations.
-SIGNAL_ENGINE_MODE = env("SIGNAL_ENGINE_MODE", default="llm_gate")  # "llm_gate" | "hybrid"
+#   "rules"    — fully deterministic, NO LLM call. Rules pick direction +
+#                confidence; reasoning is templated. Zero per-signal cost, which is
+#                what makes lower-timeframe / high-volume scanning economical.
+SIGNAL_ENGINE_MODE = env("SIGNAL_ENGINE_MODE", default="rules")  # "rules" | "hybrid" | "llm_gate"
 # Fallback confidence for a hybrid signal when the LLM annotation call fails.
 SIGNAL_RULE_CONFIDENCE = env.int("SIGNAL_RULE_CONFIDENCE", default=75)
 
@@ -280,7 +283,10 @@ SIGNAL_PREGATE_ENABLED = env.bool("SIGNAL_PREGATE_ENABLED", default=True)
 # higher-timeframe trend. Keeps trend strategies out of chop. Runs before the
 # LLM call, so it also saves tokens.
 SIGNAL_REGIME_FILTER_ENABLED = env.bool("SIGNAL_REGIME_FILTER_ENABLED", default=True)
-SIGNAL_ADX_MIN = env.float("SIGNAL_ADX_MIN", default=20.0)
+# 25 (was 20): 20 is the borderline of "trending" and let ranging/chop through —
+# the main source of the weekend range-bound stop-outs. 25 is the standard line
+# for a genuine trend, so signals only fire when price is actually moving.
+SIGNAL_ADX_MIN = env.float("SIGNAL_ADX_MIN", default=25.0)
 
 # EMA-alignment gate every non-breakout signal must pass (apps/signals/pregate.py).
 # Switchable without a deploy; defaults to the backtest winner (stack50).
@@ -302,10 +308,11 @@ SIGNAL_DAILY_QUOTA = {
 }
 
 # Which timeframes the signal engine evaluates (Section 20.1).
-# Higher timeframes for shadow-mode accuracy validation: 1m/5m candles are pure
-# noise — tight ATR stops get wicked out before a setup can play out, which is
-# what tanked the early win rate. 1h/4h give setups room to resolve and make the
-# ATR-based stops meaningful. Lower (e.g. ["5m"]) only for high-volume testing.
+# 1h/4h: backtested best expectancy (52% win, +0.63R exit-at-best). A 15m/1h trial
+# measurably degraded the edge (45% win, NEGATIVE exit-at-TP1) — lower frames are
+# noisier and fees eat the smaller moves — so the engine stays on 1h/4h. The
+# compressed 1/1.5/2/3 TP geometry already delivers the TP3/TP4 fills without
+# dropping to a lower frame. Avoid 1m/5m entirely.
 SIGNAL_TIMEFRAMES = env.list("SIGNAL_TIMEFRAMES", default=["1h", "4h"])
 
 # Skip crypto signal generation during the weekend window (Fri 21:00 → Sun 21:00

@@ -168,9 +168,36 @@ def _vwap_session(candles: list[dict]) -> float | None:
     return cum_pv / cum_v if cum_v else None
 
 
-def _swings(candles: list[dict], lookback=50):
+def _swings(candles: list[dict], lookback=60, span=2):
+    """Most RECENT local swing high/low (fractal pivots), not the 50-bar absolute
+    extreme. A pivot high is a bar whose high is >= the `span` bars on each side;
+    pivot low is the mirror. Scanning back from the latest confirmed pivot finds
+    the nearest structure — e.g. for a trend-continuation SELL, the last pullback
+    high just above price — so the stop hugs real structure instead of anchoring to
+    a far, already-broken extreme (which produced absurd 8%+ stops). Falls back to
+    the absolute extreme if no pivot forms in the window."""
     window = candles[-lookback:]
-    return max(c["high"] for c in window), min(c["low"] for c in window)
+    n = len(window)
+    highs = [c["high"] for c in window]
+    lows = [c["low"] for c in window]
+    swing_high = swing_low = None
+    # Walk newest-to-oldest over bars that have `span` neighbours on each side.
+    for i in range(n - 1 - span, span - 1, -1):
+        if swing_high is None and all(
+            highs[i] >= highs[j] for j in range(i - span, i + span + 1) if j != i
+        ):
+            swing_high = highs[i]
+        if swing_low is None and all(
+            lows[i] <= lows[j] for j in range(i - span, i + span + 1) if j != i
+        ):
+            swing_low = lows[i]
+        if swing_high is not None and swing_low is not None:
+            break
+    if swing_high is None:
+        swing_high = max(highs)
+    if swing_low is None:
+        swing_low = min(lows)
+    return swing_high, swing_low
 
 
 def compute_indicators(candles: list[dict]) -> dict:

@@ -461,18 +461,25 @@ strategy        string — which signal service generated this (e.g. "Momentum C
 
 ### 19.2 TP & SL calculation rules (used in both rule-based and Claude-prompt paths)
 
-**Stop Loss** (widened from 1.5× to 2.0× ATR after early shadow-mode testing —
-1.5× was getting wicked out by routine noise before setups could resolve)
-- BUY signals: SL = min(recent swing low − small buffer, entry − (2.0 × ATR on the signal timeframe))
-- SELL signals: SL = max(recent swing high + small buffer, entry + (2.0 × ATR))
-  — the wider of the swing/ATR stop is used (placed beyond noise); a ~0.15%
-  buffer beyond the swing keeps an exact-wick touch from stopping the trade out
+**Stop Loss** — the swing anchor is now a RECENT LOCAL PIVOT (a fractal high/low
+near price), not the 50-bar absolute extreme. The old absolute-extreme version put
+the stop at a far, already-broken level on trend-continuation entries, producing
+absurd risk (8%+ on gold, 3.5% on FX majors) and far-away TPs that never filled.
+The stop is also CLAMPED to a [2.0×ATR, 3.0×ATR] band so a distant pivot can refine
+it but never blow it out:
+- BUY signals: SL = clamp(swing_low − buffer,  entry − 3.0×ATR, entry − 2.0×ATR)
+- SELL signals: SL = clamp(swing_high + buffer, entry + 2.0×ATR, entry + 3.0×ATR)
+  — 2.0×ATR is the noise floor; 3.0×ATR the blow-out cap; a ~0.15% buffer beyond
+  the pivot keeps an exact-wick touch from stopping the trade out. Falls back to
+  the absolute extreme only if no pivot forms in the lookback window.
 
-**Take Profit levels**
+**Take Profit levels** (compressed from 1/2/3/4.5 → 1/1.5/2/3 so the far targets
+actually fill on a real trend leg — the old 4.5R runner almost never hit; lower
+reward per far hit, much higher TP3/TP4 fill rate)
 - TP1 = entry ± (1.0 × risk distance)   [conservative, 1:1]
-- TP2 = entry ± (2.0 × risk distance)   [standard,     1:2]
-- TP3 = entry ± (3.0 × risk distance)   [extended,     1:3]
-- TP4 = entry ± (4.5 × risk distance)   [runner,       ~1:4.5 or next major S/R]
+- TP2 = entry ± (1.5 × risk distance)   [standard,     1:1.5]
+- TP3 = entry ± (2.0 × risk distance)   [extended,     1:2]
+- TP4 = entry ± (3.0 × risk distance)   [runner,       1:3]
 
 Where `risk distance = abs(entry_price - stop_loss)`.
 
@@ -500,6 +507,14 @@ Each card should show:
 - Disclaimer line: "Informational only. Not financial advice."
 
 ## 20. Claude AI Prompt for Signal Generation
+
+> NOTE (current default): the engine now runs in `SIGNAL_ENGINE_MODE=rules` —
+> fully deterministic, NO LLM call. Rules pick direction + confidence
+> (pregate.candidate_direction / confidence_score), levels come from §19.2, and
+> the card reasoning is templated from the parameters each strategy actually
+> watched (engine._rule_reasoning). This made lower-cost, higher-volume scanning
+> viable. The LLM paths below (`hybrid` = LLM annotates, `llm_gate` = LLM decides)
+> still exist and are selectable via env, but are no longer the default.
 
 This prompt is designed to be called from a Celery task once per
 configured interval per symbol per strategy. It receives computed

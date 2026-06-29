@@ -8,12 +8,22 @@ exact and internally consistent.
 
 from __future__ import annotations
 
-# Risk-multiple per take-profit level (Section 19.2): 1:1, 1:2, 1:3, ~1:4.5.
-TP_MULTIPLES = {1: 1.0, 2: 2.0, 3: 3.0, 4: 4.5}
+# Risk-multiple per take-profit level. Compressed from 1/2/3/4.5 to 1/1.5/2/3 so
+# the far targets (TP3/TP4) sit close enough to actually get hit on a 15m/1h trend
+# leg — the old 4.5R runner almost never filled. Lower reward per far hit, higher
+# fill rate; pairs with the tighter local-pivot stop below (smaller R overall).
+TP_MULTIPLES = {1: 1.0, 2: 1.5, 3: 2.0, 4: 3.0}
 # 2.0 (was 1.5): a tighter stop gets wicked out by routine noise before the setup
 # can resolve — the main driver of the early loss rate. Wider stop = fewer
 # premature stop-outs (TPs scale with it, so the risk:reward ratios are unchanged).
 ATR_STOP_MULT = 2.0
+# Cap on how far a swing extreme can widen the stop. The swing levels are 50-bar
+# ABSOLUTE extremes (not local pivots), so on a trend-continuation entry — where
+# price has already pulled away from its recent high/low — the swing stop lands
+# far from entry and produces an absurd risk distance (e.g. an 8.8% stop on gold,
+# a 3.5% stop on an FX major where ~0.5% is normal). Bound the stop to at most
+# MAX_ATR_MULT × ATR so a distant extreme can refine the stop but never blow it out.
+MAX_ATR_MULT = 3.0
 # Place the swing-based stop just *beyond* the swing level, so an exact-wick touch
 # of the prior high/low doesn't stop us out.
 SWING_BUFFER = 0.0015  # 0.15%
@@ -29,15 +39,24 @@ def compute_levels(
 ) -> dict | None:
     """Return SL / TP1–4 / risk-reward / dollar fields, or None if no valid stop.
 
-    BUY  SL = min(swing_low·(1-buffer),  entry - 2.0·ATR)
-    SELL SL = max(swing_high·(1+buffer), entry + 2.0·ATR)
+    The stop sits at least ATR_STOP_MULT×ATR beyond entry (past routine noise),
+    is widened to the swing extreme when that's further, but is clamped to at most
+    MAX_ATR_MULT×ATR so a distant 50-bar extreme can't produce an absurd stop:
+
+    BUY  SL = clamp(swing_low·(1-buffer),  entry - 3.0·ATR, entry - 2.0·ATR)
+    SELL SL = clamp(swing_high·(1+buffer), entry + 2.0·ATR, entry + 3.0·ATR)
     risk_distance = |entry - SL|;  TPn = entry ± multiple·risk_distance.
     """
+    atr_floor = ATR_STOP_MULT * atr  # minimum stop distance (beyond routine noise)
+    atr_cap = MAX_ATR_MULT * atr     # maximum stop distance (don't let a far swing blow it out)
     if direction == "BUY":
-        stop_loss = min(swing_low * (1 - SWING_BUFFER), entry - ATR_STOP_MULT * atr)
+        swing_stop = swing_low * (1 - SWING_BUFFER)
+        # widen toward the swing if it's beyond the floor, but never past the cap
+        stop_loss = max(min(swing_stop, entry - atr_floor), entry - atr_cap)
         sign = 1
     elif direction == "SELL":
-        stop_loss = max(swing_high * (1 + SWING_BUFFER), entry + ATR_STOP_MULT * atr)
+        swing_stop = swing_high * (1 + SWING_BUFFER)
+        stop_loss = min(max(swing_stop, entry + atr_floor), entry + atr_cap)
         sign = -1
     else:
         return None
