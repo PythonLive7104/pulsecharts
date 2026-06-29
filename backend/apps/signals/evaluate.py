@@ -70,7 +70,7 @@ def walk(direction: str, entry, stop_loss, tps, candles) -> dict:
                 break
             # TP reached first — it's a win regardless of the later stop touch.
             best_tp = max(best_tp, candle_tp)
-            if best_tp == 4:
+            if best_tp == len(tps):
                 terminal = True
                 break
             continue
@@ -83,7 +83,7 @@ def walk(direction: str, entry, stop_loss, tps, candles) -> dict:
 
         if candle_tp:
             best_tp = max(best_tp, candle_tp)
-            if best_tp == 4:
+            if best_tp == len(tps):
                 terminal = True
                 break
 

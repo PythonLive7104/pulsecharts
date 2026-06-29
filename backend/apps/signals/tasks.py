@@ -282,7 +282,7 @@ def run_evaluation(limit: int | None = None) -> dict:
 
         res = walk(
             sig.direction, sig.entry_price, sig.stop_loss,
-            [sig.tp1, sig.tp2, sig.tp3, sig.tp4], eval_candles,
+            [t for t in (sig.tp1, sig.tp2, sig.tp3, sig.tp4) if t is not None], eval_candles,
         )
         # Resolve only on a hit: a take-profit (win) or the stop-loss (loss).
         # Otherwise the call remains Active, no matter how long it's been open.
@@ -385,11 +385,14 @@ def format_signal_for_telegram(s: Signal) -> str:
     if n_agree >= 2:
         svcs = ", ".join(html.escape(name) for name in getattr(s, "confluence_services", []))
         lines.append(f"📊 <b>{n_agree} strategies agree</b>: {svcs}")
+    tp_line = f"TP1 {p(s.tp1)} · TP2 {p(s.tp2)} · TP3 {p(s.tp3)}"
+    if s.tp4 is not None:  # legacy signals may still carry a TP4
+        tp_line += f" · TP4 {p(s.tp4)}"
     lines += [
         "",
         f"Entry: <b>{p(s.entry_price)}</b>",
         f"Stop:  <b>{p(s.stop_loss)}</b>",
-        f"TP1 {p(s.tp1)} · TP2 {p(s.tp2)} · TP3 {p(s.tp3)} · TP4 {p(s.tp4)}",
+        tp_line,
     ]
     if s.reasoning:
         lines += ["", html.escape(s.reasoning)]

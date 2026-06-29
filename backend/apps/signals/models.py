@@ -49,24 +49,24 @@ class Signal(models.Model):
     tp1 = models.FloatField()
     tp2 = models.FloatField()
     tp3 = models.FloatField()
-    tp4 = models.FloatField()
+    tp4 = models.FloatField(null=True, blank=True)  # removed from the ladder (1R/2R/3R)
 
     risk_pct = models.FloatField()
     reward_tp1_pct = models.FloatField()
     reward_tp2_pct = models.FloatField()
     reward_tp3_pct = models.FloatField()
-    reward_tp4_pct = models.FloatField()
+    reward_tp4_pct = models.FloatField(null=True, blank=True)
 
     risk_reward_tp1 = models.FloatField()
     risk_reward_tp2 = models.FloatField()
     risk_reward_tp3 = models.FloatField()
-    risk_reward_tp4 = models.FloatField()
+    risk_reward_tp4 = models.FloatField(null=True, blank=True)
 
     dollar_risk = models.FloatField()
     dollar_tp1 = models.FloatField()
     dollar_tp2 = models.FloatField()
     dollar_tp3 = models.FloatField()
-    dollar_tp4 = models.FloatField()
+    dollar_tp4 = models.FloatField(null=True, blank=True)
 
     reasoning = models.TextField(blank=True, default="")
     invalidation = models.TextField(blank=True, default="")

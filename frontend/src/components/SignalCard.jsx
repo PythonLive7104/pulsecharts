@@ -63,12 +63,12 @@ export default function SignalCard({ s }) {
         <div className="level tp"><span>TP1</span><b>{fmt(s.tp1)}</b></div>
         <div className="level tp"><span>TP2</span><b>{fmt(s.tp2)}</b></div>
         <div className="level tp"><span>TP3</span><b>{fmt(s.tp3)}</b></div>
-        <div className="level tp"><span>TP4</span><b>{fmt(s.tp4)}</b></div>
+        {s.tp4 != null && <div className="level tp"><span>TP4</span><b>{fmt(s.tp4)}</b></div>}
       </div>
 
       <p className="scaleout-note">
         💡 Suggested: take partial profit at TP1, move your stop to entry (break-even),
-        then let the rest run toward TP3/TP4.
+        then let the rest run toward TP3.
       </p>
 
       <div className="rr-line">

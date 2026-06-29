@@ -70,7 +70,7 @@ def _outcome(direction, snap, future):
         return None
     res = walk(
         direction, float(snap["close"]), levels["stop_loss"],
-        [levels["tp1"], levels["tp2"], levels["tp3"], levels["tp4"]], future,
+        [levels[k] for k in ("tp1", "tp2", "tp3", "tp4") if levels[k] is not None], future,
     )
     return res if (res["terminal"] or res["best_tp"] >= 1) else None
 

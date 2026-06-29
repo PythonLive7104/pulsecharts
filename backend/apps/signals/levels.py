@@ -8,11 +8,12 @@ exact and internally consistent.
 
 from __future__ import annotations
 
-# Risk-multiple per take-profit level. Compressed from 1/2/3/4.5 to 1/1.5/2/3 so
-# the far targets (TP3/TP4) sit close enough to actually get hit on a 15m/1h trend
-# leg — the old 4.5R runner almost never filled. Lower reward per far hit, higher
-# fill rate; pairs with the tighter local-pivot stop below (smaller R overall).
-TP_MULTIPLES = {1: 1.0, 2: 1.5, 3: 2.0, 4: 3.0}
+# Risk-multiple per take-profit level — three clean targets at 1R / 2R / 3R.
+# TP4 was removed: 3R is the proven reachable ceiling (~45% of winners run to it in
+# backtests), while the old 4.5R runner almost never filled. Even 1R/2R/3R spacing
+# is the intuitive ladder; pairs with the tight local-pivot stop so 3R is a modest
+# % move. (tp4 / *_tp4 fields are kept on the model but set None — see compute_levels.)
+TP_MULTIPLES = {1: 1.0, 2: 2.0, 3: 3.0}
 # 2.0 (was 1.5): a tighter stop gets wicked out by routine noise before the setup
 # can resolve — the main driver of the early loss rate. Wider stop = fewer
 # premature stop-outs (TPs scale with it, so the risk:reward ratios are unchanged).
@@ -72,15 +73,15 @@ def compute_levels(
 
     return {
         "stop_loss": stop_loss,
-        "tp1": tp[1], "tp2": tp[2], "tp3": tp[3], "tp4": tp[4],
+        "tp1": tp[1], "tp2": tp[2], "tp3": tp[3], "tp4": None,
         "risk_pct": risk_pct,
         "reward_tp1_pct": reward_pct[1], "reward_tp2_pct": reward_pct[2],
-        "reward_tp3_pct": reward_pct[3], "reward_tp4_pct": reward_pct[4],
+        "reward_tp3_pct": reward_pct[3], "reward_tp4_pct": None,
         "risk_reward_tp1": rr[1], "risk_reward_tp2": rr[2],
-        "risk_reward_tp3": rr[3], "risk_reward_tp4": rr[4],
+        "risk_reward_tp3": rr[3], "risk_reward_tp4": None,
         "dollar_risk": risk_pct / 100 * TRADE_SIZE,
         "dollar_tp1": reward_pct[1] / 100 * TRADE_SIZE,
         "dollar_tp2": reward_pct[2] / 100 * TRADE_SIZE,
         "dollar_tp3": reward_pct[3] / 100 * TRADE_SIZE,
-        "dollar_tp4": reward_pct[4] / 100 * TRADE_SIZE,
+        "dollar_tp4": None,
     }

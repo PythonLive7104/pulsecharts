@@ -473,13 +473,15 @@ it but never blow it out:
   the pivot keeps an exact-wick touch from stopping the trade out. Falls back to
   the absolute extreme only if no pivot forms in the lookback window.
 
-**Take Profit levels** (compressed from 1/2/3/4.5 → 1/1.5/2/3 so the far targets
-actually fill on a real trend leg — the old 4.5R runner almost never hit; lower
-reward per far hit, much higher TP3/TP4 fill rate)
+**Take Profit levels** — three clean targets at 1R / 2R / 3R (TP4 removed). 3R is
+the reachable ceiling (~45% of winning trades run to it in backtests); the old 4.5R
+runner almost never filled.
 - TP1 = entry ± (1.0 × risk distance)   [conservative, 1:1]
-- TP2 = entry ± (1.5 × risk distance)   [standard,     1:1.5]
-- TP3 = entry ± (2.0 × risk distance)   [extended,     1:2]
-- TP4 = entry ± (3.0 × risk distance)   [runner,       1:3]
+- TP2 = entry ± (2.0 × risk distance)   [standard,     1:2]
+- TP3 = entry ± (3.0 × risk distance)   [runner,       1:3]
+
+(The `tp4` / `*_tp4` fields are kept nullable on the Signal model — set to null on
+new signals — so historical rows and the serializer stay valid.)
 
 Where `risk distance = abs(entry_price - stop_loss)`.
 
