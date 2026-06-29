@@ -21,6 +21,7 @@ from apps.market_data.forex import market_open as forex_market_open
 from apps.market_data.models import Symbol
 from apps.watchlists.models import WatchlistItem
 
+from . import confluence
 from .engine import SignalEngineError, generate_signal
 from .evaluate import outcome_label, walk
 from .indicators import compute_indicators
@@ -353,6 +354,13 @@ def format_signal_for_telegram(s: Signal) -> str:
     lines = [
         f"<b>{head} {html.escape(s.symbol.ticker)}</b> · {html.escape(s.timeframe)} · {s.confidence_pct}% conviction",
         f"<i>{html.escape(s.service.name)}</i>",
+    ]
+    # Confluence badge: when several strategies agree, that's the headline value.
+    n_agree = getattr(s, "confluence_count", 1)
+    if n_agree >= 2:
+        svcs = ", ".join(html.escape(name) for name in getattr(s, "confluence_services", []))
+        lines.append(f"📊 <b>{n_agree} strategies agree</b>: {svcs}")
+    lines += [
         "",
         f"Entry: <b>{p(s.entry_price)}</b>",
         f"Stop:  <b>{p(s.stop_loss)}</b>",
@@ -512,7 +520,7 @@ def run_telegram_push() -> dict:
                 continue
 
         already = TelegramDelivery.objects.filter(user=user).values_list("signal_id", flat=True)
-        candidates = (
+        candidates = list(
             Signal.objects.filter(
                 service_id__in=followed,
                 symbol_id__in=watched,
@@ -523,12 +531,16 @@ def run_telegram_push() -> dict:
             )
             .exclude(id__in=already)
             .select_related("symbol", "service")
-            .order_by("generated_at")
         )
+        # Collapse by confluence: one card per (symbol, timeframe), surfaced only
+        # when enough strategies agree. Send oldest-first so the quota fills in
+        # chronological order, same as before.
+        reps = confluence.collapse(candidates)
+        reps.sort(key=lambda s: s.generated_at)
         if not unlimited:
-            candidates = candidates[:remaining]
+            reps = reps[:remaining]
 
-        for sig in candidates:
+        for sig in reps:
             if telegram.send_message(user.telegram_chat_id, format_signal_for_telegram(sig)):
                 TelegramDelivery.objects.create(user=user, signal=sig)
                 sent += 1

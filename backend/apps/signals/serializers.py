@@ -38,7 +38,18 @@ class SignalSerializer(serializers.ModelSerializer):
     asset_class = serializers.CharField(source="symbol.asset_class", read_only=True)
     strategy = serializers.CharField(source="service.name", read_only=True)
     strategy_slug = serializers.CharField(source="service.slug", read_only=True)
+    # Confluence (delivery-side): how many distinct strategies agree on this call,
+    # and their names. Defaults to just this signal's own strategy when the view
+    # hasn't annotated confluence (e.g. resolved history).
+    confluence_count = serializers.SerializerMethodField()
+    confluence_services = serializers.SerializerMethodField()
 
     class Meta:
         model = Signal
         exclude = ("service", "created_at")
+
+    def get_confluence_count(self, obj):
+        return getattr(obj, "confluence_count", 1)
+
+    def get_confluence_services(self, obj):
+        return getattr(obj, "confluence_services", None) or [obj.service.name]

@@ -25,6 +25,10 @@ export default function SignalCard({ s }) {
   const buy = s.direction === "BUY";
   const [outLabel, outClass] = OUTCOME[s.outcome] || OUTCOME.PENDING;
   const fmt = (n) => formatPrice(n, s.asset_class, s.symbol);
+  // Confluence: how many distinct strategies agree on this call (>= 2 is the
+  // headline reliability signal). Falls back to the single generating strategy.
+  const agree = s.confluence_services?.length ? s.confluence_services : [s.strategy];
+  const nAgree = s.confluence_count || agree.length;
 
   return (
     <div className={`signal-card ${buy ? "buy" : "sell"}`}>
@@ -34,6 +38,14 @@ export default function SignalCard({ s }) {
           <span className={`dir-badge ${buy ? "buy" : "sell"}`}>{s.direction}</span>
           <span className="sig-tf">{s.timeframe}</span>
           <span className={`outcome-badge ${outClass}`}>{outLabel}</span>
+          {nAgree >= 2 && (
+            <span
+              className="confluence-badge"
+              title={`Confluence — ${nAgree} strategies agree on this ${s.direction}: ${agree.join(", ")}`}
+            >
+              📊 {nAgree} agree
+            </span>
+          )}
         </div>
         <div
           className="confidence"
@@ -80,7 +92,7 @@ export default function SignalCard({ s }) {
       )}
 
       <div className="signal-foot">
-        <span>{s.strategy}</span>
+        <span>{nAgree >= 2 ? agree.join(" + ") : s.strategy}</span>
         <span className="muted">{new Date(s.generated_at).toLocaleString()}</span>
       </div>
       <div className="signal-disclaimer">Informational only. Not financial advice.</div>

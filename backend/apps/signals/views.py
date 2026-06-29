@@ -18,6 +18,7 @@ from rest_framework.views import APIView
 
 from apps.watchlists.models import WatchlistItem, watchlist_limit_for
 
+from . import confluence
 from .models import Signal, SignalDelivery, SignalService, UserSignalSubscription
 from .quota import signal_quota_for, strategies_allowed_for
 from .serializers import (
@@ -141,10 +142,12 @@ class SignalFeedView(APIView):
         unlimited = quota < 0
         remaining = None if unlimited else max(0, quota - delivered_today)
 
-        # Deliver new qualifying signals up to the remaining quota.
+        # Deliver new qualifying signals up to the remaining quota. Collapse by
+        # confluence first, so a coin firing on several strategies costs one
+        # delivery (one card) rather than flooding the quota with near-duplicates.
         if followed_ids and (unlimited or remaining > 0):
             already = SignalDelivery.objects.filter(user=user).values_list("signal_id", flat=True)
-            candidates = (
+            candidates = list(
                 Signal.objects.filter(
                     service_id__in=followed_ids,
                     symbol_id__in=watched_ids,
@@ -153,12 +156,14 @@ class SignalFeedView(APIView):
                     generated_at__gte=now - FEED_LOOKBACK,
                 )
                 .exclude(id__in=already)
+                .select_related("service")
                 .order_by("-generated_at")
             )
+            reps = confluence.collapse(candidates)  # one per symbol+tf, newest first
             if not unlimited:
-                candidates = candidates[:remaining]
+                reps = reps[:remaining]
             SignalDelivery.objects.bulk_create(
-                [SignalDelivery(user=user, signal=s) for s in candidates],
+                [SignalDelivery(user=user, signal=s) for s in reps],
                 ignore_conflicts=True,
             )
 
@@ -170,7 +175,7 @@ class SignalFeedView(APIView):
         today_ids = SignalDelivery.objects.filter(
             user=user, delivered_at__date=today
         ).values_list("signal_id", flat=True)
-        active = (
+        active = list(
             Signal.objects.filter(
                 id__in=today_ids,
                 service_id__in=followed_ids,  # only strategies you currently follow
@@ -180,6 +185,18 @@ class SignalFeedView(APIView):
             .select_related("symbol", "service")
             .order_by("-generated_at")
         )
+        # Annotate each shown signal with how many followed strategies currently
+        # agree on it (the sibling pool within the feed lookback), for the card's
+        # "N strategies agree" badge.
+        if active:
+            pool = Signal.objects.filter(
+                service_id__in=followed_ids,
+                symbol_id__in=watched_ids,
+                direction__in=[Signal.Direction.BUY, Signal.Direction.SELL],
+                confidence_pct__gte=settings.SIGNAL_MIN_CONFIDENCE,
+                generated_at__gte=now - FEED_LOOKBACK,
+            ).select_related("service")
+            confluence.annotate(active, pool)
 
         # Results history: resolved calls from the strategies this user follows,
         # so they can see which past signals worked out — win or loss. Based on

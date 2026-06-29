@@ -259,6 +259,18 @@ SIGNAL_RULE_CONFIDENCE = env.int("SIGNAL_RULE_CONFIDENCE", default=75)
 # Only surface signals at/above this confidence (Section 19.1 / 20).
 SIGNAL_MIN_CONFIDENCE = env.int("SIGNAL_MIN_CONFIDENCE", default=65)
 
+# Confluence collapse (delivery-side, Option A). The scan stores one signal per
+# (symbol, service, timeframe), so a coin can surface several cards at once — one
+# per strategy. Confluence collapses those to a SINGLE signal per (symbol,
+# timeframe): the direction the most distinct strategies agree on, surfaced only
+# when at least this many concur. The highest-confidence agreeing call is shown,
+# annotated with how many strategies agree.
+#   1  = collapse only (one card per symbol+timeframe; no agreement required)
+#   2+ = require genuine confluence (fewer, higher-conviction signals)
+# Applies to the in-app feed and Telegram delivery only — it reads already-stored
+# signals and never changes generation, so it's fully reversible via this setting.
+SIGNAL_CONFLUENCE_MIN = env.int("SIGNAL_CONFLUENCE_MIN", default=1)
+
 # Rule-based pre-gate: skip the (paid) LLM call when a strategy's basic
 # conditions clearly aren't present (apps/signals/pregate.py). Big cost saver.
 SIGNAL_PREGATE_ENABLED = env.bool("SIGNAL_PREGATE_ENABLED", default=True)
