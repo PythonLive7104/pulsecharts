@@ -308,6 +308,12 @@ SIGNAL_DAILY_QUOTA = {
 # ATR-based stops meaningful. Lower (e.g. ["5m"]) only for high-volume testing.
 SIGNAL_TIMEFRAMES = env.list("SIGNAL_TIMEFRAMES", default=["1h", "4h"])
 
+# Skip crypto signal generation during the weekend window (Fri 21:00 → Sun 21:00
+# UTC, same window used to close forex). Weekend crypto is thin and choppy and
+# backtests far worse — live results show ~35% weekend win-rate vs ~76% on
+# weekdays (Saturday worst at ~27%). On by default; set False to scan crypto 24/7.
+SIGNAL_SKIP_CRYPTO_WEEKEND = env.bool("SIGNAL_SKIP_CRYPTO_WEEKEND", default=True)
+
 # Cap how many symbols a single scan evaluates (controls LLM cost). 0 = all active.
 # TESTING: 3 keeps cost low; raise for production coverage.
 SIGNAL_SCAN_SYMBOL_LIMIT = env.int("SIGNAL_SCAN_SYMBOL_LIMIT", default=3)

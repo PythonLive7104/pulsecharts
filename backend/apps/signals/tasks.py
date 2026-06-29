@@ -96,10 +96,22 @@ def run_scan(symbol_limit: int | None = None, use_pregate: bool | None = None) -
     watched_ids = list(WatchlistItem.objects.values_list("symbol_id", flat=True).distinct())
     if not watched_ids:
         return {"created": 0, "note": "no watched symbols — nothing to scan"}
-    symbols = Symbol.objects.filter(is_active=True, id__in=watched_ids)
+    watched = Symbol.objects.filter(is_active=True, id__in=watched_ids)
     limit = settings.SIGNAL_SCAN_SYMBOL_LIMIT if symbol_limit is None else symbol_limit
     if limit:
-        symbols = symbols[:limit]
+        # The cap caps the LARGE crypto universe (cost control) but must not starve
+        # forex: crypto sorts at sort_order 0..N and forex at 10_000+, so a plain
+        # [:limit] on the merged set silently drops every forex pair once there are
+        # `limit` watched coins. Cap crypto, then always include the small curated
+        # set of watched forex majors (gated by FOREX_ENABLED).
+        crypto = list(watched.filter(asset_class=Symbol.AssetClass.CRYPTO)[:limit])
+        forex = (
+            list(watched.filter(asset_class=Symbol.AssetClass.FOREX))
+            if settings.FOREX_ENABLED else []
+        )
+        symbols = crypto + forex
+    else:
+        symbols = list(watched)
 
     # Dedup: while a strategy has an open (PENDING) call on a symbol+timeframe,
     # don't issue another in the *same* direction — one live call per strategy per
@@ -121,11 +133,16 @@ def run_scan(symbol_limit: int | None = None, use_pregate: bool | None = None) -
     stats = {"gated": 0, "llm_calls": 0, "in_tokens": 0, "out_tokens": 0}
     regime_on = settings.SIGNAL_REGIME_FILTER_ENABLED
     htf_cache: dict[tuple[int, str], str | None] = {}  # (symbol_id, htf) -> trend bias
-    forex_is_open = forex_market_open()  # evaluated once per scan
+    forex_is_open = forex_market_open()  # evaluated once per scan; also our
+    # "is it the weekend window" signal (Fri 21:00 → Sun 21:00 UTC).
     for sym in symbols:
-        # Forex trades ~24/5: skip its symbols on weekends so we don't generate
-        # setups off stale closed-market candles (crypto trades 24/7 — unaffected).
-        if sym.is_forex and not forex_is_open:
+        # Weekend window: forex is always skipped (market closed). Crypto trades
+        # 24/7, but weekend crypto setups backtest far worse — thin liquidity and
+        # chop produce fakeouts that trip stops (live: ~35% weekend win-rate vs
+        # ~76% weekday). So optionally skip crypto over the weekend too. Using the
+        # forex window (not a calendar weekend) also trims the thin Friday-night
+        # session, which underperforms as well.
+        if not forex_is_open and (sym.is_forex or settings.SIGNAL_SKIP_CRYPTO_WEEKEND):
             continue
         for tf in settings.SIGNAL_TIMEFRAMES:
             try:
