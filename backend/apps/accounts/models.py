@@ -68,8 +68,12 @@ class User(AbstractUser):
     # chat that already started the bot (no START button appears the second time),
     # which made deep-link reconnects silently fail. Remembering the chat lets the
     # dashboard reconnect in one click with no Telegram round-trip.
+    #
+    # Defaults to False: the flag is only meaningful once a chat is linked (linking
+    # sets it True). Never trust it alone as "Telegram connected" — use the
+    # telegram_connected property, which also checks chat_id.
     telegram_chat_id = models.CharField(max_length=32, blank=True, default="", db_index=True)
-    telegram_active = models.BooleanField(default=True)
+    telegram_active = models.BooleanField(default=False)
     telegram_link_token = models.CharField(max_length=64, blank=True, default="")
     telegram_link_token_at = models.DateTimeField(null=True, blank=True)
 
