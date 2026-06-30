@@ -320,6 +320,36 @@ DIRECTIONS = {
 EMA_GATE_MODE = "stack50"
 
 
+# Overextension guard (A): block NEW non-breakout entries once price has stretched
+# more than this many ATRs beyond EMA21. In a parabolic blow-off (e.g. a runaway
+# USDJPY leg) the trend gates are MORE satisfied the more extended price gets, so
+# without this the engine keeps re-issuing BUYs straight into the top. Distance is
+# measured as (close - EMA21) / ATR. 0 disables. The live value is set from
+# settings.SIGNAL_OVEREXT_ATR_MULT at startup (SignalsConfig.ready).
+OVEREXT_ATR_MULT = 0.0
+
+
+def is_overextended(ind: dict, direction: str) -> bool:
+    """True if price has stretched more than OVEREXT_ATR_MULT × ATR beyond EMA21 in
+    the trade's direction — a chase entry into an extended move. Returns False when
+    the guard is disabled (mult <= 0) or a needed indicator is missing."""
+    mult = OVEREXT_ATR_MULT
+    if mult <= 0:
+        return False
+    v = _vals(ind, "close", "ema21", "atr")
+    if v is None:
+        return False
+    close, ema21, atr = v
+    if atr <= 0:
+        return False
+    stretch = (close - ema21) / atr  # +ve = above the mean, -ve = below
+    if direction == "BUY":
+        return stretch > mult
+    if direction == "SELL":
+        return -stretch > mult
+    return False
+
+
 def ema_trend_aligned(ind: dict, direction: str) -> bool:
     """Whether `direction` agrees with the EMA structure under EMA_GATE_MODE. No
     non-breakout strategy may emit a signal unless this passes. Returns False if a
@@ -365,6 +395,15 @@ def passes_ema_gate(strategy_slug: str, indicators: dict, direction: str) -> boo
     return ema_trend_aligned(indicators, direction)
 
 
+def passes_overext_gate(strategy_slug: str, indicators: dict, direction: str) -> bool:
+    """Whether `direction` is allowed given how far price has run from the mean.
+    Breakout strategies are exempt — extension is the whole premise of a breakout —
+    so the guard only restrains trend/momentum strategies from chasing a blow-off."""
+    if strategy_slug in EMA_STACK_EXEMPT:
+        return True
+    return not is_overextended(indicators, direction)
+
+
 def candidate_direction(strategy_slug: str, indicators: dict) -> str | None:
     """Cheap directional bias ("BUY"/"SELL"/None) implied by the indicators for a
     strategy — no LLM. Used to detect a trend flip against an open signal.
@@ -377,6 +416,8 @@ def candidate_direction(strategy_slug: str, indicators: dict) -> str | None:
         return None
     direction = fn(indicators)
     if direction and not passes_ema_gate(strategy_slug, indicators, direction):
+        return None
+    if direction and not passes_overext_gate(strategy_slug, indicators, direction):
         return None
     return direction
 

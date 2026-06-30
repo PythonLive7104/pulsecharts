@@ -140,7 +140,35 @@ def run_scan(symbol_limit: int | None = None, use_pregate: bool | None = None) -
         open_dirs[(s["symbol_id"], s["service_id"], s["timeframe"])] = s["direction"]
 
     now = timezone.now()
-    created = scanned = deduped = invalidated = regime_skipped = 0
+
+    # Re-entry cooldown (C): most recent signal time per (symbol, service, timeframe,
+    # direction). Once a call closes the open_dirs dedup no longer applies, so in a
+    # runaway trend the next scan would re-issue the same BUY immediately; this
+    # spaces same-direction re-entries by SIGNAL_REENTRY_COOLDOWN_BARS bars. Keyed
+    # WITH direction so a real flip is never delayed. Only recent rows matter (the
+    # cooldown is a few bars), so the lookup is bounded to the longest possible window.
+    from datetime import timedelta
+
+    from django.db.models import Max
+
+    cooldown_bars = settings.SIGNAL_REENTRY_COOLDOWN_BARS
+    last_sig_at: dict[tuple[int, int, str, str], object] = {}
+    if cooldown_bars > 0:
+        longest_bar = max(
+            (INTERVAL_SECONDS.get(tf, 3600) for tf in settings.SIGNAL_TIMEFRAMES),
+            default=3600,
+        )
+        cutoff = now - timedelta(seconds=longest_bar * cooldown_bars)
+        for s in (
+            Signal.objects.filter(generated_at__gte=cutoff)
+            .values("symbol_id", "service_id", "timeframe", "direction")
+            .annotate(last=Max("generated_at"))
+        ):
+            last_sig_at[
+                (s["symbol_id"], s["service_id"], s["timeframe"], s["direction"])
+            ] = s["last"]
+
+    created = scanned = deduped = cooled = invalidated = regime_skipped = 0
     stats = {"gated": 0, "llm_calls": 0, "in_tokens": 0, "out_tokens": 0}
     regime_on = settings.SIGNAL_REGIME_FILTER_ENABLED
     htf_cache: dict[tuple[int, str], str | None] = {}  # (symbol_id, htf) -> trend bias
@@ -174,6 +202,15 @@ def run_scan(symbol_limit: int | None = None, use_pregate: bool | None = None) -
                     if cand is None or cand == open_dir:
                         deduped += 1
                         continue
+                elif cooldown_bars and cand is not None:
+                    # No open call, but a same-direction one may have just closed.
+                    # Hold off re-issuing for the cooldown window (anti-chase, C).
+                    last = last_sig_at.get((sym.id, svc.id, tf, cand))
+                    if last is not None:
+                        bar_s = INTERVAL_SECONDS.get(tf, 3600)
+                        if (now - last).total_seconds() < cooldown_bars * bar_s:
+                            cooled += 1
+                            continue
                 # Regime filter: trending market (ADX) + higher-timeframe
                 # agreement, before paying for the LLM call. (cand is None means
                 # hybrid mode wouldn't emit anyway; let the engine handle that.)
@@ -227,6 +264,7 @@ def run_scan(symbol_limit: int | None = None, use_pregate: bool | None = None) -
         "scanned": scanned,
         "symbols": len(symbols),
         "deduped": deduped,               # skipped: same-direction call still open (free)
+        "cooled": cooled,                 # skipped: same-direction re-entry within cooldown (free)
         "invalidated": invalidated,       # stale opposite calls closed on a trend flip
         "regime_skipped": regime_skipped,  # skipped: ranging market / HTF disagreement (free)
         "gated": stats["gated"],          # skipped before any LLM call (free)
@@ -237,7 +275,7 @@ def run_scan(symbol_limit: int | None = None, use_pregate: bool | None = None) -
     }
     logger.info(
         "signal scan: created=%(created)d scanned=%(scanned)d deduped=%(deduped)d "
-        "invalidated=%(invalidated)d regime_skipped=%(regime_skipped)d gated=%(gated)d "
+        "cooled=%(cooled)d invalidated=%(invalidated)d regime_skipped=%(regime_skipped)d gated=%(gated)d "
         "llm_calls=%(llm_calls)d tokens=%(tokens_in)d/%(tokens_out)d est_cost=$%(est_cost_usd).5f",
         summary,
     )

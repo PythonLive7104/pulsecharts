@@ -16,3 +16,9 @@ class SignalsConfig(AppConfig):
         mode = getattr(settings, "SIGNAL_EMA_GATE", None)
         if mode:
             pregate.EMA_GATE_MODE = mode
+
+        # Overextension guard (A): apply the env-configured ATR stretch limit to the
+        # module the engine and backtest read, so it's tunable without a deploy.
+        mult = getattr(settings, "SIGNAL_OVEREXT_ATR_MULT", None)
+        if mult is not None:
+            pregate.OVEREXT_ATR_MULT = float(mult)

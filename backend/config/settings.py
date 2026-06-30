@@ -303,6 +303,21 @@ SIGNAL_EMA_SEP_MIN_ATR = env.float("SIGNAL_EMA_SEP_MIN_ATR", default=0.5)
 #   filter200 : close > EMA200 and EMA9 > EMA21
 SIGNAL_EMA_GATE = env("SIGNAL_EMA_GATE", default="stack50")
 
+# Overextension guard (A — apps/signals/pregate.py). Blocks NEW non-breakout
+# entries once price has stretched more than this many ATRs beyond EMA21 — a
+# parabolic blow-off where the trend gates are MAXIMALLY satisfied yet a fresh
+# entry is just chasing the top (the runaway-USDJPY case that kept re-issuing
+# BUYs). Distance = (close − EMA21) / ATR. 0 disables. Breakout strategies are
+# exempt (extension is their premise). ~2.5–3 ATR is "stretched"; lower = stricter.
+SIGNAL_OVEREXT_ATR_MULT = env.float("SIGNAL_OVEREXT_ATR_MULT", default=2.5)
+
+# Re-entry cooldown (C — apps/signals/tasks.py). After a same-direction signal on a
+# (symbol, strategy, timeframe), suppress a fresh one in that direction for this
+# many BARS even once the prior call has CLOSED. Stops a strong trend re-issuing
+# the same BUY on back-to-back scans as each call resolves at TP. 0 disables. A
+# genuine trend flip is never blocked (cooldown is keyed per direction).
+SIGNAL_REENTRY_COOLDOWN_BARS = env.int("SIGNAL_REENTRY_COOLDOWN_BARS", default=3)
+
 # Stop-loss width as ATR multiples, PER ASSET CLASS. The stop is clamped to
 # [floor, cap]×ATR (anchored to the nearest swing pivot in between). Crypto is much
 # more volatile than forex, so a 2×ATR stop was getting wicked out on crypto before

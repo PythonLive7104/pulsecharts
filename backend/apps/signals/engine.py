@@ -14,7 +14,13 @@ import logging
 from django.conf import settings
 
 from .levels import compute_levels
-from .pregate import candidate_direction, confidence_score, passes_ema_gate, passes_pregate
+from .pregate import (
+    candidate_direction,
+    confidence_score,
+    passes_ema_gate,
+    passes_overext_gate,
+    passes_pregate,
+)
 from .prompt import (
     ANNOTATION_SCHEMA,
     ANNOTATE_SYSTEM_PROMPT,
@@ -183,6 +189,10 @@ def generate_signal(
     # Non-breakout signals must agree with the 9/21/200 EMA stack, even when the
     # LLM picked the direction — breakout strategies are exempt (passes_ema_gate).
     if not passes_ema_gate(strategy_slug, indicators, direction):
+        return None
+    # ...and must not be chasing a blow-off: reject extended entries (A), breakouts
+    # exempt. Mirrors the rules-mode guard inside candidate_direction.
+    if not passes_overext_gate(strategy_slug, indicators, direction):
         return None
 
     entry = float(indicators["close"])
