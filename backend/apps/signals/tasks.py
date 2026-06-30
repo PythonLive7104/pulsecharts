@@ -173,7 +173,7 @@ def run_scan(symbol_limit: int | None = None, use_pregate: bool | None = None) -
                 try:
                     sig = generate_signal(
                         sym.ticker, tf, svc.slug, svc.name, svc.strategy_focus, indicators,
-                        use_pregate=use_pregate, stats=stats,
+                        use_pregate=use_pregate, stats=stats, asset_class=sym.asset_class,
                     )
                 except SignalEngineError as exc:
                     # No API key / misconfig — abort the whole scan, it won't recover.
@@ -545,17 +545,20 @@ def run_telegram_push() -> dict:
             if remaining <= 0:
                 continue
 
-        # Dedup at the TRADE grain (symbol, timeframe, direction) — NOT per signal.
-        # The scan stores one Signal per strategy, and confluence.collapse picks a
-        # representative; as more strategies join a setup over successive scans the
-        # rep changes, so a per-signal_id guard re-sent the SAME trade every scan
-        # (and later fired one closure per delivered rep). Skip any group the user
-        # already has an OPEN delivered trade for; it becomes deliverable again only
-        # after the whole group resolves.
-        open_delivered = set(
+        # Dedup at the TRADE grain — (symbol, timeframe, direction, entry_price), so
+        # every strategy firing the SAME setup (they share the entry) counts as one
+        # trade. Keyed on what was SENT within the lookback window, NOT on the rep
+        # still being PENDING: a fast first rep that hit TP/SL (or got invalidated)
+        # was dropping its group from a PENDING-only guard, letting a sibling rep
+        # re-send the same trade (the "two signals per symbol" bug). One send per
+        # trade per lookback; a genuinely new trade has a different entry, so it
+        # still gets through.
+        delivered_trades = set(
             TelegramDelivery.objects.filter(
-                user=user, signal__outcome=Signal.Outcome.PENDING,
-            ).values_list("signal__symbol_id", "signal__timeframe", "signal__direction")
+                user=user, sent_at__gte=now - TELEGRAM_LOOKBACK,
+            ).values_list(
+                "signal__symbol_id", "signal__timeframe", "signal__direction", "signal__entry_price",
+            )
         )
         candidates = list(
             Signal.objects.filter(
@@ -569,23 +572,23 @@ def run_telegram_push() -> dict:
             .select_related("symbol", "service")
         )
         # Collapse by confluence: one card per (symbol, timeframe), surfaced only
-        # when enough strategies agree. Drop groups already delivered & still open,
-        # then send oldest-first so the quota fills chronologically.
+        # when enough strategies agree. Drop trades already sent in the window, then
+        # send oldest-first so the quota fills chronologically.
         reps = [
             r for r in confluence.collapse(candidates)
-            if (r.symbol_id, r.timeframe, r.direction) not in open_delivered
+            if (r.symbol_id, r.timeframe, r.direction, r.entry_price) not in delivered_trades
         ]
         reps.sort(key=lambda s: s.generated_at)
         if not unlimited:
             reps = reps[:remaining]
 
         for sig in reps:
-            key = (sig.symbol_id, sig.timeframe, sig.direction)
-            if key in open_delivered:  # guard against a duplicate within this run
+            key = (sig.symbol_id, sig.timeframe, sig.direction, sig.entry_price)
+            if key in delivered_trades:  # guard against a duplicate within this run
                 continue
             if telegram.send_message(user.telegram_chat_id, format_signal_for_telegram(sig)):
                 TelegramDelivery.objects.create(user=user, signal=sig)
-                open_delivered.add(key)
+                delivered_trades.add(key)
                 sent += 1
 
     summary = {"sent": sent, "closed": closed}

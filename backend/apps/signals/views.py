@@ -146,16 +146,20 @@ class SignalFeedView(APIView):
         # confluence first, so a coin firing on several strategies costs one
         # delivery (one card) rather than flooding the quota with near-duplicates.
         if followed_ids and (unlimited or remaining > 0):
-            # Dedup deliveries at the TRADE grain (symbol, timeframe, direction), NOT
-            # per signal_id. The scan stores one signal per strategy and collapse
-            # picks a representative, so as strategies joined a setup over successive
-            # opens a new rep was delivered each time — duplicate cards + wasted quota
-            # for the SAME trade. Skip any group the user already has an open delivery
-            # for; it's deliverable again only once the group resolves.
-            open_delivered = set(
+            # Dedup deliveries at the TRADE grain (symbol, timeframe, direction,
+            # entry_price), NOT per signal_id. The scan stores one signal per strategy
+            # and collapse picks a representative, so as strategies joined a setup a
+            # new rep was delivered each time — duplicate cards + wasted quota for the
+            # SAME trade. Keyed on what was delivered in the lookback window (not on
+            # the rep still being PENDING — a fast rep that resolved would otherwise
+            # let a sibling re-deliver the same trade). A genuinely new trade has a
+            # different entry, so it still comes through.
+            delivered_trades = set(
                 SignalDelivery.objects.filter(
-                    user=user, signal__outcome=Signal.Outcome.PENDING,
-                ).values_list("signal__symbol_id", "signal__timeframe", "signal__direction")
+                    user=user, delivered_at__gte=now - FEED_LOOKBACK,
+                ).values_list(
+                    "signal__symbol_id", "signal__timeframe", "signal__direction", "signal__entry_price",
+                )
             )
             candidates = list(
                 Signal.objects.filter(
@@ -171,7 +175,7 @@ class SignalFeedView(APIView):
             )
             reps = [
                 r for r in confluence.collapse(candidates)  # one per symbol+tf, newest first
-                if (r.symbol_id, r.timeframe, r.direction) not in open_delivered
+                if (r.symbol_id, r.timeframe, r.direction, r.entry_price) not in delivered_trades
             ]
             if not unlimited:
                 reps = reps[:remaining]
@@ -198,13 +202,14 @@ class SignalFeedView(APIView):
             .select_related("symbol", "service")
             .order_by("-generated_at")
         )
-        # One card per (symbol, timeframe, direction): pre-fix duplicate deliveries
-        # (and any future edge) must not render the same trade as multiple cards.
-        # Keeps the newest signal per group; the agreement count is filled by
+        # One card per TRADE (symbol, timeframe, direction, entry_price): pre-fix
+        # duplicate deliveries (and any future edge) must not render the same trade as
+        # multiple cards, while two genuinely distinct trades on the same pair stay
+        # separate. Keeps the newest signal per trade; agreement count is filled by
         # annotate() below from the full sibling pool.
         seen, deduped = set(), []
         for s in active:
-            key = (s.symbol_id, s.timeframe, s.direction)
+            key = (s.symbol_id, s.timeframe, s.direction, s.entry_price)
             if key not in seen:
                 seen.add(key)
                 deduped.append(s)

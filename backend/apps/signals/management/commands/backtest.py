@@ -60,11 +60,14 @@ def _record(bucket, res):
     bucket["mae"] += res["mae_pct"]
 
 
-def _outcome(direction, snap, future):
+def _outcome(direction, snap, future, asset_class="crypto"):
     """Deterministic levels + walk for a setup; None if degenerate or unresolved."""
+    floor = settings.SIGNAL_ATR_STOP_FLOOR.get(asset_class) or settings.SIGNAL_ATR_STOP_FLOOR["crypto"]
+    cap = settings.SIGNAL_ATR_STOP_CAP.get(asset_class) or settings.SIGNAL_ATR_STOP_CAP["crypto"]
     levels = compute_levels(
         direction, float(snap["close"]), float(snap["atr"]),
         float(snap["swing_high"]), float(snap["swing_low"]),
+        atr_stop_mult=floor, max_atr_mult=cap,
     )
     if levels is None:
         return None
@@ -161,7 +164,7 @@ class Command(BaseCommand):
                     continue
                 if len(candles) < MIN_CANDLES + 5:
                     continue
-                self._run_series(sym.ticker, tf, candles, services, rb, llm, budget)
+                self._run_series(sym.ticker, tf, candles, services, rb, llm, budget, sym.asset_class)
                 series += 1
                 self.stdout.write(f"  · {sym.ticker} {tf}", ending="\r")
             if llm_on and budget["left"] <= 0:
@@ -173,7 +176,7 @@ class Command(BaseCommand):
         else:
             self._report(rb, series)
 
-    def _run_series(self, ticker, tf, candles, services, rb, llm, budget):
+    def _run_series(self, ticker, tf, candles, services, rb, llm, budget, asset_class="crypto"):
         n = len(candles)
         threshold = settings.SIGNAL_MIN_CONFIDENCE
         free_at = {svc.slug: MIN_CANDLES for svc in services}
@@ -195,7 +198,7 @@ class Command(BaseCommand):
                 if direction not in ("BUY", "SELL"):
                     continue
 
-                res = _outcome(direction, snap, future)
+                res = _outcome(direction, snap, future, asset_class)
                 if res is None:
                     free_at[svc.slug] = i + 1
                     continue
@@ -232,7 +235,7 @@ class Command(BaseCommand):
                 budget["taken"] += 1
                 if ldir != direction:
                     budget["disagree"] += 1
-                lres = _outcome(ldir, snap, future)
+                lres = _outcome(ldir, snap, future, asset_class)
                 if lres is not None:
                     _record(llm[svc.slug], lres)
 

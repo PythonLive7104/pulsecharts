@@ -37,19 +37,24 @@ def compute_levels(
     atr: float,
     swing_high: float,
     swing_low: float,
+    *,
+    atr_stop_mult: float = ATR_STOP_MULT,
+    max_atr_mult: float = MAX_ATR_MULT,
 ) -> dict | None:
     """Return SL / TP1–4 / risk-reward / dollar fields, or None if no valid stop.
 
-    The stop sits at least ATR_STOP_MULT×ATR beyond entry (past routine noise),
+    The stop sits at least `atr_stop_mult`×ATR beyond entry (past routine noise),
     is widened to the swing extreme when that's further, but is clamped to at most
-    MAX_ATR_MULT×ATR so a distant 50-bar extreme can't produce an absurd stop:
+    `max_atr_mult`×ATR so a distant extreme can't produce an absurd stop. The
+    multipliers are asset-aware (crypto wider than forex — see settings) so a more
+    volatile market gets more room without re-introducing the old blown-out stops:
 
-    BUY  SL = clamp(swing_low·(1-buffer),  entry - 3.0·ATR, entry - 2.0·ATR)
-    SELL SL = clamp(swing_high·(1+buffer), entry + 2.0·ATR, entry + 3.0·ATR)
+    BUY  SL = clamp(swing_low·(1-buffer),  entry - cap·ATR, entry - floor·ATR)
+    SELL SL = clamp(swing_high·(1+buffer), entry + floor·ATR, entry + cap·ATR)
     risk_distance = |entry - SL|;  TPn = entry ± multiple·risk_distance.
     """
-    atr_floor = ATR_STOP_MULT * atr  # minimum stop distance (beyond routine noise)
-    atr_cap = MAX_ATR_MULT * atr     # maximum stop distance (don't let a far swing blow it out)
+    atr_floor = atr_stop_mult * atr  # minimum stop distance (beyond routine noise)
+    atr_cap = max_atr_mult * atr     # maximum stop distance (don't let a far swing blow it out)
     if direction == "BUY":
         swing_stop = swing_low * (1 - SWING_BUFFER)
         # widen toward the swing if it's beyond the floor, but never past the cap

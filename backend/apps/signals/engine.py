@@ -114,9 +114,18 @@ def generate_annotation(symbol, timeframe, strategy_name, strategy_focus, direct
     return _parse_llm_json(resp, "annotation"), getattr(resp, "usage", None)
 
 
+def _stop_mults(asset_class):
+    """ATR (floor, cap) stop multipliers for this asset class — crypto wider than
+    forex (settings.SIGNAL_ATR_STOP_FLOOR/CAP). Falls back to the crypto band for
+    any unknown class."""
+    floor = settings.SIGNAL_ATR_STOP_FLOOR.get(asset_class) or settings.SIGNAL_ATR_STOP_FLOOR["crypto"]
+    cap = settings.SIGNAL_ATR_STOP_CAP.get(asset_class) or settings.SIGNAL_ATR_STOP_CAP["crypto"]
+    return floor, cap
+
+
 def generate_signal(
     symbol, timeframe, strategy_slug, strategy_name, strategy_focus, indicators,
-    *, min_confidence=None, use_pregate=None, stats=None,
+    *, min_confidence=None, use_pregate=None, stats=None, asset_class="crypto",
 ):
     """Full pipeline. Returns a Signal field dict, or None if no qualifying setup.
 
@@ -141,18 +150,20 @@ def generate_signal(
         bump("gated")
         return None
 
+    stop_mults = _stop_mults(asset_class)
+
     # Rules mode: fully deterministic, no LLM call at all. The rule picks the
     # direction + confidence and the reasoning is templated. Zero per-signal cost,
     # which is what makes lower-timeframe / high-volume scanning economical.
     if settings.SIGNAL_ENGINE_MODE == "rules":
         return _rules_signal(
-            symbol, timeframe, strategy_slug, strategy_name, strategy_focus, indicators
+            symbol, timeframe, strategy_slug, strategy_name, strategy_focus, indicators, stop_mults
         )
 
     # Hybrid mode: the rules pick the direction and the LLM only annotates it.
     if settings.SIGNAL_ENGINE_MODE == "hybrid":
         return _hybrid_signal(
-            symbol, timeframe, strategy_slug, strategy_name, strategy_focus, indicators, bump
+            symbol, timeframe, strategy_slug, strategy_name, strategy_focus, indicators, bump, stop_mults
         )
 
     # --- llm_gate (default): the LLM decides direction + confidence ---
@@ -178,6 +189,7 @@ def generate_signal(
     levels = compute_levels(
         direction, entry, float(indicators["atr"]),
         float(indicators["swing_high"]), float(indicators["swing_low"]),
+        atr_stop_mult=stop_mults[0], max_atr_mult=stop_mults[1],
     )
     if levels is None:
         return None
@@ -292,7 +304,7 @@ def _rule_reasoning(strategy_slug, strategy_name, direction, indicators):
     return reasoning, invalidation
 
 
-def _rules_signal(symbol, timeframe, strategy_slug, strategy_name, strategy_focus, indicators):
+def _rules_signal(symbol, timeframe, strategy_slug, strategy_name, strategy_focus, indicators, stop_mults):
     """Pure rule-based signal — no LLM. Direction + confidence come from the
     deterministic rule (the edge the backtest measures); reasoning is templated."""
     direction = candidate_direction(strategy_slug, indicators)
@@ -303,6 +315,7 @@ def _rules_signal(symbol, timeframe, strategy_slug, strategy_name, strategy_focu
     levels = compute_levels(
         direction, entry, float(indicators["atr"]),
         float(indicators["swing_high"]), float(indicators["swing_low"]),
+        atr_stop_mult=stop_mults[0], max_atr_mult=stop_mults[1],
     )
     if levels is None:
         return None
@@ -319,7 +332,7 @@ def _rules_signal(symbol, timeframe, strategy_slug, strategy_name, strategy_focu
     }
 
 
-def _hybrid_signal(symbol, timeframe, strategy_slug, strategy_name, strategy_focus, indicators, bump):
+def _hybrid_signal(symbol, timeframe, strategy_slug, strategy_name, strategy_focus, indicators, bump, stop_mults):
     """Rule-based generates, LLM annotates.
 
     Direction comes from the deterministic rule (candidate_direction) — the same
@@ -336,6 +349,7 @@ def _hybrid_signal(symbol, timeframe, strategy_slug, strategy_name, strategy_foc
     levels = compute_levels(
         direction, entry, float(indicators["atr"]),
         float(indicators["swing_high"]), float(indicators["swing_low"]),
+        atr_stop_mult=stop_mults[0], max_atr_mult=stop_mults[1],
     )
     if levels is None:
         return None

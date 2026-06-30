@@ -295,6 +295,22 @@ SIGNAL_ADX_MIN = env.float("SIGNAL_ADX_MIN", default=25.0)
 #   filter200 : close > EMA200 and EMA9 > EMA21
 SIGNAL_EMA_GATE = env("SIGNAL_EMA_GATE", default="stack50")
 
+# Stop-loss width as ATR multiples, PER ASSET CLASS. The stop is clamped to
+# [floor, cap]×ATR (anchored to the nearest swing pivot in between). Crypto is much
+# more volatile than forex, so a 2×ATR stop was getting wicked out on crypto before
+# setups resolved — crypto gets a WIDER band. Forex keeps the tighter band (its
+# original problem was stops that were too WIDE, now fixed). Wider stop ⇒ larger R
+# ⇒ TPs are a bigger % move, so TP2 becomes the realistic target and TP3 fills less
+# — an accepted trade-off for fewer premature stop-outs. Tune live via env.
+SIGNAL_ATR_STOP_FLOOR = {
+    "crypto": env.float("SIGNAL_ATR_FLOOR_CRYPTO", default=3.0),  # was 2.0
+    "forex": env.float("SIGNAL_ATR_FLOOR_FOREX", default=2.0),
+}
+SIGNAL_ATR_STOP_CAP = {
+    "crypto": env.float("SIGNAL_ATR_CAP_CRYPTO", default=4.5),  # was 3.0
+    "forex": env.float("SIGNAL_ATR_CAP_FOREX", default=3.0),
+}
+
 # Optional: your model's price per 1M tokens, so each scan can log estimated $.
 # Leave 0 to skip the dollar estimate (token counts are still logged).
 OPENAI_PRICE_IN_PER_1M = env.float("OPENAI_PRICE_IN_PER_1M", default=0.0)
