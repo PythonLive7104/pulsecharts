@@ -20,6 +20,7 @@ from .pregate import (
     passes_ema_gate,
     passes_overext_gate,
     passes_pregate,
+    passes_rsi_gate,
 )
 from .prompt import (
     ANNOTATION_SCHEMA,
@@ -193,6 +194,9 @@ def generate_signal(
     # ...and must not be chasing a blow-off: reject extended entries (A), breakouts
     # exempt. Mirrors the rules-mode guard inside candidate_direction.
     if not passes_overext_gate(strategy_slug, indicators, direction):
+        return None
+    # ...nor entering at an RSI extreme (B): no buying overbought / selling oversold.
+    if not passes_rsi_gate(strategy_slug, indicators, direction):
         return None
 
     entry = float(indicators["close"])

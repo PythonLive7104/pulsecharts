@@ -22,3 +22,11 @@ class SignalsConfig(AppConfig):
         mult = getattr(settings, "SIGNAL_OVEREXT_ATR_MULT", None)
         if mult is not None:
             pregate.OVEREXT_ATR_MULT = float(mult)
+
+        # Overbought/oversold cap (B): same env-driven wiring as the other gates.
+        ob = getattr(settings, "SIGNAL_RSI_OVERBOUGHT", None)
+        if ob is not None:
+            pregate.RSI_OVERBOUGHT = float(ob)
+        osold = getattr(settings, "SIGNAL_RSI_OVERSOLD", None)
+        if osold is not None:
+            pregate.RSI_OVERSOLD = float(osold)

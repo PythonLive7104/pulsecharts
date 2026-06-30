@@ -350,6 +350,30 @@ def is_overextended(ind: dict, direction: str) -> bool:
     return False
 
 
+# Overbought/oversold cap (B): the distance guard (A) measures stretch from EMA21,
+# which shrinks on a sustained staircase climb once the EMA catches up — so it can't
+# see a "buy at RSI 72 near the high" chase. RSI does. Reject BUY above RSI_OVERBOUGHT
+# and SELL below RSI_OVERSOLD. 0 disables a bound. Live values set from
+# settings.SIGNAL_RSI_OVERBOUGHT / _OVERSOLD at startup (SignalsConfig.ready).
+RSI_OVERBOUGHT = 0.0
+RSI_OVERSOLD = 0.0
+
+
+def is_rsi_extreme(ind: dict, direction: str) -> bool:
+    """True if entering `direction` would mean buying into overbought RSI or selling
+    into oversold RSI. Returns False if the relevant bound is disabled (0) or RSI is
+    missing."""
+    rsi = ind.get("rsi")
+    if rsi is None:
+        return False
+    rsi = float(rsi)
+    if direction == "BUY":
+        return RSI_OVERBOUGHT > 0 and rsi > RSI_OVERBOUGHT
+    if direction == "SELL":
+        return RSI_OVERSOLD > 0 and rsi < RSI_OVERSOLD
+    return False
+
+
 def ema_trend_aligned(ind: dict, direction: str) -> bool:
     """Whether `direction` agrees with the EMA structure under EMA_GATE_MODE. No
     non-breakout strategy may emit a signal unless this passes. Returns False if a
@@ -404,6 +428,15 @@ def passes_overext_gate(strategy_slug: str, indicators: dict, direction: str) ->
     return not is_overextended(indicators, direction)
 
 
+def passes_rsi_gate(strategy_slug: str, indicators: dict, direction: str) -> bool:
+    """Whether `direction` is allowed given RSI extremes — no buying into overbought
+    or selling into oversold. Breakout strategies are exempt (they fire on momentum
+    thrusts that legitimately push RSI to an extreme)."""
+    if strategy_slug in EMA_STACK_EXEMPT:
+        return True
+    return not is_rsi_extreme(indicators, direction)
+
+
 def candidate_direction(strategy_slug: str, indicators: dict) -> str | None:
     """Cheap directional bias ("BUY"/"SELL"/None) implied by the indicators for a
     strategy — no LLM. Used to detect a trend flip against an open signal.
@@ -418,6 +451,8 @@ def candidate_direction(strategy_slug: str, indicators: dict) -> str | None:
     if direction and not passes_ema_gate(strategy_slug, indicators, direction):
         return None
     if direction and not passes_overext_gate(strategy_slug, indicators, direction):
+        return None
+    if direction and not passes_rsi_gate(strategy_slug, indicators, direction):
         return None
     return direction
 

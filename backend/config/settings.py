@@ -311,6 +311,18 @@ SIGNAL_EMA_GATE = env("SIGNAL_EMA_GATE", default="stack50")
 # exempt (extension is their premise). ~2.5–3 ATR is "stretched"; lower = stricter.
 SIGNAL_OVEREXT_ATR_MULT = env.float("SIGNAL_OVEREXT_ATR_MULT", default=2.5)
 
+# Overbought/oversold cap (B — apps/signals/pregate.py). Rejects NEW non-breakout
+# entries at an RSI extreme: no BUY above _OVERBOUGHT, no SELL below _OVERSOLD — i.e.
+# don't enter right as momentum is most stretched. This catches the sustained-trend
+# chase (e.g. USDJPY BUY at RSI 72 near the high) that the distance guard (A) can't
+# see, because once the EMA21 catches up to a staircase climb the ATR-stretch shrinks
+# below A's threshold. Trade-off: in a strong trend RSI can sit >70 for many bars, so
+# a low cap also skips some valid continuation — raise toward 78–80 to ride trends
+# harder, lower toward 70 to refuse all overbought entries. 0 disables a bound;
+# breakout strategies are exempt.
+SIGNAL_RSI_OVERBOUGHT = env.float("SIGNAL_RSI_OVERBOUGHT", default=70.0)
+SIGNAL_RSI_OVERSOLD = env.float("SIGNAL_RSI_OVERSOLD", default=30.0)
+
 # Re-entry cooldown (C — apps/signals/tasks.py). After a same-direction signal on a
 # (symbol, strategy, timeframe), suppress a fresh one in that direction for this
 # many BARS even once the prior call has CLOSED. Stops a strong trend re-issuing
