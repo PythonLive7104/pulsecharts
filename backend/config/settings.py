@@ -283,10 +283,18 @@ SIGNAL_PREGATE_ENABLED = env.bool("SIGNAL_PREGATE_ENABLED", default=True)
 # higher-timeframe trend. Keeps trend strategies out of chop. Runs before the
 # LLM call, so it also saves tokens.
 SIGNAL_REGIME_FILTER_ENABLED = env.bool("SIGNAL_REGIME_FILTER_ENABLED", default=True)
-# 25 (was 20): 20 is the borderline of "trending" and let ranging/chop through —
-# the main source of the weekend range-bound stop-outs. 25 is the standard line
-# for a genuine trend, so signals only fire when price is actually moving.
-SIGNAL_ADX_MIN = env.float("SIGNAL_ADX_MIN", default=25.0)
+# 28 (was 25→20): pushed above the standard 25 trend line to keep trades out of
+# ranging markets, where both tight and wide stops bleed (the user wants few/no
+# range trades). Raise toward 30 to be stricter; lower if volume drops too far.
+SIGNAL_ADX_MIN = env.float("SIGNAL_ADX_MIN", default=28.0)
+
+# Chop filter (apps/signals/tasks._regime_ok): minimum EMA9–EMA21 separation as a
+# multiple of ATR. In a range the fast EMAs bunch/flatten; demanding a real gap
+# rejects those setups. 0 disables. 0.5 = moderately strict; raise for fewer range
+# trades, lower if it starves volume. Breakout strategies are exempt (squeeze fires
+# with bunched EMAs by design). Can't be backtested — the backtest skips the regime
+# filter — so tune it live over the observation window.
+SIGNAL_EMA_SEP_MIN_ATR = env.float("SIGNAL_EMA_SEP_MIN_ATR", default=0.5)
 
 # EMA-alignment gate every non-breakout signal must pass (apps/signals/pregate.py).
 # Switchable without a deploy; defaults to the backtest winner (stack50).

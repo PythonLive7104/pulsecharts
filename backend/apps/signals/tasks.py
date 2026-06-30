@@ -26,7 +26,7 @@ from .engine import SignalEngineError, generate_signal
 from .evaluate import outcome_label, walk
 from .indicators import compute_indicators
 from .models import Signal, SignalService, TelegramDelivery, UserSignalSubscription
-from .pregate import candidate_direction
+from .pregate import EMA_STACK_EXEMPT, candidate_direction
 from .quota import signal_quota_for
 
 logger = logging.getLogger("signals.tasks")
@@ -65,13 +65,24 @@ def _htf_direction(sym, htf: str, cache: dict) -> str | None:
     return direction
 
 
-def _regime_ok(sym, tf: str, direction: str, indicators: dict, htf_cache: dict) -> bool:
-    """True if the market is trending (ADX) and the higher timeframe agrees with
-    `direction`. Fails open on a higher-timeframe fetch error so a transient API
-    hiccup doesn't silence the whole feed."""
+def _regime_ok(sym, tf: str, direction: str, indicators: dict, htf_cache: dict,
+               strategy_slug: str | None = None) -> bool:
+    """True if the market is trending (ADX), not chopping (EMA separation), and the
+    higher timeframe agrees with `direction`. Fails open on a higher-timeframe fetch
+    error so a transient API hiccup doesn't silence the whole feed."""
     adx = indicators.get("adx")
     if adx is None or adx < settings.SIGNAL_ADX_MIN:
         return False
+    # Chop filter: in a range the fast EMAs bunch together / flatten. Require EMA9 &
+    # EMA21 to be separated by at least SIGNAL_EMA_SEP_MIN_ATR × ATR — a flat/tangled
+    # pair means a range, where both tight and wide stops bleed. Set the env to 0 to
+    # disable. Breakout strategies are EXEMPT: they legitimately fire from a squeeze,
+    # where the EMAs are bunched by design.
+    sep_min = settings.SIGNAL_EMA_SEP_MIN_ATR
+    if sep_min and strategy_slug not in EMA_STACK_EXEMPT:
+        ema9, ema21, atr = indicators.get("ema9"), indicators.get("ema21"), indicators.get("atr")
+        if ema9 is not None and ema21 is not None and atr and abs(ema9 - ema21) < sep_min * atr:
+            return False  # EMAs bunched → ranging, skip
     htf = _HTF_MAP.get(tf)
     if not htf:
         return True  # no higher frame configured — ADX strength alone
@@ -166,7 +177,7 @@ def run_scan(symbol_limit: int | None = None, use_pregate: bool | None = None) -
                 # Regime filter: trending market (ADX) + higher-timeframe
                 # agreement, before paying for the LLM call. (cand is None means
                 # hybrid mode wouldn't emit anyway; let the engine handle that.)
-                if regime_on and cand is not None and not _regime_ok(sym, tf, cand, indicators, htf_cache):
+                if regime_on and cand is not None and not _regime_ok(sym, tf, cand, indicators, htf_cache, svc.slug):
                     regime_skipped += 1
                     continue
                 scanned += 1
