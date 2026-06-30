@@ -226,7 +226,14 @@ class SignalFeedView(APIView):
         # so they can see which past signals worked out — win or loss. Based on
         # followed strategies (not lazy delivery), so a fast call that hit its TP
         # before the feed was opened still shows up. Newest resolution first.
-        resolved = (
+        # One row per TRADE, not per strategy: the scan stores one signal per
+        # strategy, so a single trade resolved as N identical rows (e.g. XAU 1h SELL
+        # "stopped out" ×6). Dedup on (symbol, tf, direction, entry) — strategies
+        # firing the same setup share the entry/stop, while a later DISTINCT trade on
+        # the same pair has a different entry, so it stays a separate row. (The
+        # per-strategy win rates in SignalAccuracyView are unaffected — different
+        # endpoint.) Over-fetch before the dedup so we still fill ~50 trades.
+        resolved_pool = (
             Signal.objects.filter(
                 service_id__in=followed_ids,
                 symbol_id__in=watched_ids,
@@ -236,8 +243,17 @@ class SignalFeedView(APIView):
             )
             .exclude(outcome=Signal.Outcome.PENDING)
             .select_related("symbol", "service")
-            .order_by("-resolved_at")[:50]
+            .order_by("-resolved_at")[:250]
         )
+        seen_trades, resolved = set(), []
+        for s in resolved_pool:
+            key = (s.symbol_id, s.timeframe, s.direction, s.entry_price)
+            if key in seen_trades:
+                continue
+            seen_trades.add(key)
+            resolved.append(s)
+            if len(resolved) >= 50:
+                break
 
         return Response(
             {
