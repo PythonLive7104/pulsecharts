@@ -232,12 +232,14 @@ export default function SignalsPage() {
           <p className="muted">Follow a strategy to receive its signals.</p>
           {isPro && (
             <button
-              className="btn-ghost sb-create"
+              className="sb-create"
               onClick={() => setShowBuilder(true)}
               disabled={(customQuota?.remaining ?? 0) <= 0}
             >
-              ＋ Create your own strategy
-              {customQuota && ` (${customQuota.remaining}/${customQuota.limit} left)`}
+              <span className="sb-create-main">＋ Create your own strategy</span>
+              {customQuota && (
+                <span className="sb-create-count">{customQuota.remaining}/{customQuota.limit} left</span>
+              )}
             </button>
           )}
           {followError && <p className="error">{followError}</p>}

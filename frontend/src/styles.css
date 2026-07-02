@@ -811,10 +811,29 @@ a.brand:hover { text-decoration: none; }
 }
 .strategy-del:hover { opacity: 1; border-color: var(--danger, #e5484d); color: var(--danger, #e5484d); }
 .sb-create {
-  width: 100%; margin: 6px 0 4px; border: 1px dashed var(--border); border-radius: 10px;
-  padding: 10px; font-size: 13px;
+  display: flex; align-items: center; justify-content: center; gap: 8px;
+  width: 100%; margin: 10px 0 14px; padding: 12px 14px;
+  border: none; border-radius: 10px; cursor: pointer;
+  font-size: 14px; font-weight: 700; color: #fff;
+  background: var(--accent);
+  box-shadow: 0 2px 10px rgba(37, 99, 235, 0.28);
+  transition: filter 0.15s ease, transform 0.04s ease, box-shadow 0.15s ease;
 }
-.sb-create:disabled { opacity: 0.5; cursor: not-allowed; }
+.sb-create:hover { filter: brightness(1.08); box-shadow: 0 4px 16px rgba(37, 99, 235, 0.36); }
+.sb-create:active { transform: translateY(1px); }
+.sb-create-main { white-space: nowrap; }
+.sb-create-count {
+  font-size: 11px; font-weight: 700; line-height: 1;
+  padding: 3px 8px; border-radius: 999px;
+  background: rgba(255, 255, 255, 0.22); color: #fff;
+}
+.sb-create:disabled {
+  background: var(--bg-elev); color: var(--muted, #888);
+  border: 1px solid var(--border); box-shadow: none; cursor: not-allowed; font-weight: 600;
+}
+.sb-create:disabled .sb-create-count {
+  background: var(--border); color: var(--muted, #888);
+}
 
 /* Strategy builder modal (reuses .reminder-backdrop / .reminder-card) */
 .strategy-builder { max-width: 460px; text-align: left; }
