@@ -1,11 +1,17 @@
 """Billing endpoints (Section 9).
 
-POST /api/billing/checkout/  — create a Dodo checkout session (auth required).
-POST /api/billing/webhook/   — Dodo -> us, updates Subscription + plan_tier.
+POST /api/billing/checkout/  — start a Paystack payment (auth required).
+POST /api/billing/webhook/   — Paystack -> us, grants the plan on charge.success.
+GET  /api/billing/history/   — the user's subscription records.
+
+Billing model: one-time payments that grant 30 days of access (apps/billing/paystack.py).
+Access lapses automatically at plan_expiry (accounts.plans.plan_key + the daily
+trim sweep), so no cancel/renewal webhooks are needed.
 """
 
 import json
 import logging
+from datetime import timedelta
 
 from django.conf import settings
 from django.utils import timezone
@@ -17,10 +23,19 @@ from rest_framework.views import APIView
 from apps.accounts.models import PlanTier, Subscription
 from apps.common.email import send_payment_confirmation_email
 
-from .dodo import DodoError, create_checkout_session, verify_webhook_signature
+from .paystack import (
+    PaystackError,
+    create_checkout_session,
+    plan_amount_cents,
+    verify_transaction,
+    verify_webhook_signature,
+)
 from .serializers import SubscriptionSerializer
 
 logger = logging.getLogger("billing")
+
+# Days of access granted per successful one-time payment.
+GRANT_DAYS = 31
 
 
 class SubscriptionHistoryView(ListAPIView):
@@ -34,7 +49,7 @@ class SubscriptionHistoryView(ListAPIView):
 
 
 class CheckoutView(APIView):
-    """Start a premium subscription checkout."""
+    """Start a premium payment."""
 
     def post(self, request):
         plan = request.data.get("plan", "pro")
@@ -50,8 +65,8 @@ class CheckoutView(APIView):
                 success_url=f"{settings.FRONTEND_URL}/billing/success",
                 cancel_url=f"{settings.FRONTEND_URL}/billing/cancel",
             )
-        except (DodoError, NotImplementedError) as exc:
-            # Premium not live yet (Section 16) — surface a clean "coming soon".
+        except (PaystackError, NotImplementedError) as exc:
+            # Billing not configured yet — surface a clean "coming soon".
             return Response(
                 {"detail": str(exc), "billing_live": False},
                 status=status.HTTP_503_SERVICE_UNAVAILABLE,
@@ -60,7 +75,7 @@ class CheckoutView(APIView):
 
 
 class WebhookView(APIView):
-    """Dodo Payments webhook. Public endpoint, authenticated by signature."""
+    """Paystack webhook. Public endpoint, authenticated by signature."""
 
     permission_classes = [permissions.AllowAny]
     authentication_classes = []
@@ -70,7 +85,6 @@ class WebhookView(APIView):
             return Response(
                 {"detail": "Invalid signature."}, status=status.HTTP_400_BAD_REQUEST
             )
-
         try:
             event = json.loads(request.body)
         except json.JSONDecodeError:
@@ -79,18 +93,12 @@ class WebhookView(APIView):
             )
 
         self._handle_event(event)
+        # Always 200 on a well-formed, signed event so Paystack doesn't retry a
+        # payload we've deliberately ignored.
         return Response({"received": True})
 
-    # Dodo event types (Standard Webhooks). `payment.succeeded` is what Dodo
-    # actually fires on a successful subscription charge (initial + renewals) —
-    # it's the event that grants/extends access. The subscription.* events are
-    # kept for lifecycle changes (and in case the account also emits them).
-    _GRANT = {"payment.succeeded", "subscription.active", "subscription.renewed"}
-    _CANCEL = {"subscription.cancelled", "subscription.canceled"}
-    _REVOKE = {"subscription.expired", "subscription.failed", "subscription.on_hold"}
-
-    def _resolve_user(self, event_type, data):
-        """Link an event to a user via checkout metadata, falling back to email."""
+    def _resolve_user(self, data):
+        """Link an event to a user via metadata.user_id, falling back to email."""
         from apps.accounts.models import User
 
         metadata = data.get("metadata") or {}
@@ -104,99 +112,74 @@ class WebhookView(APIView):
             user = User.objects.filter(email__iexact=email).first()
             if user:
                 return user
-        logger.warning("Webhook %s: could not resolve user (user_id=%s)", event_type, user_id)
+        logger.warning("Paystack webhook: could not resolve user (user_id=%s)", user_id)
         return None
 
-    def _resolve_plan(self, data, metadata):
-        """Determine the plan from checkout metadata, falling back to the product
-        id — which on a payment event may sit in a product_cart line item."""
-        from .dodo import product_tier_map
-
-        if metadata.get("plan"):
-            return metadata["plan"]
-        product_id = data.get("product_id")
-        if not product_id:
-            cart = data.get("product_cart") or []
-            if cart:
-                product_id = (cart[0] or {}).get("product_id")
-        return product_tier_map().get(product_id, "pro")
-
     def _handle_event(self, event: dict) -> None:
-        """Update billing state from a Dodo event. Idempotent on subscription_id."""
-        from datetime import timedelta
-
-        from django.utils.dateparse import parse_datetime
-
-        event_type = event.get("type", "")
+        """Grant access on a verified successful charge. Idempotent on the payment
+        reference, so a re-sent webhook never double-grants or errors."""
+        event_type = event.get("event", "")
         data = event.get("data", {}) or {}
-        user = self._resolve_user(event_type, data)
+
+        if event_type != "charge.success":
+            logger.info("Ignoring Paystack event: %s", event_type)
+            return
+
+        reference = data.get("reference", "")
+        # Re-confirm the payment server-side before granting (guards against a
+        # spoofed/replayed event moving a user to a paid tier for free).
+        try:
+            verified = verify_transaction(reference)
+        except PaystackError as exc:
+            logger.error("Paystack verify failed for %s: %s", reference, exc)
+            return
+        if verified.get("status") != "success":
+            logger.warning("Paystack charge %s not successful: %s", reference, verified.get("status"))
+            return
+
+        # Trust the verified record over the webhook body for money-sensitive fields.
+        metadata = verified.get("metadata") or data.get("metadata") or {}
+        user = self._resolve_user({**verified, "metadata": metadata})
         if user is None:
             return
 
-        if event_type in self._GRANT:
-            metadata = data.get("metadata") or {}
-            plan = self._resolve_plan(data, metadata)
-            tier = PlanTier.STARTER if plan == "starter" else PlanTier.PRO
-            next_billing = data.get("next_billing_date") or ""
-            renewal = parse_datetime(next_billing) if next_billing else None
-            if renewal is None:
-                # payment.succeeded carries no billing date — default a month out
-                # so access isn't indefinite; the next charge's event extends it.
-                renewal = timezone.now() + timedelta(days=31)
-            ref = data.get("subscription_id") or data.get("payment_id") or ""
-            customer_id = (data.get("customer") or {}).get("customer_id", "")
-
-            Subscription.objects.update_or_create(
-                user=user,
-                payment_ref=ref,
-                defaults={
-                    "tier": tier,
-                    "status": Subscription.Status.ACTIVE,
-                    "renewal_date": renewal,
-                },
+        plan = metadata.get("plan") or "pro"
+        if plan not in {"starter", "pro"}:
+            plan = "pro"
+        # Confirm the amount actually paid matches the plan we're about to grant.
+        expected = plan_amount_cents(plan)
+        paid = int(verified.get("amount") or 0)
+        if paid < expected:
+            logger.warning(
+                "Paystack %s: paid %s < expected %s for plan %s — not granting",
+                reference, paid, expected, plan,
             )
-            user.plan_tier = tier
-            user.plan_expiry = renewal
-            if customer_id:
-                user.dodo_customer_id = customer_id
-            user.save(update_fields=["plan_tier", "plan_expiry", "dodo_customer_id"])
-            logger.info("Webhook %s: %s -> %s (expiry=%s)", event_type, user.email, tier, renewal)
+            return
 
-            # Top the user's watchlist + followed strategies up to the new plan's
-            # defaults (idempotent — only adds what's missing, the mirror image of
-            # the trim-on-downgrade below). Never let it break webhook processing.
-            try:
-                from apps.accounts.onboarding import provision_default_setup
+        tier = PlanTier.STARTER if plan == "starter" else PlanTier.PRO
+        renewal = timezone.now() + timedelta(days=GRANT_DAYS)
 
-                provision_default_setup(user)
-            except Exception:
-                logger.exception("Upgrade provisioning failed for %s", user.email)
+        Subscription.objects.update_or_create(
+            user=user,
+            payment_ref=reference,
+            defaults={
+                "tier": tier,
+                "status": Subscription.Status.ACTIVE,
+                "renewal_date": renewal,
+            },
+        )
+        user.plan_tier = tier
+        user.plan_expiry = renewal
+        user.save(update_fields=["plan_tier", "plan_expiry"])
+        logger.info("Paystack charge.success: %s -> %s (expiry=%s)", user.email, tier, renewal)
 
-            # Confirmation email only on the actual payment event — subscription.*
-            # grant events can fire alongside it for the same purchase, and we
-            # don't want to email the user twice for one charge.
-            if event_type == "payment.succeeded":
-                send_payment_confirmation_email(
-                    to=user.email, plan_label=tier.label, renewal=renewal
-                )
+        # Top the user's watchlist + followed strategies up to the new plan's
+        # defaults (idempotent). Never let it break webhook processing.
+        try:
+            from apps.accounts.onboarding import provision_default_setup
 
-        elif event_type in self._CANCEL:
-            # Cancelled but not yet expired: keep access until the paid period
-            # ends — plan_key() drops them to Free automatically at plan_expiry.
-            Subscription.objects.filter(user=user).update(status=Subscription.Status.CANCELED)
-            logger.info("Webhook %s: %s subscription cancelled (access until expiry)", event_type, user.email)
+            provision_default_setup(user)
+        except Exception:
+            logger.exception("Upgrade provisioning failed for %s", user.email)
 
-        elif event_type in self._REVOKE:
-            Subscription.objects.filter(user=user).update(status=Subscription.Status.EXPIRED)
-            user.plan_tier = PlanTier.FREE
-            user.plan_expiry = timezone.now()
-            user.save(update_fields=["plan_tier", "plan_expiry"])
-            # Drop saved watchlist symbols / chart layouts back to the Free caps
-            # right away (the daily sweep catches silent lapses too).
-            from apps.accounts.tasks import trim_to_plan_limits
-
-            trim_to_plan_limits(user)
-            logger.info("Webhook %s: %s downgraded to Free", event_type, user.email)
-
-        else:
-            logger.info("Unhandled Dodo event type: %s", event_type)
+        send_payment_confirmation_email(to=user.email, plan_label=tier.label, renewal=renewal)

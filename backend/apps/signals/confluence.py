@@ -18,8 +18,18 @@ from __future__ import annotations
 from collections import defaultdict
 
 from django.conf import settings
+from django.db.models import Q
 
 from .models import Signal
+
+
+def deliverable_q() -> Q:
+    """Filter for the delivery confidence floor. Built-in strategies must clear
+    ``settings.SIGNAL_MIN_CONFIDENCE``; custom (user-created) strategies BYPASS it —
+    the user deliberately built the rule, so every qualifying signal from it should
+    surface regardless of the generic conviction score. Use as a positional arg to
+    ``.filter()`` alongside the other kwargs."""
+    return Q(confidence_pct__gte=settings.SIGNAL_MIN_CONFIDENCE) | Q(service__owner__isnull=False)
 
 
 def confluence_min() -> int:

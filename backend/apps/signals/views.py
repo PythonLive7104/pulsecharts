@@ -294,11 +294,11 @@ class SignalFeedView(APIView):
             )
             candidates = list(
                 Signal.objects.filter(
+                    confluence.deliverable_q(),  # custom strategies bypass the conf floor
                     service_id__in=followed_ids,
                     symbol_id__in=watched_ids,
                     direction__in=[Signal.Direction.BUY, Signal.Direction.SELL],
                     outcome=Signal.Outcome.PENDING,
-                    confidence_pct__gte=settings.SIGNAL_MIN_CONFIDENCE,
                     generated_at__gte=now - FEED_LOOKBACK,
                 )
                 .select_related("service")
@@ -350,10 +350,10 @@ class SignalFeedView(APIView):
         # "N strategies agree" badge.
         if active:
             pool = Signal.objects.filter(
+                confluence.deliverable_q(),  # custom strategies bypass the conf floor
                 service_id__in=followed_ids,
                 symbol_id__in=watched_ids,
                 direction__in=[Signal.Direction.BUY, Signal.Direction.SELL],
-                confidence_pct__gte=settings.SIGNAL_MIN_CONFIDENCE,
                 generated_at__gte=now - FEED_LOOKBACK,
             ).select_related("service")
             confluence.annotate(active, pool)
@@ -371,10 +371,10 @@ class SignalFeedView(APIView):
         # endpoint.) Over-fetch before the dedup so we still fill ~50 trades.
         resolved_pool = (
             Signal.objects.filter(
+                confluence.deliverable_q(),  # custom strategies bypass the conf floor
                 service_id__in=followed_ids,
                 symbol_id__in=watched_ids,
                 direction__in=[Signal.Direction.BUY, Signal.Direction.SELL],
-                confidence_pct__gte=settings.SIGNAL_MIN_CONFIDENCE,
                 resolved_at__gte=now - RESULTS_LOOKBACK,
             )
             .exclude(outcome=Signal.Outcome.PENDING)

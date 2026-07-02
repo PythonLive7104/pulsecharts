@@ -187,15 +187,19 @@ FOREX_ENABLED = env.bool("FOREX_ENABLED", default=True)
 # keeps request volume low against the public endpoint.
 FOREX_POLL_INTERVAL = env.float("FOREX_POLL_INTERVAL", default=15.0)
 
-# --- Dodo Payments (Section 3, 15) ----------------------------------------
-
-DODO_PAYMENTS_API_KEY = env("DODO_PAYMENTS_API_KEY", default="")
-DODO_PAYMENTS_WEBHOOK_SECRET = env("DODO_PAYMENTS_WEBHOOK_SECRET", default="")
-# "test" hits test.dodopayments.com (no real charges); "live" hits live mode.
-DODO_PAYMENTS_MODE = env("DODO_PAYMENTS_MODE", default="test")
-# Dodo product IDs per paid plan (pdt_… from the Dodo dashboard).
-DODO_PRICE_STARTER = env("DODO_PRICE_STARTER", default="")
-DODO_PRICE_PRO = env("DODO_PRICE_PRO", default="")
+# --- Paystack (payment provider) ------------------------------------------
+# One-time payments in USD that grant 30 days of access (see apps/billing/paystack.py).
+# Test keys never move real money; flip PAYSTACK_MODE=live once verified.
+PAYSTACK_MODE = env("PAYSTACK_MODE", default="test")  # test | live
+_PAYSTACK_LIVE = PAYSTACK_MODE.lower() == "live"
+# Key names match what's in backend/.env (TEST_/LIVE_ pairs).
+PAYSTACK_SECRET_KEY = (
+    env("LIVE_SECRET_KEY", default="") if _PAYSTACK_LIVE else env("TEST_SECRET_KEY", default="")
+)
+PAYSTACK_PUBLIC_KEY = (
+    env("LIVE_PUBLIC_KEY", default="") if _PAYSTACK_LIVE else env("TEST_PUBLIC_KEY", default="")
+)
+PAYSTACK_CURRENCY = env("PAYSTACK_CURRENCY", default="USD")
 
 # --- Transactional email (Resend) -----------------------------------------
 # Used for password-reset links and payment confirmations. Email is optional:

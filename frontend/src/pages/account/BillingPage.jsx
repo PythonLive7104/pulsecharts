@@ -1,5 +1,5 @@
 // Plan & Billing — current plan, expiry, and the three-tier upgrade grid
-// (Section 12, 16). Dodo billing isn't live yet (merchant onboarding), so
+// (Section 12, 16). Paystack billing: if it isn't configured (no secret key),
 // upgrade returns a clean "coming soon" — surfaced here without looking broken.
 import { useEffect, useState } from "react";
 import { useStore } from "../../store/useStore";

@@ -1,4 +1,4 @@
-// Checkout cancelled (Dodo `cancel_url` → /billing/cancel). No charge was made.
+// Checkout cancelled (Paystack redirect → /billing/cancel). No charge was made.
 import { Link } from "react-router-dom";
 import Logo from "../components/Logo";
 

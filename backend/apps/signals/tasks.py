@@ -598,7 +598,6 @@ def run_telegram_push() -> dict:
     User = get_user_model()
     now = timezone.now()
     today = now.date()
-    min_conf = settings.SIGNAL_MIN_CONFIDENCE
 
     sent = 0
     for user in User.objects.filter(telegram_active=True).exclude(telegram_chat_id=""):
@@ -649,11 +648,11 @@ def run_telegram_push() -> dict:
         )
         candidates = list(
             Signal.objects.filter(
+                confluence.deliverable_q(),  # custom strategies bypass the conf floor
                 service_id__in=followed,
                 symbol_id__in=watched,
                 direction__in=[Signal.Direction.BUY, Signal.Direction.SELL],
                 outcome=Signal.Outcome.PENDING,
-                confidence_pct__gte=min_conf,
                 generated_at__gte=now - TELEGRAM_LOOKBACK,
             )
             .select_related("symbol", "service")

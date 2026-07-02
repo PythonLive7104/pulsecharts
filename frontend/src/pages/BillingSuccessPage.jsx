@@ -1,4 +1,4 @@
-// Post-payment landing (Dodo `return_url` → /billing/success). The plan is
+// Post-payment landing (Paystack `callback_url` → /billing/success). The plan is
 // granted by the webhook, not this redirect, so the webhook may not have landed
 // the instant the user gets back here. We poll entitlements for a short window
 // and confirm once the upgrade shows up, instead of bouncing to the landing page.
