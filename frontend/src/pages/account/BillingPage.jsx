@@ -24,6 +24,12 @@ export default function BillingPage() {
   const [editingCode, setEditingCode] = useState(false);
   const [newCode, setNewCode] = useState("");
 
+  // Admin Pro promo code (self-upgrade to Pro to trial premium)
+  const [promoCode, setPromoCode] = useState("");
+  const [promoMsg, setPromoMsg] = useState(null);
+  const [promoOk, setPromoOk] = useState(false);
+  const [promoBusy, setPromoBusy] = useState(false);
+
   function loadRef() {
     api.referral().then(setRef).catch(() => {});
   }
@@ -67,6 +73,24 @@ export default function BillingPage() {
     }
   }
 
+  async function redeemPromo() {
+    setPromoMsg(null);
+    setPromoOk(false);
+    setPromoBusy(true);
+    try {
+      const res = await api.redeemPromoCode(promoCode);
+      await loadEntitlements();
+      const until = res?.plan_expiry ? new Date(res.plan_expiry).toLocaleDateString() : null;
+      setPromoOk(true);
+      setPromoMsg(`Pro unlocked${until ? ` until ${until}` : ""} — enjoy the premium features!`);
+      setPromoCode("");
+    } catch (e) {
+      setPromoMsg(e.message);
+    } finally {
+      setPromoBusy(false);
+    }
+  }
+
   async function upgrade(plan) {
     setBusy(true);
     setNotice(null);
@@ -104,6 +128,32 @@ export default function BillingPage() {
             ? "You have full access to your plan's indicators, strategies and saved layouts."
             : "Live charts, all timeframes, and SMA/EMA/Volume are free forever. Upgrade for advanced indicators, more strategies and a bigger watchlist."}
         </p>
+      </div>
+
+      <div className="card">
+        <h2>Have a Pro access code?</h2>
+        <p className="muted">
+          Got an invite code? Redeem it to unlock <strong>Pro</strong> and trial the premium
+          features — including building your own AI strategies.
+        </p>
+        <div className="promo-redeem">
+          <input
+            className="promo-input"
+            type="text"
+            placeholder="Enter your code"
+            value={promoCode}
+            onChange={(e) => { setPromoCode(e.target.value); setPromoMsg(null); }}
+            onKeyDown={(e) => { if (e.key === "Enter" && promoCode.trim()) redeemPromo(); }}
+          />
+          <button
+            className="btn-primary"
+            onClick={redeemPromo}
+            disabled={promoBusy || !promoCode.trim()}
+          >
+            {promoBusy ? "Redeeming…" : "Redeem"}
+          </button>
+        </div>
+        {promoMsg && <p className={promoOk ? "success" : "error"}>{promoMsg}</p>}
       </div>
 
       <div className="card">

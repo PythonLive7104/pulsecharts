@@ -201,6 +201,14 @@ PAYSTACK_PUBLIC_KEY = (
 )
 PAYSTACK_CURRENCY = env("PAYSTACK_CURRENCY", default="USD")
 
+# --- Admin Pro promo code -------------------------------------------------
+# A code the admin shares so specific users can self-upgrade to Pro for a fixed
+# window (to trial premium features) from the Plan & Billing page. Empty = the
+# promo redeem endpoint is disabled. One redemption per user per code value —
+# rotating ADMIN_PRO_CODE lets a user redeem again (a fresh window).
+ADMIN_PRO_CODE = env("ADMIN_PRO_CODE", default="")
+ADMIN_PRO_DAYS = env.int("ADMIN_PRO_DAYS", default=30)
+
 # --- Transactional email (Resend) -----------------------------------------
 # Used for password-reset links and payment confirmations. Email is optional:
 # with no RESEND_API_KEY the send helpers log and no-op, so local/dev runs work

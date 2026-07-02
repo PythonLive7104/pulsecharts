@@ -628,6 +628,12 @@ a.brand:hover { text-decoration: none; }
   border-radius: 6px; padding: 8px 10px; font-size: 13px;
 }
 .referral-redeem { display: flex; flex-wrap: wrap; gap: 10px; }
+.promo-redeem { display: flex; gap: 8px; margin-top: 8px; }
+.promo-input {
+  flex: 1; min-width: 0; background: var(--bg); border: 1px solid var(--border); color: var(--text);
+  border-radius: 6px; padding: 9px 12px; font-size: 14px; letter-spacing: 0.02em;
+}
+.promo-input:focus { outline: none; border-color: var(--accent); }
 .notice { margin-top: 12px; }
 
 @media (max-width: 700px) {
@@ -643,6 +649,8 @@ a.brand:hover { text-decoration: none; }
   .referral-share { flex-wrap: wrap; }
   .referral-share input { flex: 1 1 100%; min-width: 0; }
   .referral-redeem { flex-direction: column; }
+  .promo-redeem { flex-wrap: wrap; }
+  .promo-input { flex: 1 1 100%; }
   .referral-redeem .btn-primary { width: 100%; }
 }
 

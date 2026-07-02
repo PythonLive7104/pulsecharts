@@ -166,6 +166,66 @@ class ReferralRedeemView(APIView):
         })
 
 
+class RedeemPromoCodeView(APIView):
+    """POST /api/me/referral/redeem-code/ {code} — redeem the admin Pro promo code.
+
+    Grants Pro for settings.ADMIN_PRO_DAYS days so invited users can trial premium.
+    One redemption per user per code value (settings.ADMIN_PRO_CODE); rotating the
+    code opens a fresh window. Not tied to credits or the referral graph.
+    """
+
+    def post(self, request):
+        from datetime import timedelta
+
+        from django.utils import timezone
+
+        from apps.accounts.plans import PRO
+
+        admin_code = (settings.ADMIN_PRO_CODE or "").strip()
+        if not admin_code:
+            return Response(
+                {"detail": "No promo code is active right now."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        entered = (request.data.get("code") or "").strip()
+        if not entered:
+            return Response({"detail": "Enter a code."}, status=status.HTTP_400_BAD_REQUEST)
+        if entered.upper() != admin_code.upper():
+            return Response({"detail": "That code isn't valid."}, status=status.HTTP_400_BAD_REQUEST)
+
+        user = request.user
+        # One grant per code value — don't let the same code be re-redeemed to stack days.
+        if user.pro_promo_code_used and user.pro_promo_code_used.upper() == admin_code.upper():
+            return Response(
+                {"detail": "You've already redeemed this code."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        now = timezone.now()
+        # Extend from the current expiry if still active, otherwise start fresh.
+        base = user.plan_expiry if (user.plan_expiry and user.plan_expiry > now) else now
+        user.plan_tier = PRO
+        user.plan_expiry = base + timedelta(days=settings.ADMIN_PRO_DAYS)
+        user.pro_promo_code_used = admin_code
+        user.save(update_fields=["plan_tier", "plan_expiry", "pro_promo_code_used"])
+
+        # Top watchlist + followed strategies up to Pro defaults (idempotent).
+        try:
+            from .onboarding import provision_default_setup
+
+            provision_default_setup(user)
+        except Exception:
+            logger.exception("Promo upgrade provisioning failed for %s", user.email)
+
+        logger.info("Promo code redeemed: %s -> Pro until %s", user.email, user.plan_expiry)
+        return Response({
+            "plan_tier": user.plan_tier,
+            "plan_expiry": user.plan_expiry,
+            "days": settings.ADMIN_PRO_DAYS,
+        })
+
+
 class TelegramStatusView(APIView):
     """GET /api/me/telegram/ — connection status + deep link to connect.
 

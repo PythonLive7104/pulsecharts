@@ -6,7 +6,7 @@
 import { Suspense } from "react";
 import { Canvas } from "@react-three/fiber";
 import { Environment, Lightformer } from "@react-three/drei";
-import CryptoCoin from "./CryptoCoin";
+import AiRobot from "./AiRobot";
 import FloatingParticles from "./FloatingParticles";
 import WireframeTerrain from "./WireframeTerrain";
 
@@ -27,7 +27,7 @@ export default function ThreeScene() {
       <directionalLight position={[0, 5, 5]} intensity={2.2} color="#ffffff" />
 
       <Suspense fallback={null}>
-        <CryptoCoin />
+        <AiRobot />
         <FloatingParticles />
         <WireframeTerrain />
         {/* procedural reflections — no external HDR */}

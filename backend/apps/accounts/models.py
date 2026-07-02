@@ -83,6 +83,10 @@ class User(AbstractUser):
     # Earnings (whole USD) from people who signed up with this user's own code;
     # redeemable toward a plan once it reaches the plan's price.
     referral_credits = models.PositiveIntegerField(default=0)
+    # The admin Pro-promo code this user has already redeemed (settings.ADMIN_PRO_CODE
+    # at redeem time). Guards one grant per code value — if the admin rotates the
+    # code, the stored value differs and the user can redeem the new one.
+    pro_promo_code_used = models.CharField(max_length=64, blank=True, default="")
 
     USERNAME_FIELD = "email"
     REQUIRED_FIELDS = []
