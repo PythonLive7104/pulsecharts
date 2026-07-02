@@ -11,22 +11,37 @@ from datetime import timedelta
 
 from django.conf import settings
 from django.db import IntegrityError
+from django.db.models import Q
 from django.utils import timezone
+from django.utils.text import slugify
 from rest_framework import generics, status
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
+from apps.accounts.plans import PRO, plan_key
 from apps.watchlists.models import WatchlistItem, watchlist_limit_for
 
 from . import confluence
-from .models import Signal, SignalDelivery, SignalService, UserSignalSubscription
-from .quota import signal_quota_for, strategies_allowed_for
+from .engine import SignalEngineError
+from .models import (
+    Signal,
+    SignalDelivery,
+    SignalService,
+    StrategyCreationLog,
+    UserSignalSubscription,
+)
+from .quota import (
+    custom_strategy_quota_for,
+    signal_quota_for,
+    strategies_allowed_for,
+)
 from .serializers import (
     SignalSerializer,
     SignalServiceSerializer,
     SubscriptionSerializer,
 )
 from .stats import accuracy_stats
+from .strategy_builder import StrategyBuildError, build_rule_from_text
 
 # How far back the feed will consider undelivered signals.
 FEED_LOOKBACK = timedelta(days=2)
@@ -34,9 +49,121 @@ FEED_LOOKBACK = timedelta(days=2)
 RESULTS_LOOKBACK = timedelta(days=7)
 
 
-class SignalServiceListView(generics.ListAPIView):
-    queryset = SignalService.objects.filter(is_active=True)
-    serializer_class = SignalServiceSerializer
+def _visible_services(user):
+    """Active built-in strategies plus this user's own custom strategies. Other
+    users' custom strategies are never listed."""
+    qs = SignalService.objects.filter(is_active=True)
+    if user and user.is_authenticated:
+        return qs.filter(Q(owner__isnull=True) | Q(owner=user))
+    return qs.filter(owner__isnull=True)
+
+
+def _unique_custom_slug(user, name: str) -> str:
+    import secrets
+
+    base = f"u{user.id}-{slugify(name) or 'strategy'}"[:70]
+    slug = base
+    while SignalService.objects.filter(slug=slug).exists():
+        slug = f"{base}-{secrets.token_hex(2)}"
+    return slug[:80]
+
+
+class SignalServiceListView(APIView):
+    """GET  /api/signal-services/  → visible strategies + the user's custom-strategy quota.
+    POST /api/signal-services/  → create a custom strategy from a plain-English sentence
+    (Pro-only, rolling-30-day creation cap)."""
+
+    def get(self, request):
+        services = _visible_services(request.user).order_by("owner_id", "name")
+        data = SignalServiceSerializer(services, many=True, context={"request": request}).data
+        return Response({
+            "services": data,
+            "custom_quota": custom_strategy_quota_for(request.user),
+        })
+
+    def post(self, request):
+        user = request.user
+        if plan_key(user) != PRO:
+            return Response(
+                {"detail": "Creating your own strategies is a Pro feature. Upgrade to build one."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+        quota = custom_strategy_quota_for(user)
+        if quota["remaining"] <= 0:
+            return Response(
+                {"detail": (
+                    f"You've used all {quota['limit']} custom strategies for this period. "
+                    "Deleting one doesn't free a slot — a slot opens 30 days after each creation."
+                ), "custom_quota": quota},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+        try:
+            built = build_rule_from_text(request.data.get("text", ""))
+        except StrategyBuildError as exc:
+            return Response({"detail": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        except SignalEngineError:
+            return Response(
+                {"detail": "The strategy builder is unavailable right now. Try again shortly."},
+                status=status.HTTP_503_SERVICE_UNAVAILABLE,
+            )
+
+        name = (request.data.get("name") or built["name"]).strip()[:80] or "Custom strategy"
+        service = SignalService.objects.create(
+            owner=user,
+            name=name,
+            slug=_unique_custom_slug(user, name),
+            description=built["description"],
+            strategy_type="custom",
+            rule_config=built["rule_config"],
+            is_active=True,
+        )
+        StrategyCreationLog.objects.create(user=user)  # append-only: never refunded
+        # Auto-follow so signals start flowing immediately (bypasses the follow cap —
+        # it's the user's own strategy).
+        UserSignalSubscription.objects.get_or_create(user=user, service=service)
+        return Response(
+            {
+                "service": SignalServiceSerializer(service, context={"request": request}).data,
+                "summary": built["summary"],
+                "custom_quota": custom_strategy_quota_for(user),
+            },
+            status=status.HTTP_201_CREATED,
+        )
+
+
+class CustomStrategyPreviewView(APIView):
+    """POST /api/signal-services/preview/ → interpret a sentence into a rule WITHOUT
+    saving or counting quota, so the user can confirm before creating."""
+
+    def post(self, request):
+        if plan_key(request.user) != PRO:
+            return Response(
+                {"detail": "Creating your own strategies is a Pro feature."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+        try:
+            built = build_rule_from_text(request.data.get("text", ""))
+        except StrategyBuildError as exc:
+            return Response({"detail": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        except SignalEngineError:
+            return Response(
+                {"detail": "The strategy builder is unavailable right now. Try again shortly."},
+                status=status.HTTP_503_SERVICE_UNAVAILABLE,
+            )
+        return Response({
+            "name": built["name"],
+            "description": built["description"],
+            "summary": built["summary"],
+            "rule_config": built["rule_config"],
+        })
+
+
+class CustomStrategyDeleteView(generics.DestroyAPIView):
+    """DELETE /api/signal-services/{id}/ → delete OWN custom strategy (cascades its
+    signals + subscription). Does not refund the creation quota."""
+
+    def get_queryset(self):
+        return SignalService.objects.filter(owner=self.request.user)
 
 
 class SubscriptionListCreateView(generics.ListCreateAPIView):
@@ -68,6 +195,10 @@ class SubscriptionListCreateView(generics.ListCreateAPIView):
             )
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
+        # Can't follow someone else's custom strategy (built-in = owner None, or your own).
+        svc = serializer.validated_data["service"]
+        if svc.owner_id is not None and svc.owner_id != user.id:
+            return Response({"detail": "Strategy not found."}, status=status.HTTP_404_NOT_FOUND)
         try:
             serializer.save(user=request.user)
         except IntegrityError:

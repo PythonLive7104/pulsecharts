@@ -12,7 +12,13 @@ from apps.market_data.models import Symbol
 
 
 class SignalService(models.Model):
-    """An algorithmic strategy ("signal service") users can follow (13.2)."""
+    """An algorithmic strategy ("signal service") users can follow (13.2).
+
+    Built-in strategies have ``owner=None`` and are dispatched by ``slug`` to the
+    hardcoded rules in ``pregate``. User-created (Pro) strategies have an ``owner``
+    and a declarative ``rule_config`` evaluated generically by ``strategy_builder``
+    — see ``pregate.candidate_direction_for_service``.
+    """
 
     name = models.CharField(max_length=80)
     slug = models.SlugField(max_length=80, unique=True)
@@ -22,11 +28,46 @@ class SignalService(models.Model):
     strategy_type = models.CharField(max_length=40, blank=True, default="")
     is_active = models.BooleanField(default=True)
 
+    # Custom (user-created) strategies. owner=None => built-in system strategy.
+    owner = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        null=True,
+        blank=True,
+        related_name="custom_strategies",
+    )
+    # Declarative rule for custom strategies (strategy_builder schema); None for
+    # built-in strategies (which run hardcoded Python keyed by slug).
+    rule_config = models.JSONField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True, null=True)
+
     class Meta:
         ordering = ["name"]
 
     def __str__(self):
         return self.name
+
+    @property
+    def is_custom(self) -> bool:
+        return self.owner_id is not None
+
+
+class StrategyCreationLog(models.Model):
+    """Append-only record of each custom-strategy creation, used to enforce the
+    rolling-30-day creation cap. Deliberately NOT deleted when the strategy is
+    deleted — the cap is on *creating* strategies, not on how many are active, so
+    deleting one never refunds a slot."""
+
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="strategy_creations"
+    )
+    created_at = models.DateTimeField(auto_now_add=True, db_index=True)
+
+    class Meta:
+        indexes = [models.Index(fields=["user", "created_at"])]
+
+    def __str__(self):
+        return f"{self.user_id} created a strategy @ {self.created_at:%Y-%m-%d}"
 
 
 class Signal(models.Model):

@@ -799,6 +799,39 @@ a.brand:hover { text-decoration: none; }
 .strategy-info strong { font-size: 14px; color: var(--text-strong); }
 .strategy-info .muted { font-size: 12px; }
 .strategy button { white-space: nowrap; }
+.strategy-info strong { display: flex; align-items: center; gap: 6px; }
+.strategy-badge {
+  font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.03em;
+  padding: 1px 6px; border-radius: 999px; background: var(--accent); color: #fff;
+}
+.strategy-actions { display: flex; align-items: center; gap: 6px; flex-shrink: 0; }
+.strategy-del {
+  border: 1px solid var(--border); background: transparent; color: var(--text);
+  border-radius: 8px; padding: 6px 8px; cursor: pointer; line-height: 1; opacity: 0.7;
+}
+.strategy-del:hover { opacity: 1; border-color: var(--danger, #e5484d); color: var(--danger, #e5484d); }
+.sb-create {
+  width: 100%; margin: 6px 0 4px; border: 1px dashed var(--border); border-radius: 10px;
+  padding: 10px; font-size: 13px;
+}
+.sb-create:disabled { opacity: 0.5; cursor: not-allowed; }
+
+/* Strategy builder modal (reuses .reminder-backdrop / .reminder-card) */
+.strategy-builder { max-width: 460px; text-align: left; }
+.strategy-builder h2 { margin: 0 0 8px; font-size: 20px; color: var(--text-strong); }
+.sb-text, .sb-name {
+  width: 100%; box-sizing: border-box; padding: 10px; border: 1px solid var(--border);
+  border-radius: 8px; background: var(--bg); color: var(--text); font-size: 14px; font-family: inherit;
+}
+.sb-text { resize: vertical; }
+.sb-label { display: block; font-size: 12px; color: var(--muted, #888); margin: 12px 0 4px; }
+.sb-preview { margin-top: 10px; }
+.sb-summary {
+  margin: 0; padding: 10px; border-radius: 8px; background: var(--bg-elev);
+  border: 1px solid var(--border); font-size: 13px; line-height: 1.5; color: var(--text);
+}
+.sb-disclaimer { font-size: 11px; color: var(--muted, #888); margin: 12px 0 0; }
+.sb-quota { font-size: 12px; text-align: center; margin: 10px 0 0; }
 
 .feed { flex: 1; min-width: 0; }
 .feed-head { display: flex; align-items: center; justify-content: space-between; }

@@ -134,6 +134,7 @@ def _stop_mults(asset_class):
 def generate_signal(
     symbol, timeframe, strategy_slug, strategy_name, strategy_focus, indicators,
     *, min_confidence=None, use_pregate=None, stats=None, asset_class="crypto",
+    rule_config=None,
 ):
     """Full pipeline. Returns a Signal field dict, or None if no qualifying setup.
 
@@ -143,6 +144,8 @@ def generate_signal(
 
     `stats` (optional dict) accumulates: gated, llm_calls, in_tokens, out_tokens.
     `use_pregate` overrides settings.SIGNAL_PREGATE_ENABLED for this call.
+    `rule_config` (set for custom/user strategies) takes a deterministic rule path,
+    bypassing the pre-gate and the LLM regardless of SIGNAL_ENGINE_MODE.
     """
     def bump(key, n=1):
         if stats is not None:
@@ -151,6 +154,10 @@ def generate_signal(
     # Need ATR + swings to build the card.
     if indicators.get("atr") in (None, 0) or indicators.get("close") in (None, 0):
         return None
+
+    # Custom (user-created) strategy: deterministic rule eval, no pre-gate, no LLM.
+    if rule_config:
+        return _custom_signal(strategy_name, rule_config, indicators, _stop_mults(asset_class))
 
     # Cheap rule-based pre-gate — skips the paid LLM call on obvious non-setups.
     pregate_on = settings.SIGNAL_PREGATE_ENABLED if use_pregate is None else use_pregate
@@ -345,6 +352,37 @@ def _rules_signal(symbol, timeframe, strategy_slug, strategy_name, strategy_focu
 
     confidence = confidence_score(direction, indicators) or settings.SIGNAL_RULE_CONFIDENCE
     reasoning, invalidation = _rule_reasoning(strategy_slug, strategy_name, direction, indicators)
+    return {
+        "direction": direction,
+        "confidence_pct": confidence,
+        "entry_price": entry,
+        "reasoning": reasoning,
+        "invalidation": invalidation,
+        **levels,
+    }
+
+
+def _custom_signal(strategy_name, rule_config, indicators, stop_mults):
+    """Signal for a user-created strategy: the user's rule picks the direction, levels
+    and confidence reuse the shared math, and the reasoning lists the conditions that
+    fired. Deterministic — no pre-gate, no LLM, no system quality gates."""
+    from .strategy_builder import describe_match, evaluate_rule_config
+
+    direction = evaluate_rule_config(rule_config, indicators)
+    if direction not in ("BUY", "SELL"):
+        return None
+
+    entry = float(indicators["close"])
+    levels = compute_levels(
+        direction, entry, float(indicators["atr"]),
+        float(indicators["swing_high"]), float(indicators["swing_low"]),
+        atr_stop_mult=stop_mults[0], max_atr_mult=stop_mults[1],
+    )
+    if levels is None:
+        return None
+
+    confidence = confidence_score(direction, indicators) or settings.SIGNAL_RULE_CONFIDENCE
+    reasoning, invalidation = describe_match(strategy_name, rule_config, indicators, direction)
     return {
         "direction": direction,
         "confidence_pct": confidence,

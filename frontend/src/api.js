@@ -134,6 +134,12 @@ export const api = {
 
   // --- trading signals (v2) ---
   signalServices: () => request("/signal-services/"),
+  previewStrategy: (text) =>
+    request("/signal-services/preview/", { method: "POST", body: { text } }),
+  createStrategy: (text, name) =>
+    request("/signal-services/", { method: "POST", body: { text, name } }),
+  deleteStrategy: (id) =>
+    request(`/signal-services/${id}/`, { method: "DELETE" }),
   signalSubscriptions: () => request("/me/signal-subscriptions/"),
   followService: (serviceId) =>
     request("/me/signal-subscriptions/", { method: "POST", body: { service_id: serviceId } }),

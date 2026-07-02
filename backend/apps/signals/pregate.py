@@ -517,6 +517,18 @@ def candidate_direction(strategy_slug: str, indicators: dict) -> str | None:
     return direction
 
 
+def candidate_direction_for_service(service, indicators: dict) -> str | None:
+    """Directional bias for any service. Custom (user-created) strategies carry a
+    ``rule_config`` and are evaluated generically, BYPASSING the system quality gates
+    (EMA stack / overext / RSI / Fib) — the user's own conditions ARE the strategy.
+    Built-in strategies keep the gated slug dispatch (candidate_direction)."""
+    cfg = getattr(service, "rule_config", None)
+    if cfg:
+        from .strategy_builder import evaluate_rule_config
+        return evaluate_rule_config(cfg, indicators)
+    return candidate_direction(service.slug, indicators)
+
+
 def confidence_score(direction: str, ind: dict) -> int:
     """Deterministic *conviction* score (~55–95): how strongly the indicators
     line up behind `direction`. This is NOT a win-rate / accuracy figure — it just

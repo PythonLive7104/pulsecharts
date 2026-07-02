@@ -5,16 +5,30 @@ from .models import Signal, SignalService, UserSignalSubscription
 
 class SignalServiceSerializer(serializers.ModelSerializer):
     is_followed = serializers.SerializerMethodField()
+    is_custom = serializers.SerializerMethodField()
+    rule_summary = serializers.SerializerMethodField()
 
     class Meta:
         model = SignalService
-        fields = ("id", "name", "slug", "description", "strategy_type", "is_followed")
+        fields = (
+            "id", "name", "slug", "description", "strategy_type",
+            "is_followed", "is_custom", "rule_summary",
+        )
 
     def get_is_followed(self, obj):
         request = self.context.get("request")
         if not request or not request.user.is_authenticated:
             return False
         return obj.subscribers.filter(user=request.user).exists()
+
+    def get_is_custom(self, obj):
+        return obj.owner_id is not None
+
+    def get_rule_summary(self, obj):
+        if not obj.rule_config:
+            return ""
+        from .strategy_builder import rule_summary
+        return rule_summary(obj.rule_config)
 
 
 class SubscriptionSerializer(serializers.ModelSerializer):

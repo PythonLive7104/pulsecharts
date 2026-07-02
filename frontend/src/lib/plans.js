@@ -45,6 +45,7 @@ export const PLAN_FALLBACK = [
     tagline: "Every indicator and strategy, unlimited signals.",
     features: [
       "Everything in Starter",
+      "Build your own strategy with AI (up to 5/mo)",
       "Stochastic, ATR, Fibonacci & Ichimoku Cloud",
       "Watchlist of 150 coins, set up for you",
       "Every signal strategy followed by default",

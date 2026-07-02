@@ -63,10 +63,17 @@ def collapse(signals) -> list[Signal]:
     """Collapse candidate signals to one representative per (symbol, timeframe)
     that meets the confluence threshold. Each representative is annotated with
     ``.confluence_count`` / ``.confluence_services``. Returned newest-first.
+
+    Custom (user-created) strategies are EXEMPT from the K-of-N threshold: the user
+    deliberately built and follows them, so each surfaces its own signal regardless
+    of how many other strategies agree. Only built-in strategies are collapsed.
     """
+    system = [s for s in signals if not s.service.owner_id]
+    custom = [s for s in signals if s.service.owner_id]
+
     k = confluence_min()
     reps: list[Signal] = []
-    for by_dir in _group(signals).values():
+    for by_dir in _group(system).values():
         direction = _winning_direction(by_dir)
         if direction is None:
             continue
@@ -75,6 +82,18 @@ def collapse(signals) -> list[Signal]:
             continue
         rep = max(svc_map.values(), key=lambda s: s.confidence_pct)
         reps.append(_annotate(rep, svc_map))
+
+    # Each custom strategy surfaces its best signal per (symbol, timeframe, direction)
+    # on its own — no threshold, agreement count is just itself.
+    custom_best: dict[tuple, Signal] = {}
+    for s in custom:
+        key = (s.symbol_id, s.timeframe, s.direction, s.service_id)
+        cur = custom_best.get(key)
+        if cur is None or s.confidence_pct > cur.confidence_pct:
+            custom_best[key] = s
+    for s in custom_best.values():
+        reps.append(_annotate(s, {s.service_id: s}))
+
     reps.sort(key=lambda s: s.generated_at, reverse=True)
     return reps
 

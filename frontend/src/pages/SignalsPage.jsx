@@ -6,6 +6,7 @@ import { api } from "../api";
 import { useStore } from "../store/useStore";
 import ThemeToggle from "../components/ThemeToggle";
 import SignalCard from "../components/SignalCard";
+import StrategyBuilder from "../components/StrategyBuilder";
 import Logo from "../components/Logo";
 
 export default function SignalsPage() {
@@ -14,6 +15,8 @@ export default function SignalsPage() {
   const loadEntitlements = useStore((s) => s.loadEntitlements);
 
   const [services, setServices] = useState([]);
+  const [customQuota, setCustomQuota] = useState(null);
+  const [showBuilder, setShowBuilder] = useState(false);
   const [subs, setSubs] = useState([]);
   const [feed, setFeed] = useState(null);
   const [accuracy, setAccuracy] = useState(null);
@@ -51,7 +54,9 @@ export default function SignalsPage() {
         api.signalAccuracy().catch(() => null),
         api.telegramStatus().catch(() => null),
       ]);
-      setServices(svc);
+      // /signal-services/ now returns { services, custom_quota }.
+      setServices(svc?.services ?? svc ?? []);
+      setCustomQuota(svc?.custom_quota ?? null);
       setSubs(sub);
       setFeed(fd);
       setAccuracy(acc);
@@ -83,6 +88,19 @@ export default function SignalsPage() {
       await load();
     } catch (e) {
       // e.g. free-tier 403 "Your plan lets you follow 1 strategy. Upgrade…"
+      setFollowError(e.message);
+    }
+  }
+
+  const isPro = entitlements?.plan_key === "pro";
+
+  async function deleteStrategy(svc) {
+    if (!window.confirm(`Delete "${svc.name}"? This removes its signals. Your monthly quota is not refunded.`)) return;
+    setFollowError(null);
+    try {
+      await api.deleteStrategy(svc.id);
+      await load();
+    } catch (e) {
       setFollowError(e.message);
     }
   }
@@ -212,22 +230,48 @@ export default function SignalsPage() {
         <aside className="strategies" ref={stratRef}>
           <h3>Strategies</h3>
           <p className="muted">Follow a strategy to receive its signals.</p>
+          {isPro && (
+            <button
+              className="btn-ghost sb-create"
+              onClick={() => setShowBuilder(true)}
+              disabled={(customQuota?.remaining ?? 0) <= 0}
+            >
+              ＋ Create your own strategy
+              {customQuota && ` (${customQuota.remaining}/${customQuota.limit} left)`}
+            </button>
+          )}
           {followError && <p className="error">{followError}</p>}
           {services.map((svc) => {
             const followed = Boolean(subByService[svc.id]);
             return (
               <div key={svc.id} className={`strategy ${followed ? "followed" : ""}`}>
                 <div className="strategy-info">
-                  <strong>{svc.name}</strong>
-                  <span className="muted">{svc.description}</span>
+                  <strong>
+                    {svc.name}
+                    {svc.is_custom && <span className="strategy-badge">Custom</span>}
+                  </strong>
+                  <span className="muted">{svc.is_custom ? svc.rule_summary : svc.description}</span>
                 </div>
-                <button className={followed ? "btn-ghost" : "btn-primary"} onClick={() => toggle(svc)}>
-                  {followed ? "Following" : "Follow"}
-                </button>
+                <div className="strategy-actions">
+                  <button className={followed ? "btn-ghost" : "btn-primary"} onClick={() => toggle(svc)}>
+                    {followed ? "Following" : "Follow"}
+                  </button>
+                  {svc.is_custom && (
+                    <button className="strategy-del" aria-label="Delete strategy" onClick={() => deleteStrategy(svc)}>✕</button>
+                  )}
+                </div>
               </div>
             );
           })}
         </aside>
+
+        {showBuilder && (
+          <StrategyBuilder
+            quota={customQuota}
+            onClose={() => setShowBuilder(false)}
+            onCreated={async () => { setShowBuilder(false); await load(); }}
+          />
+        )}
 
         <section className="feed">
           <div className="feed-head">

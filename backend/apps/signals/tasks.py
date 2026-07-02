@@ -26,7 +26,7 @@ from .engine import SignalEngineError, generate_signal
 from .evaluate import outcome_label, walk
 from .indicators import compute_indicators
 from .models import Signal, SignalService, TelegramDelivery, UserSignalSubscription
-from .pregate import EMA_STACK_EXEMPT, candidate_direction
+from .pregate import EMA_STACK_EXEMPT, candidate_direction_for_service
 from .quota import signal_quota_for
 
 logger = logging.getLogger("signals.tasks")
@@ -103,9 +103,28 @@ def _regime_ok(sym, tf: str, direction: str, indicators: dict, htf_cache: dict,
 def run_scan(symbol_limit: int | None = None, use_pregate: bool | None = None) -> dict:
     """Evaluate active strategies across symbols/timeframes. Returns a summary
     including LLM call/token stats for cost visibility."""
-    services = list(SignalService.objects.filter(is_active=True))
-    if not services:
+    # Built-in (owner=None) strategies scan every watched symbol. Custom (Pro
+    # user-created) strategies scan ONLY their owner's watchlist — see custom_by_symbol.
+    system_services = list(SignalService.objects.filter(is_active=True, owner__isnull=True))
+    custom_services = list(
+        SignalService.objects.filter(is_active=True, owner__isnull=False).select_related("owner")
+    )
+    if not system_services and not custom_services:
         return {"created": 0, "note": "no active services"}
+
+    # Which symbols each custom strategy runs on: its owner's watchlist.
+    from collections import defaultdict
+    custom_by_symbol: dict[int, list] = defaultdict(list)
+    if custom_services:
+        owner_ids = {s.owner_id for s in custom_services}
+        owner_symbols: dict[int, set] = defaultdict(set)
+        for uid, sid in WatchlistItem.objects.filter(user_id__in=owner_ids).values_list(
+            "user_id", "symbol_id"
+        ):
+            owner_symbols[uid].add(sid)
+        for svc in custom_services:
+            for sid in owner_symbols.get(svc.owner_id, ()):
+                custom_by_symbol[sid].append(svc)
 
     # Only scan coins someone actually watches (union of all watchlists). If no
     # one has a watchlist, there's nothing to scan — don't generate signals for
@@ -127,6 +146,13 @@ def run_scan(symbol_limit: int | None = None, use_pregate: bool | None = None) -
             if settings.FOREX_ENABLED else []
         )
         symbols = crypto + forex
+        # A custom strategy's owner may watch a crypto symbol beyond the cost cap —
+        # include those so the owner's own strategy isn't silently skipped.
+        if custom_by_symbol:
+            have = {s.id for s in symbols}
+            extra = set(custom_by_symbol) - have
+            if extra:
+                symbols += list(watched.filter(id__in=extra))
     else:
         symbols = list(watched)
 
@@ -199,9 +225,9 @@ def run_scan(symbol_limit: int | None = None, use_pregate: bool | None = None) -
                 continue
             indicators = compute_indicators(candles)
 
-            for svc in services:
+            for svc in system_services + custom_by_symbol.get(sym.id, []):
                 pair = (sym.id, svc.id, tf)
-                cand = candidate_direction(svc.slug, indicators)
+                cand = candidate_direction_for_service(svc, indicators)
                 open_dir = open_dirs.get(pair)
                 if open_dir:
                     # Open call exists: only proceed if the trend has flipped.
@@ -220,7 +246,12 @@ def run_scan(symbol_limit: int | None = None, use_pregate: bool | None = None) -
                 # Regime filter: trending market (ADX) + higher-timeframe
                 # agreement, before paying for the LLM call. (cand is None means
                 # hybrid mode wouldn't emit anyway; let the engine handle that.)
-                if regime_on and cand is not None and not _regime_ok(sym, tf, cand, indicators, htf_cache, svc.slug):
+                # Custom strategies bypass the regime filter (they fire purely on the
+                # user's own conditions — see candidate_direction_for_service).
+                if (
+                    regime_on and cand is not None and not svc.is_custom
+                    and not _regime_ok(sym, tf, cand, indicators, htf_cache, svc.slug)
+                ):
                     regime_skipped += 1
                     continue
                 scanned += 1
@@ -228,6 +259,7 @@ def run_scan(symbol_limit: int | None = None, use_pregate: bool | None = None) -
                     sig = generate_signal(
                         sym.ticker, tf, svc.slug, svc.name, svc.strategy_focus, indicators,
                         use_pregate=use_pregate, stats=stats, asset_class=sym.asset_class,
+                        rule_config=svc.rule_config,
                     )
                 except SignalEngineError as exc:
                     # No API key / misconfig — abort the whole scan, it won't recover.

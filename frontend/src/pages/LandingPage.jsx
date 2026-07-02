@@ -36,6 +36,10 @@ const FAQS = [
     a: "Both. We chart the perps and spot pairs listed on Hyperliquid, plus the major forex pairs (EUR/USD, GBP/USD, USD/JPY, USD/CHF, AUD/USD, USD/CAD, NZD/USD). Switch between crypto and forex with one toggle — the same indicators and trading signals work across both.",
   },
   {
+    q: "Can I build my own trading strategy?",
+    a: "Yes — on the Pro plan. Just describe your idea in a sentence (e.g. \"buy when RSI is below 30 and price is above the 200 EMA\") and our AI turns it into a live strategy using real indicators — no coding or formulas. It shows you what it built so you can confirm it, then generates signals for the coins on your watchlist, in-app and on Telegram. You can create up to 5 strategies a month. Custom strategies aren't backtested and are informational only, not financial advice.",
+  },
+  {
     q: "Is this financial advice?",
     a: "No. PulseCharts is a charting and analysis tool. Nothing here is a recommendation to buy or sell. Always do your own research.",
   },
@@ -93,7 +97,8 @@ export default function LandingPage() {
               Real-time candlestick charting for Hyperliquid crypto and the major
               forex pairs — switch between them in one click. Start free with live
               charts and core indicators; upgrade for advanced analysis, saved
-              layouts, and trading signals on both.
+              layouts, and trading signals on both — including strategies you
+              build yourself, just by describing them to our AI.
             </p>
             <div className="hero-cta hero-anim">
               {isAuthed ? (
@@ -148,7 +153,7 @@ export default function LandingPage() {
           <div className="step">
             <span className="step-num">4</span>
             <h3>Follow signal strategies</h3>
-            <p>Open the Signals page and follow the algorithmic strategies you like — Momentum, MACD Trend, Trend Rider, Breakouts and more. Your feed shows only the strategies you follow.</p>
+            <p>Open the Signals page and follow the algorithmic strategies you like — Momentum, MACD Trend, Trend Rider, Breakouts and more. Your feed shows only the strategies you follow. On <strong>Pro</strong>, you can even <strong>describe your own strategy in a sentence and have AI build it</strong> for you.</p>
           </div>
           <div className="step">
             <span className="step-num">5</span>
@@ -185,6 +190,11 @@ export default function LandingPage() {
             <div className="feature-icon">🤖</div>
             <h3>Algorithmic trading signals <span className="feature-tag premium">Premium</span></h3>
             <p>An always-on engine scans the strategies you follow — across <strong>both crypto and forex</strong> — and surfaces buy/sell signals, each with an entry, a stop-loss, four take-profit targets (TP1–TP4), risk/reward math and a plain-English reason it was flagged. Get them in-app or pushed straight to your <strong>Telegram</strong>, with trade updates when a target or stop is hit. Informational only, never financial advice.</p>
+          </div>
+          <div className="feature">
+            <div className="feature-icon">🧠</div>
+            <h3>Build your own strategy with AI <span className="feature-tag premium">Pro</span></h3>
+            <p><strong>Describe a strategy in plain English</strong> — "buy when RSI drops below 30 and price is above the 200 EMA" — and our <strong>AI turns your words into a live trading strategy</strong>. It reads your intent, maps it to the right indicators (EMAs, RSI, MACD, Bollinger Bands, ADX, VWAP and more), and shows you exactly what it built before you save it. From then on the engine watches your coins around the clock and sends you its signals — in-app and on Telegram — just like the built-in strategies. No code, no formulas. Custom strategies aren't backtested; informational only, not financial advice.</p>
           </div>
           <div className="feature">
             <div className="feature-icon">🔔</div>

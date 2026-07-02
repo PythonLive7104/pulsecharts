@@ -39,6 +39,7 @@ PLANS: dict[str, dict] = {
         "layout_limit": 1,
         "default_watchlist": 20,    # symbols pre-loaded at signup (onboarding)
         "default_strategies": 1,    # strategies followed by default
+        "custom_strategies_per_month": 0,  # Pro-only feature
         "indicator_tiers": [FREE],
         "features": [
             "Live candlestick charts, all timeframes",
@@ -60,6 +61,7 @@ PLANS: dict[str, dict] = {
         "layout_limit": 10,
         "default_watchlist": 40,    # symbols pre-loaded at signup (onboarding)
         "default_strategies": 4,    # strategies followed by default
+        "custom_strategies_per_month": 0,  # Pro-only feature
         "indicator_tiers": [FREE, STARTER],
         "features": [
             "Everything in Free",
@@ -83,9 +85,11 @@ PLANS: dict[str, dict] = {
         "layout_limit": 50,
         "default_watchlist": 150,   # symbols pre-loaded at signup (onboarding)
         "default_strategies": -1,   # follow every active strategy
+        "custom_strategies_per_month": 5,  # create your own strategies (rolling 30d)
         "indicator_tiers": [FREE, STARTER, PRO],
         "features": [
             "Everything in Starter",
+            "Build your own strategy with AI (up to 5/mo)",
             "Stochastic, ATR, Fibonacci & Ichimoku Cloud",
             "Watchlist of 150 coins, set up for you",
             "Every signal strategy followed by default",
