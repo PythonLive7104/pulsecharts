@@ -83,6 +83,12 @@ def _regime_ok(sym, tf: str, direction: str, indicators: dict, htf_cache: dict,
         ema9, ema21, atr = indicators.get("ema9"), indicators.get("ema21"), indicators.get("atr")
         if ema9 is not None and ema21 is not None and atr and abs(ema9 - ema21) < sep_min * atr:
             return False  # EMAs bunched → ranging, skip
+    # HTF agreement is itself a 200-EMA gate (bias off the 4h/1d 200 EMA). When the
+    # 200-EMA trend filter is disabled, drop it too — the ADX + chop filters above
+    # still stand, and the Fib zone confirms the entry — so we don't reintroduce the
+    # very constraint the filter is meant to remove.
+    if not settings.SIGNAL_EMA200_TREND_FILTER:
+        return True
     htf = _HTF_MAP.get(tf)
     if not htf:
         return True  # no higher frame configured — ADX strength alone

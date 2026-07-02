@@ -200,6 +200,67 @@ def _swings(candles: list[dict], lookback=60, span=2):
     return swing_high, swing_low
 
 
+def _swing_leg(candles: list[dict], lookback=60, span=2):
+    """Most recent completed impulse leg, for Fibonacci-retracement gating.
+
+    Finds the nearest fractal pivot high and nearest fractal pivot low in the
+    window (same span logic as `_swings`), keeping their positions. Whichever pivot
+    is MORE RECENT is the end of the current leg:
+      - pivot high newer than pivot low  → the last move was UP (low→high); price is
+        now retracing DOWN from the high  → an uptrend pullback (favours BUY).
+      - pivot low newer than pivot high  → the last move was DOWN (high→low); price
+        is retracing UP → a downtrend pullback (favours SELL).
+
+    Returns (leg_high, leg_low, newer_is_high) or None when a clean pivot pair
+    isn't present or the leg is degenerate (high <= low).
+    """
+    window = candles[-lookback:]
+    n = len(window)
+    highs = [c["high"] for c in window]
+    lows = [c["low"] for c in window]
+    ph_idx = pl_idx = None
+    # Walk newest-to-oldest over bars that have `span` neighbours on each side.
+    for i in range(n - 1 - span, span - 1, -1):
+        if ph_idx is None and all(
+            highs[i] >= highs[j] for j in range(i - span, i + span + 1) if j != i
+        ):
+            ph_idx = i
+        if pl_idx is None and all(
+            lows[i] <= lows[j] for j in range(i - span, i + span + 1) if j != i
+        ):
+            pl_idx = i
+        if ph_idx is not None and pl_idx is not None:
+            break
+    if ph_idx is None or pl_idx is None:
+        return None
+    leg_high, leg_low = highs[ph_idx], lows[pl_idx]
+    if leg_high <= leg_low:
+        return None
+    return leg_high, leg_low, ph_idx > pl_idx
+
+
+def _fib_retrace(candles: list[dict], close: float):
+    """Current retracement of the most recent impulse leg as (fraction, direction).
+
+    fraction: 0.0 = price still at the leg's extreme (no pullback), 1.0 = fully
+    retraced to the leg's origin, >1.0 = pushed past the origin (leg likely broken).
+    direction: "up" (uptrend pullback, favours BUY) | "down" (favours SELL).
+    Returns (None, None) when no clean leg is available or the leg has no range.
+    """
+    leg = _swing_leg(candles)
+    if leg is None:
+        return None, None
+    leg_high, leg_low, newer_is_high = leg
+    span = leg_high - leg_low
+    if span <= 0:
+        return None, None
+    if newer_is_high:
+        # Up-leg (low→high); price retraces down from the high toward the low.
+        return (leg_high - close) / span, "up"
+    # Down-leg (high→low); price retraces up from the low toward the high.
+    return (close - leg_low) / span, "down"
+
+
 def compute_indicators(candles: list[dict]) -> dict:
     """Snapshot of indicator values for the most recent completed candle.
 
@@ -216,6 +277,7 @@ def compute_indicators(candles: list[dict]) -> dict:
     bb_u, bb_m, bb_l = _bollinger(closes)
     stoch_k, stoch_d = _stochastic(candles)
     swing_high, swing_low = _swings(candles)
+    fib_retrace, fib_leg_dir = _fib_retrace(candles, last["close"])
     day = last["time"] // 86400
     day_candles = [c for c in candles if c["time"] // 86400 == day]
 
@@ -243,4 +305,6 @@ def compute_indicators(candles: list[dict]) -> dict:
         "vwap": _vwap_session(candles),
         "swing_high": swing_high,
         "swing_low": swing_low,
+        "fib_retrace": fib_retrace,
+        "fib_leg_dir": fib_leg_dir,
     }

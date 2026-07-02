@@ -18,6 +18,7 @@ from .pregate import (
     candidate_direction,
     confidence_score,
     passes_ema_gate,
+    passes_fib_gate,
     passes_overext_gate,
     passes_pregate,
     passes_rsi_gate,
@@ -198,6 +199,10 @@ def generate_signal(
     # ...nor entering at an RSI extreme (B): no buying overbought / selling oversold.
     if not passes_rsi_gate(strategy_slug, indicators, direction):
         return None
+    # ...and only after a retracement into the Fib-pullback zone (D), never chasing
+    # an extended move. Disabled by default (FIB_PULLBACK_MIN <= 0); breakouts exempt.
+    if not passes_fib_gate(strategy_slug, indicators, direction):
+        return None
 
     entry = float(indicators["close"])
     levels = compute_levels(
@@ -240,8 +245,12 @@ def _checks(slug, ind, buy):
             out.append(f"EMA9 {_p(g('ema9'))} {'>' if buy else '<'} EMA21 {_p(g('ema21'))}")
 
     def price_ema200():
+        # Render the ACTUAL relation, not the trade direction's assumed one: with
+        # the 200-EMA trend filter off a BUY can sit below the 200 EMA, so hard-coding
+        # "above" would put a false statement on the card.
         if g("close") is not None and g("ema200") is not None:
-            out.append(f"price {up} EMA200 ({_p(g('ema200'))})")
+            rel = "above" if g("close") > g("ema200") else "below"
+            out.append(f"price {rel} EMA200 ({_p(g('ema200'))})")
 
     def macd_hist():
         if g("macd_hist") is not None:

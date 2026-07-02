@@ -20,6 +20,25 @@ BREAKOUT_EPS = 0.001  # within 0.1% of the swing extreme counts as a break
 ADX_TREND_MIN = 25    # ADX above this = a trend with enough strength to trade
 
 
+# 200-EMA trend filter. When True (historical default), non-breakout strategies
+# require price on the trend-correct side of the 200 EMA (and the HTF regime check
+# in tasks.py demands agreement with the 4h/1d 200 EMA). When False the 200 EMA is
+# dropped from every strategy trigger AND the HTF regime check — direction then
+# rests on the fast 9/21(/50) EMAs, with the Fib-pullback zone doing the entry
+# confirmation instead. Live value set from settings.SIGNAL_EMA200_TREND_FILTER at
+# startup (SignalsConfig.ready); backtest flips it with --no-ema200.
+EMA200_TREND_FILTER = True
+
+
+def _side_of_ema200(close, ema200, buy) -> bool:
+    """Whether price is on the trend-correct side of the 200 EMA for `buy`. Always
+    True when the 200-EMA trend filter is disabled, so strategies fall back to their
+    fast-EMA / momentum triggers plus the Fib-zone confirmation."""
+    if not EMA200_TREND_FILTER:
+        return True
+    return close > ema200 if buy else close < ema200
+
+
 def _vals(ind: dict, *keys):
     """Return the requested indicator values, or None if any is missing."""
     out = []
@@ -46,7 +65,8 @@ def _macd_trend_following(ind: dict) -> bool:
     if v is None:
         return False
     close, ema200, hist = v
-    return (close > ema200 and hist > 0) or (close < ema200 and hist < 0)
+    return (_side_of_ema200(close, ema200, True) and hist > 0) or \
+           (_side_of_ema200(close, ema200, False) and hist < 0)
 
 
 def _volatility_breakout(ind: dict) -> bool:
@@ -66,8 +86,8 @@ def _trend_rider(ind: dict) -> bool:
     if v is None:
         return False
     close, ema9, ema21, ema200, rsi = v
-    up = close > ema200 and ema9 > ema21 and rsi >= 50
-    down = close < ema200 and ema9 < ema21 and rsi <= 50
+    up = _side_of_ema200(close, ema200, True) and ema9 > ema21 and rsi >= 50
+    down = _side_of_ema200(close, ema200, False) and ema9 < ema21 and rsi <= 50
     return up or down
 
 
@@ -100,8 +120,8 @@ def _trend_pullback(ind: dict) -> bool:
     if v is None:
         return False
     close, ema9, ema21, ema200, rsi = v
-    up = close > ema200 and ema9 > ema21 and 40 <= rsi < 50
-    down = close < ema200 and ema9 < ema21 and 50 < rsi <= 60
+    up = _side_of_ema200(close, ema200, True) and ema9 > ema21 and 40 <= rsi < 50
+    down = _side_of_ema200(close, ema200, False) and ema9 < ema21 and 50 < rsi <= 60
     return up or down
 
 
@@ -112,8 +132,8 @@ def _ema_ribbon(ind: dict) -> bool:
     if v is None:
         return False
     close, ema9, ema21, ema200 = v
-    up = ema9 > ema21 > ema200 and close > ema9
-    down = ema9 < ema21 < ema200 and close < ema9
+    up = ema9 > ema21 and close > ema9 and _side_of_ema200(ema21, ema200, True)
+    down = ema9 < ema21 and close < ema9 and _side_of_ema200(ema21, ema200, False)
     return up or down
 
 
@@ -124,8 +144,8 @@ def _donchian_trend(ind: dict) -> bool:
     if v is None:
         return False
     close, hi, lo, ema200 = v
-    up = close >= hi * (1 - BREAKOUT_EPS) and close > ema200
-    down = close <= lo * (1 + BREAKOUT_EPS) and close < ema200
+    up = close >= hi * (1 - BREAKOUT_EPS) and _side_of_ema200(close, ema200, True)
+    down = close <= lo * (1 + BREAKOUT_EPS) and _side_of_ema200(close, ema200, False)
     return up or down
 
 
@@ -138,8 +158,8 @@ def _adx_trend(ind: dict) -> bool:
     close, ema9, ema21, ema200, adx = v
     if adx < ADX_TREND_MIN:
         return False
-    up = close > ema200 and ema9 > ema21
-    down = close < ema200 and ema9 < ema21
+    up = _side_of_ema200(close, ema200, True) and ema9 > ema21
+    down = _side_of_ema200(close, ema200, False) and ema9 < ema21
     return up or down
 
 
@@ -187,9 +207,9 @@ def _dir_macd(ind: dict) -> str | None:
     if v is None:
         return None
     close, ema200, hist = v
-    if close > ema200 and hist > 0:
+    if _side_of_ema200(close, ema200, True) and hist > 0:
         return "BUY"
-    if close < ema200 and hist < 0:
+    if _side_of_ema200(close, ema200, False) and hist < 0:
         return "SELL"
     return None
 
@@ -213,9 +233,9 @@ def _dir_trend_rider(ind: dict) -> str | None:
     if v is None:
         return None
     close, ema9, ema21, ema200, rsi = v
-    if close > ema200 and ema9 > ema21 and rsi >= 50:
+    if _side_of_ema200(close, ema200, True) and ema9 > ema21 and rsi >= 50:
         return "BUY"
-    if close < ema200 and ema9 < ema21 and rsi <= 50:
+    if _side_of_ema200(close, ema200, False) and ema9 < ema21 and rsi <= 50:
         return "SELL"
     return None
 
@@ -251,9 +271,9 @@ def _dir_trend_pullback(ind: dict) -> str | None:
     if v is None:
         return None
     close, ema9, ema21, ema200, rsi = v
-    if close > ema200 and ema9 > ema21 and 40 <= rsi < 50:
+    if _side_of_ema200(close, ema200, True) and ema9 > ema21 and 40 <= rsi < 50:
         return "BUY"
-    if close < ema200 and ema9 < ema21 and 50 < rsi <= 60:
+    if _side_of_ema200(close, ema200, False) and ema9 < ema21 and 50 < rsi <= 60:
         return "SELL"
     return None
 
@@ -263,9 +283,9 @@ def _dir_ema_ribbon(ind: dict) -> str | None:
     if v is None:
         return None
     close, ema9, ema21, ema200 = v
-    if ema9 > ema21 > ema200 and close > ema9:
+    if ema9 > ema21 and close > ema9 and _side_of_ema200(ema21, ema200, True):
         return "BUY"
-    if ema9 < ema21 < ema200 and close < ema9:
+    if ema9 < ema21 and close < ema9 and _side_of_ema200(ema21, ema200, False):
         return "SELL"
     return None
 
@@ -275,9 +295,9 @@ def _dir_donchian_trend(ind: dict) -> str | None:
     if v is None:
         return None
     close, hi, lo, ema200 = v
-    if close >= hi * (1 - BREAKOUT_EPS) and close > ema200:
+    if close >= hi * (1 - BREAKOUT_EPS) and _side_of_ema200(close, ema200, True):
         return "BUY"
-    if close <= lo * (1 + BREAKOUT_EPS) and close < ema200:
+    if close <= lo * (1 + BREAKOUT_EPS) and _side_of_ema200(close, ema200, False):
         return "SELL"
     return None
 
@@ -289,9 +309,9 @@ def _dir_adx_trend(ind: dict) -> str | None:
     close, ema9, ema21, ema200, adx = v
     if adx < ADX_TREND_MIN:
         return None
-    if close > ema200 and ema9 > ema21:
+    if _side_of_ema200(close, ema200, True) and ema9 > ema21:
         return "BUY"
-    if close < ema200 and ema9 < ema21:
+    if _side_of_ema200(close, ema200, False) and ema9 < ema21:
         return "SELL"
     return None
 
@@ -374,6 +394,35 @@ def is_rsi_extreme(ind: dict, direction: str) -> bool:
     return False
 
 
+# Fib-pullback gate (D): only allow a NEW non-breakout entry once price has retraced
+# into the [MIN, MAX] band of the most recent impulse leg (fractal-pivot swing) — buy
+# the dip / sell the rally instead of chasing an extended move that then snaps back
+# into the stop. MIN <= 0 disables the gate. 0.5–0.786 is the classic continuation
+# zone: below MIN the pullback is too shallow (still chasing), above MAX the swing has
+# retraced far enough that it's likely breaking (reversal, not a pullback). Live values
+# set from settings.SIGNAL_FIB_PULLBACK_MIN / _MAX at startup (SignalsConfig.ready).
+FIB_PULLBACK_MIN = 0.0
+FIB_PULLBACK_MAX = 0.786
+
+
+def is_in_fib_zone(ind: dict, direction: str) -> bool:
+    """True if price sits inside the pullback band of the most recent impulse leg on
+    the side matching `direction`. Returns True when the gate is disabled (MIN <= 0).
+    When the gate is ENABLED but no valid leg/retracement is available, returns False —
+    no confirmed pullback structure means no trade (fail-closed, deliberately)."""
+    lo = FIB_PULLBACK_MIN
+    if lo <= 0:
+        return True  # gate disabled
+    retrace = ind.get("fib_retrace")
+    leg_dir = ind.get("fib_leg_dir")
+    if retrace is None or leg_dir is None:
+        return False
+    want = "up" if direction == "BUY" else "down" if direction == "SELL" else None
+    if want is None or leg_dir != want:
+        return False
+    return lo <= retrace <= FIB_PULLBACK_MAX
+
+
 def ema_trend_aligned(ind: dict, direction: str) -> bool:
     """Whether `direction` agrees with the EMA structure under EMA_GATE_MODE. No
     non-breakout strategy may emit a signal unless this passes. Returns False if a
@@ -437,6 +486,15 @@ def passes_rsi_gate(strategy_slug: str, indicators: dict, direction: str) -> boo
     return not is_rsi_extreme(indicators, direction)
 
 
+def passes_fib_gate(strategy_slug: str, indicators: dict, direction: str) -> bool:
+    """Whether `direction` is allowed given the Fib-pullback requirement — only enter
+    after a retracement into the zone, never chasing an extended move. Applies to
+    EVERY strategy (breakouts included): with the 200-EMA trend filter off, the Fib
+    zone is the mandatory entry confirmation, so it is deliberately NOT exempted.
+    (No-op anyway when the gate is disabled — is_in_fib_zone returns True.)"""
+    return is_in_fib_zone(indicators, direction)
+
+
 def candidate_direction(strategy_slug: str, indicators: dict) -> str | None:
     """Cheap directional bias ("BUY"/"SELL"/None) implied by the indicators for a
     strategy — no LLM. Used to detect a trend flip against an open signal.
@@ -453,6 +511,8 @@ def candidate_direction(strategy_slug: str, indicators: dict) -> str | None:
     if direction and not passes_overext_gate(strategy_slug, indicators, direction):
         return None
     if direction and not passes_rsi_gate(strategy_slug, indicators, direction):
+        return None
+    if direction and not passes_fib_gate(strategy_slug, indicators, direction):
         return None
     return direction
 
@@ -476,13 +536,21 @@ def confidence_score(direction: str, ind: dict) -> int:
 
     score = 55.0
     ema_ok = ema9 is not None and ema21 is not None and (ema9 > ema21) == buy
-    trend_ok = close is not None and ema200 is not None and (close > ema200) == buy
     macd_ok = hist is not None and (hist > 0) == buy
+    # Primary trend/location confirmation. With the 200-EMA filter ON this is
+    # "price on the right side of the 200 EMA" (major trend); with it OFF the 200
+    # EMA is no longer part of the setup, so the Fib-pullback zone is the
+    # confirmation instead — keeping the score on the same scale so signals don't
+    # silently fall under the delivery floor just because the anchor changed.
+    if EMA200_TREND_FILTER:
+        trend_ok = close is not None and ema200 is not None and (close > ema200) == buy
+    else:
+        trend_ok = is_in_fib_zone(ind, direction)
 
     if ema_ok:
         score += 8
     if trend_ok:
-        score += 8   # price vs the 200 EMA (major trend)
+        score += 8   # major-trend (200 EMA) or Fib-zone confirmation
     if macd_ok:
         score += 7
     if rsi is not None and (rsi >= 50) == buy:

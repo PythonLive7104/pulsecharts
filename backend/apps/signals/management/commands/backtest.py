@@ -113,12 +113,40 @@ class Command(BaseCommand):
         parser.add_argument("--ema-gate", default=None,
                             choices=["stack200", "stack50", "filter200"],
                             help="Override the EMA-alignment gate for this run (compare trend strictness).")
+        parser.add_argument("--fib", action="store_true",
+                            help="Enable the Fib-pullback gate for this run (default off).")
+        parser.add_argument("--fib-min", type=float, default=0.5,
+                            help="Fib-pullback zone floor when --fib is set (default 0.5).")
+        parser.add_argument("--fib-max", type=float, default=0.786,
+                            help="Fib-pullback zone cap when --fib is set (default 0.786).")
+        parser.add_argument("--rsi-overbought", type=float, default=None,
+                            help="Override RSI overbought cap for this run (0 disables the bound).")
+        parser.add_argument("--rsi-oversold", type=float, default=None,
+                            help="Override RSI oversold cap for this run (0 disables the bound).")
+        parser.add_argument("--no-ema200", action="store_true",
+                            help="Drop the 200-EMA trend filter from every strategy trigger "
+                                 "(direction rests on the fast EMAs; pair with --fib).")
 
     def handle(self, *args, **opts):
+        from apps.signals import pregate
         if opts.get("ema_gate"):
-            from apps.signals import pregate
             pregate.EMA_GATE_MODE = opts["ema_gate"]
             self.stdout.write(self.style.WARNING(f"EMA gate override: {opts['ema_gate']}"))
+        if opts.get("fib"):
+            pregate.FIB_PULLBACK_MIN = opts["fib_min"]
+            pregate.FIB_PULLBACK_MAX = opts["fib_max"]
+            self.stdout.write(self.style.WARNING(
+                f"Fib-pullback gate ON: zone [{opts['fib_min']}, {opts['fib_max']}]"))
+        if opts.get("rsi_overbought") is not None:
+            pregate.RSI_OVERBOUGHT = opts["rsi_overbought"]
+            self.stdout.write(self.style.WARNING(f"RSI overbought override: {opts['rsi_overbought']}"))
+        if opts.get("rsi_oversold") is not None:
+            pregate.RSI_OVERSOLD = opts["rsi_oversold"]
+            self.stdout.write(self.style.WARNING(f"RSI oversold override: {opts['rsi_oversold']}"))
+        if opts.get("no_ema200"):
+            pregate.EMA200_TREND_FILTER = False
+            self.stdout.write(self.style.WARNING(
+                "200-EMA trend filter OFF (direction from fast EMAs; Fib zone confirms)."))
         timeframes = (
             [t.strip() for t in opts["timeframes"].split(",") if t.strip()]
             if opts["timeframes"] else list(settings.SIGNAL_TIMEFRAMES)

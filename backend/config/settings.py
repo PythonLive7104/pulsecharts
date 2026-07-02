@@ -303,6 +303,16 @@ SIGNAL_EMA_SEP_MIN_ATR = env.float("SIGNAL_EMA_SEP_MIN_ATR", default=0.5)
 #   filter200 : close > EMA200 and EMA9 > EMA21
 SIGNAL_EMA_GATE = env("SIGNAL_EMA_GATE", default="stack50")
 
+# 200-EMA trend filter (apps/signals/pregate.py + tasks._regime_ok). When True
+# (historical default / "hard invariant"), non-breakout strategies require price on
+# the trend-correct side of the 200 EMA AND the higher timeframe (4h/1d) 200-EMA
+# regime must agree. When False, the 200 EMA is dropped from every strategy trigger
+# AND the HTF regime check — direction rests on the fast 9/21(/50) EMAs and the
+# Fib-pullback zone (guard D) becomes the entry confirmation. Set False together with
+# a non-zero SIGNAL_FIB_PULLBACK_MIN so entries stay confirmed by structure rather
+# than just chasing the fast EMAs. Backtest with `backtest --no-ema200 --fib`.
+SIGNAL_EMA200_TREND_FILTER = env.bool("SIGNAL_EMA200_TREND_FILTER", default=True)
+
 # Overextension guard (A — apps/signals/pregate.py). Blocks NEW non-breakout
 # entries once price has stretched more than this many ATRs beyond EMA21 — a
 # parabolic blow-off where the trend gates are MAXIMALLY satisfied yet a fresh
@@ -322,6 +332,20 @@ SIGNAL_OVEREXT_ATR_MULT = env.float("SIGNAL_OVEREXT_ATR_MULT", default=2.5)
 # breakout strategies are exempt.
 SIGNAL_RSI_OVERBOUGHT = env.float("SIGNAL_RSI_OVERBOUGHT", default=70.0)
 SIGNAL_RSI_OVERSOLD = env.float("SIGNAL_RSI_OVERSOLD", default=30.0)
+
+# Fib-pullback gate (D — apps/signals/pregate.py). Only allow a NEW non-breakout
+# entry once price has retraced into the [MIN, MAX] band of the most recent impulse
+# leg (a fractal-pivot swing) — "buy the dip / sell the rally" instead of chasing an
+# extended move that then snaps back into the stop. This is the structural version of
+# guards A/B: instead of measuring stretch from an EMA or RSI, it requires an actual
+# retracement of real swing structure. MIN <= 0 DISABLES the gate (the default — so
+# it changes nothing until deliberately enabled). 0.5–0.786 is the classic
+# continuation zone; below MIN = too shallow (still chasing), above MAX = retraced far
+# enough the swing is likely breaking (reversal, not a pullback). Trade-off: far fewer
+# signals, and it SKIPS strong trends that never pull back — validate with
+# `backtest --fib` before enabling live. Breakout strategies are exempt.
+SIGNAL_FIB_PULLBACK_MIN = env.float("SIGNAL_FIB_PULLBACK_MIN", default=0.0)
+SIGNAL_FIB_PULLBACK_MAX = env.float("SIGNAL_FIB_PULLBACK_MAX", default=0.786)
 
 # Re-entry cooldown (C — apps/signals/tasks.py). After a same-direction signal on a
 # (symbol, strategy, timeframe), suppress a fresh one in that direction for this
