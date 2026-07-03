@@ -18,6 +18,7 @@ SUGGESTED_QUESTIONS = [
     "Is it free?",
     "What's included in premium?",
     "Do you offer trading signals?",
+    "Can I build my own strategy?",
 ]
 
 # Each entry: keywords (any-match, scored) -> answer.
@@ -37,9 +38,10 @@ KNOWLEDGE = [
         "id": "data_source",
         "keywords": ["data", "price", "where", "source", "feed", "hyperliquid", "real-time", "realtime", "live data", "latency"],
         "answer": (
-            "Live market data comes from Hyperliquid's public WebSocket feed, "
+            "Crypto market data comes from Hyperliquid's public WebSocket feed, "
             "relayed through our servers so your browser gets a single low-latency "
-            "stream. It's crypto-only by design — no forex or stocks."
+            "stream. Forex pairs run on a live FX feed alongside it — flip between "
+            "the two markets with the Crypto/Forex toggle above the chart."
         ),
     },
     {
@@ -47,29 +49,32 @@ KNOWLEDGE = [
         "keywords": ["free", "cost nothing", "no cost", "free tier", "free forever", "is it free", "really free"],
         "answer": (
             "Yes — the free tier is genuinely free, no card required. It includes "
-            "live charts, every timeframe, unlimited symbol switching, the "
-            "SMA/EMA/Volume indicators, and a basic watchlist. Premium adds the "
-            "advanced indicators and more."
+            "live crypto & forex charts, every timeframe, unlimited symbol "
+            "switching, the SMA/EMA/Volume indicators, a 20-coin watchlist, and a "
+            "daily taste of trading signals (up to 5/day). Starter and Pro add the "
+            "advanced indicators, more signals, and Telegram alerts."
         ),
     },
     {
         "id": "premium",
         "keywords": ["premium", "paid", "pro", "starter", "upgrade", "subscription", "plan", "plans", "what's included", "benefits"],
         "answer": (
-            "Premium unlocks the advanced indicators (RSI, MACD, Bollinger Bands, "
-            "Stochastic, ATR, Fibonacci, VWAP, Ichimoku Cloud), multiple saved "
-            "chart layouts, an expanded watchlist, and the trading-signals feed. "
-            "You can upgrade any time from your dashboard."
+            "There are two paid tiers. Starter ($9) adds RSI, MACD, Bollinger "
+            "Bands and VWAP, up to 30 signals/day, Telegram alerts, and 10 saved "
+            "layouts. Pro ($19) unlocks every indicator (Stochastic, ATR, Fibonacci, "
+            "Ichimoku Cloud), unlimited daily signals, build-your-own-strategy with "
+            "AI, and a 150-coin watchlist. Each is a one-time payment for 30 days of "
+            "access — upgrade any time from your dashboard."
         ),
     },
     {
         "id": "pricing",
         "keywords": ["price", "pricing", "how much", "cost", "fee", "monthly", "per month", "expensive", "cheap"],
         "answer": (
-            "PulseCharts is priced well below TradingView's indicator tiers — "
-            "it's built as the affordable, crypto-focused alternative. You can see "
-            "the current plan prices in the Pricing section on this page, and start "
-            "free with no card required."
+            "Three plans: Free ($0, no card required), Starter ($9) and Pro ($19). "
+            "Starter and Pro are one-time payments that unlock 30 days of access — "
+            "there's no auto-renewal and no card kept on file. It's priced well below "
+            "TradingView's indicator tiers as the affordable crypto & forex alternative."
         ),
     },
     {
@@ -112,10 +117,26 @@ KNOWLEDGE = [
         "id": "signals",
         "keywords": ["signal", "signals", "buy sell", "trade signal", "alerts", "strategy", "strategies", "confidence"],
         "answer": (
-            "Trading signals are a premium feature: algorithmic strategies scan "
-            "tracked crypto AND forex pairs and surface buy/sell setups with entry, "
-            "stop-loss, take-profit targets, and a confidence score. They're "
-            "informational only — not financial advice."
+            "Algorithmic strategies scan tracked crypto AND forex pairs and surface "
+            "buy/sell setups with entry, stop-loss, take-profit targets, and a "
+            "confidence score. Free gets a daily taste (up to 5/day), Starter up to "
+            "30/day, and Pro unlimited — with Telegram alerts on the paid tiers. "
+            "They're informational only, not financial advice."
+        ),
+    },
+    {
+        "id": "custom_strategy",
+        "keywords": [
+            "custom strategy", "custom strategies", "build strategy", "build your own",
+            "create strategy", "create a strategy", "own strategy", "my own strategy",
+            "ai strategy", "build with ai", "strategy builder", "make a strategy",
+        ],
+        "answer": (
+            "Yes — Pro members can build their own signal strategy with our built-in "
+            "AI. Just describe the setup you want in plain English (e.g. \"buy when "
+            "RSI is oversold and price is above the 200 EMA\") and the AI turns it "
+            "into a working strategy that scans your watchlist and generates signals "
+            "like any built-in one. Pro includes up to 5 custom strategies per month."
         ),
     },
     {
@@ -157,19 +178,21 @@ KNOWLEDGE = [
         "id": "telegram",
         "keywords": ["telegram", "notification", "notifications", "push", "bot"],
         "answer": (
-            "Premium members can connect a Telegram bot to receive new trading "
-            "signals as push messages. You link it from your dashboard once "
-            "you're on a premium plan."
+            "Starter and Pro members can connect a Telegram bot to receive new "
+            "trading signals as push messages, capped by their plan's daily limit "
+            "(30/day on Starter, unlimited on Pro). You link it from your dashboard "
+            "once you're on a paid plan."
         ),
     },
     {
         "id": "billing",
-        "keywords": ["billing", "payment", "pay", "card", "refund", "cancel", "cancellation", "invoice", "dodo"],
+        "keywords": ["billing", "payment", "pay", "card", "refund", "cancel", "cancellation", "invoice", "paystack", "dodo"],
         "answer": (
-            "Payments are handled securely by Dodo Payments. You can manage or "
-            "cancel your subscription from your dashboard — when you cancel you keep "
-            "access until the end of the period you've paid for. For specific "
-            "billing questions, contact us below."
+            "Payments are handled securely by Paystack. Each plan is a one-time "
+            "payment that unlocks 30 days of access — nothing auto-renews and no "
+            "card is stored, so there's nothing to cancel; access simply ends when "
+            "the 30 days are up unless you pay again. For specific billing "
+            "questions, contact us below."
         ),
     },
     {

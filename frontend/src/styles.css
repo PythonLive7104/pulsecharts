@@ -842,6 +842,21 @@ a.brand:hover { text-decoration: none; }
 .sb-create:disabled .sb-create-count {
   background: var(--border); color: var(--muted, #888);
 }
+/* Locked Pro-upsell variant shown to Free/Starter: same footprint, but reads as a
+   feature preview + upgrade nudge rather than an active button. */
+.sb-create-locked {
+  flex-direction: column; align-items: flex-start; gap: 6px;
+  background: var(--bg-elev); color: var(--text-strong);
+  border: 1px dashed var(--accent); box-shadow: none; text-decoration: none;
+}
+.sb-create-locked:hover {
+  filter: none; background: var(--bg);
+  box-shadow: 0 2px 12px rgba(37, 99, 235, 0.18);
+}
+.sb-create-locked .sb-create-main {
+  display: flex; align-items: center; gap: 8px; white-space: normal;
+}
+.sb-create-sub { font-size: 12px; font-weight: 600; color: var(--muted); line-height: 1.4; }
 
 /* Strategy builder modal (reuses .reminder-backdrop / .reminder-card) */
 .strategy-builder { max-width: 460px; text-align: left; }

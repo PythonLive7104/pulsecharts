@@ -257,7 +257,7 @@ export default function SignalsPage() {
         <aside className="strategies" ref={stratRef}>
           <h3>Strategies</h3>
           <p className="muted">Follow a strategy to receive its signals.</p>
-          {isPro && (
+          {isPro ? (
             <button
               className="sb-create"
               onClick={() => setShowBuilder(true)}
@@ -268,6 +268,18 @@ export default function SignalsPage() {
                 <span className="sb-create-count">{customQuota.remaining}/{customQuota.limit} left</span>
               )}
             </button>
+          ) : (
+            // Free/Starter still see the feature — clearly flagged as Pro — so they
+            // know it exists and can upgrade into it.
+            <Link to="/account/billing" className="sb-create sb-create-locked">
+              <span className="sb-create-main">
+                🔒 Build your own strategy <span className="feature-tag premium">Pro</span>
+              </span>
+              <span className="sb-create-sub">
+                Describe a setup in plain English and our AI turns it into a live
+                strategy. Upgrade to Pro to build up to 5 a month →
+              </span>
+            </Link>
           )}
           {followError && <p className="error">{followError}</p>}
           {services.map((svc) => {
