@@ -18,7 +18,7 @@ from rest_framework import generics, status
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from apps.accounts.plans import PRO, plan_key
+from apps.accounts.plans import PRO, is_paid, plan_key
 from apps.watchlists.models import WatchlistItem, watchlist_limit_for
 
 from . import confluence
@@ -47,6 +47,12 @@ from .strategy_builder import StrategyBuildError, build_rule_from_text
 FEED_LOOKBACK = timedelta(days=2)
 # How far back the resolved-results history reaches.
 RESULTS_LOOKBACK = timedelta(days=7)
+# How many resolved trades the "Past results" panel shows. Free gets a smaller
+# teaser (enough social proof to convert, not the whole track record); paid tiers
+# see the full history. This is closed/historical outcomes only — the live,
+# actionable feed stays strictly capped at the plan's daily quota.
+RESULTS_LIMIT_FREE = 10
+RESULTS_LIMIT_PAID = 50
 
 
 def _visible_services(user):
@@ -361,25 +367,23 @@ class SignalFeedView(APIView):
         # Results history: resolved calls the user was ACTUALLY delivered, so they
         # can see which of their past signals worked out — win or loss. Scoped to
         # this user's SignalDelivery rows (not just followed strategy + watchlist):
-        # otherwise the history bypasses the daily quota entirely — a Free user
-        # (5/day) or Starter (30/day) would see up to 50 full signal cards for
-        # trades they were never delivered, handing over the paid product
-        # retroactively. Delivery already reflects the per-plan cap, so gating on it
-        # keeps results in line with the quota for every tier. Newest resolution
-        # first. One row per TRADE, not per strategy: the scan stores one signal per
-        # strategy, so a single trade resolved as N identical rows (e.g. XAU 1h SELL
-        # "stopped out" ×6). Dedup on (symbol, tf, direction, entry) — strategies
-        # firing the same setup share the entry/stop, while a later DISTINCT trade on
-        # the same pair has a different entry, so it stays a separate row. (The
-        # per-strategy win rates in SignalAccuracyView are unaffected — different
-        # endpoint.) Over-fetch before the dedup so we still fill ~50 trades.
-        delivered_signal_ids = SignalDelivery.objects.filter(
-            user=user
-        ).values_list("signal_id", flat=True)
+        # its win/loss track record is the social proof that drives upgrades, so an
+        # empty panel hurts conversion. Instead of hiding undelivered results, cap
+        # the COUNT by plan: Free sees a small teaser, paid tiers the full history
+        # (RESULTS_LIMIT_*). These are closed/historical trades — the live,
+        # actionable feed above is what stays strictly quota-capped, so this teaser
+        # doesn't hand over the paid product. Newest resolution first. One row per
+        # TRADE, not per strategy: the scan stores one signal per strategy, so a
+        # single trade resolved as N identical rows (e.g. XAU 1h SELL "stopped out"
+        # ×6). Dedup on (symbol, tf, direction, entry) — strategies firing the same
+        # setup share the entry/stop, while a later DISTINCT trade on the same pair
+        # has a different entry, so it stays a separate row. (The per-strategy win
+        # rates in SignalAccuracyView are unaffected — different endpoint.) Over-fetch
+        # before the dedup so we still fill the plan's limit.
+        results_limit = RESULTS_LIMIT_PAID if is_paid(user) else RESULTS_LIMIT_FREE
         resolved_pool = (
             Signal.objects.filter(
                 confluence.deliverable_q(),  # custom strategies bypass the conf floor
-                id__in=delivered_signal_ids,  # only trades this user was actually shown
                 service_id__in=followed_ids,
                 symbol_id__in=watched_ids,
                 direction__in=[Signal.Direction.BUY, Signal.Direction.SELL],
@@ -396,7 +400,7 @@ class SignalFeedView(APIView):
                 continue
             seen_trades.add(key)
             resolved.append(s)
-            if len(resolved) >= 50:
+            if len(resolved) >= results_limit:
                 break
 
         return Response(
