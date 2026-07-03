@@ -358,20 +358,28 @@ class SignalFeedView(APIView):
             ).select_related("service")
             confluence.annotate(active, pool)
 
-        # Results history: resolved calls from the strategies this user follows,
-        # so they can see which past signals worked out — win or loss. Based on
-        # followed strategies (not lazy delivery), so a fast call that hit its TP
-        # before the feed was opened still shows up. Newest resolution first.
-        # One row per TRADE, not per strategy: the scan stores one signal per
+        # Results history: resolved calls the user was ACTUALLY delivered, so they
+        # can see which of their past signals worked out — win or loss. Scoped to
+        # this user's SignalDelivery rows (not just followed strategy + watchlist):
+        # otherwise the history bypasses the daily quota entirely — a Free user
+        # (5/day) or Starter (30/day) would see up to 50 full signal cards for
+        # trades they were never delivered, handing over the paid product
+        # retroactively. Delivery already reflects the per-plan cap, so gating on it
+        # keeps results in line with the quota for every tier. Newest resolution
+        # first. One row per TRADE, not per strategy: the scan stores one signal per
         # strategy, so a single trade resolved as N identical rows (e.g. XAU 1h SELL
         # "stopped out" ×6). Dedup on (symbol, tf, direction, entry) — strategies
         # firing the same setup share the entry/stop, while a later DISTINCT trade on
         # the same pair has a different entry, so it stays a separate row. (The
         # per-strategy win rates in SignalAccuracyView are unaffected — different
         # endpoint.) Over-fetch before the dedup so we still fill ~50 trades.
+        delivered_signal_ids = SignalDelivery.objects.filter(
+            user=user
+        ).values_list("signal_id", flat=True)
         resolved_pool = (
             Signal.objects.filter(
                 confluence.deliverable_q(),  # custom strategies bypass the conf floor
+                id__in=delivered_signal_ids,  # only trades this user was actually shown
                 service_id__in=followed_ids,
                 symbol_id__in=watched_ids,
                 direction__in=[Signal.Direction.BUY, Signal.Direction.SELL],

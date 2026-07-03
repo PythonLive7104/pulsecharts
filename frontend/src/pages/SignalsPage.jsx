@@ -134,6 +134,33 @@ export default function SignalsPage() {
   // still pitches the premium upgrade.
   const locked = Boolean(feed?.locked);
 
+  // Plan-aware upsell: Free and Starter have a capped daily feed (5 / 30), so
+  // nudge them to upgrade for more — Pro is unlimited, so it never shows. The
+  // copy sharpens once they've used up today's allowance.
+  const planKey = entitlements?.plan_key;
+  const showUpsell = planKey === "free" || planKey === "starter";
+  const usedToday = feed?.delivered_today ?? 0;
+  const atCap = quota != null && quota !== -1 && usedToday >= quota;
+  const upsell = showUpsell ? (
+    <div className="upgrade-banner">
+      <div className="ub-text">
+        <strong>
+          {atCap
+            ? "You've reached today's signal limit"
+            : `${entitlements?.plan_label || "Free"} plan · ${usedToday} of ${quota} signals today`}
+        </strong>
+        <span className="muted">
+          {planKey === "free"
+            ? "Upgrade to Starter for 30 signals/day and Telegram alerts — or Pro for unlimited."
+            : "Upgrade to Pro for unlimited daily signals."}
+        </span>
+      </div>
+      <Link to="/account/billing" className="btn-primary">
+        {planKey === "free" ? "Upgrade" : "Upgrade to Pro"}
+      </Link>
+    </div>
+  ) : null;
+
   // Recent trade updates (closures) — shown in-app to everyone, so free/starter
   // who don't use Telegram still see when a trade hit TP/SL or the trend flipped.
   const CLOSURE_MSG = {
@@ -284,6 +311,8 @@ export default function SignalsPage() {
               </span>
             )}
           </div>
+
+          {upsell}
 
           {telegramPanel}
 

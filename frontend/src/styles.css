@@ -868,9 +868,14 @@ a.brand:hover { text-decoration: none; }
   padding: 4px 12px; font-size: 13px; color: var(--muted);
 }
 .upgrade-banner {
+  display: flex; align-items: center; gap: 14px;
   background: var(--bg-elev); border: 1px solid var(--accent); border-radius: 10px;
-  padding: 10px 14px; margin: 14px 0; font-size: 14px;
+  padding: 12px 16px; margin: 14px 0; font-size: 14px;
 }
+.upgrade-banner .ub-text { display: flex; flex-direction: column; gap: 2px; flex: 1; }
+.upgrade-banner .ub-text strong { color: var(--text-strong); }
+.upgrade-banner .ub-text .muted { font-size: 13px; }
+.upgrade-banner .btn-primary { white-space: nowrap; }
 .empty-feed { padding: 40px 0; text-align: center; }
 .signal-list { display: flex; flex-direction: column; gap: 14px; margin-top: 14px; }
 /* Cap the feed height so new signals scroll within the section, not down the page. */

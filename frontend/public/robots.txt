@@ -1,0 +1,13 @@
+User-agent: *
+Allow: /$
+Allow: /signup
+Allow: /login
+
+# App is behind auth — no value to crawlers, keep it out of the index.
+Disallow: /app
+Disallow: /signals
+Disallow: /alerts
+Disallow: /account
+Disallow: /billing
+
+Sitemap: https://getpulsecharts.com/sitemap.xml
