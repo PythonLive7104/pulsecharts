@@ -14,10 +14,15 @@ from django.core.management.base import BaseCommand
 from apps.market_data.models import Symbol
 
 # ticker, Yahoo Finance ticker, display name, min_plan
-# The 7 majors are free. Gold (XAU-USD) rides the same Yahoo/forex pipeline but
-# is gated to Pro — note Yahoo serves gold as the COMEX future "GC=F" ("XAUUSD=X"
-# is not listed), which tracks spot closely enough for charting.
+# The 7 majors are free. The minor crosses (added on demand) are split: the four
+# headline crosses stay free so the free tier still feels complete, while the
+# deeper crosses are gated to Pro — this doubles as a Yahoo throttle, since fewer
+# users pull the Pro set live. Gold (XAU-USD) rides the same Yahoo/forex pipeline
+# but is gated to Pro — note Yahoo serves gold as the COMEX future "GC=F"
+# ("XAUUSD=X" is not listed), which tracks spot closely enough for charting.
+# All Yahoo tickers below were curl-verified to return clean candles before seeding.
 MAJORS = [
+    # --- Majors (free) ---
     ("EUR-USD", "EURUSD=X", "Euro / US Dollar", Symbol.MinPlan.FREE),
     ("GBP-USD", "GBPUSD=X", "British Pound / US Dollar", Symbol.MinPlan.FREE),
     ("USD-JPY", "USDJPY=X", "US Dollar / Japanese Yen", Symbol.MinPlan.FREE),
@@ -25,6 +30,23 @@ MAJORS = [
     ("AUD-USD", "AUDUSD=X", "Australian Dollar / US Dollar", Symbol.MinPlan.FREE),
     ("USD-CAD", "USDCAD=X", "US Dollar / Canadian Dollar", Symbol.MinPlan.FREE),
     ("NZD-USD", "NZDUSD=X", "New Zealand Dollar / US Dollar", Symbol.MinPlan.FREE),
+    # --- Headline crosses (free) ---
+    ("EUR-GBP", "EURGBP=X", "Euro / British Pound", Symbol.MinPlan.FREE),
+    ("EUR-JPY", "EURJPY=X", "Euro / Japanese Yen", Symbol.MinPlan.FREE),
+    ("GBP-JPY", "GBPJPY=X", "British Pound / Japanese Yen", Symbol.MinPlan.FREE),
+    ("AUD-JPY", "AUDJPY=X", "Australian Dollar / Japanese Yen", Symbol.MinPlan.FREE),
+    # --- Deeper crosses (Pro) ---
+    ("EUR-CHF", "EURCHF=X", "Euro / Swiss Franc (Pro)", Symbol.MinPlan.PRO),
+    ("EUR-AUD", "EURAUD=X", "Euro / Australian Dollar (Pro)", Symbol.MinPlan.PRO),
+    ("EUR-CAD", "EURCAD=X", "Euro / Canadian Dollar (Pro)", Symbol.MinPlan.PRO),
+    ("GBP-CHF", "GBPCHF=X", "British Pound / Swiss Franc (Pro)", Symbol.MinPlan.PRO),
+    ("GBP-AUD", "GBPAUD=X", "British Pound / Australian Dollar (Pro)", Symbol.MinPlan.PRO),
+    ("CAD-JPY", "CADJPY=X", "Canadian Dollar / Japanese Yen (Pro)", Symbol.MinPlan.PRO),
+    ("CHF-JPY", "CHFJPY=X", "Swiss Franc / Japanese Yen (Pro)", Symbol.MinPlan.PRO),
+    ("NZD-JPY", "NZDJPY=X", "New Zealand Dollar / Japanese Yen (Pro)", Symbol.MinPlan.PRO),
+    ("AUD-NZD", "AUDNZD=X", "Australian Dollar / New Zealand Dollar (Pro)", Symbol.MinPlan.PRO),
+    ("AUD-CAD", "AUDCAD=X", "Australian Dollar / Canadian Dollar (Pro)", Symbol.MinPlan.PRO),
+    # --- Metals (Pro) ---
     ("XAU-USD", "GC=F", "Gold / US Dollar (Pro)", Symbol.MinPlan.PRO),
 ]
 
