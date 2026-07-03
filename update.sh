@@ -50,6 +50,9 @@ docker compose exec -T web python manage.py sync_referral_code || true
 say "$c_info" "▶ Syncing Hyperliquid symbols…"
 docker compose exec -T web python manage.py sync_symbols \
   || say "$c_warn" "  sync_symbols failed (network?) — continuing."
+say "$c_info" "▶ Seeding forex pairs…"
+docker compose exec -T web python manage.py seed_forex \
+  || say "$c_warn" "  seed_forex failed — continuing."
 say "$c_info" "▶ Seeding signal strategies…"
 docker compose exec -T web python manage.py seed_signal_services
 
