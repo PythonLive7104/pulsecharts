@@ -77,6 +77,12 @@ class User(AbstractUser):
     telegram_link_token = models.CharField(max_length=64, blank=True, default="")
     telegram_link_token_at = models.DateTimeField(null=True, blank=True)
 
+    # The plan_expiry value we've already sent a "your plan expired" Telegram
+    # notice for. Keyed on the datetime (not a bare bool) so it self-re-arms: when
+    # a user resubscribes, plan_expiry moves to a new future value that differs
+    # from this, so the next lapse notifies again — no reset needed at grant time.
+    plan_expiry_notified_for = models.DateTimeField(null=True, blank=True)
+
     # Referral code used at signup (attribution); the grant itself is applied to
     # plan_tier/plan_expiry at registration time.
     referred_by_code = models.CharField(max_length=40, blank=True, default="")

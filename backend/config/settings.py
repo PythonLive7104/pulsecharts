@@ -470,6 +470,12 @@ CELERY_BEAT_SCHEDULE = {
         "task": "apps.accounts.tasks.enforce_plan_limits",
         "schedule": env.float("PLAN_ENFORCE_INTERVAL", default=86400.0),  # once a day
     },
+    # Telegram-notify users whose paid plan just lapsed (signals have stopped —
+    # resubscribe to resume). Hourly so the notice lands promptly after expiry.
+    "notify-expired-plans": {
+        "task": "apps.accounts.tasks.notify_expired_plans",
+        "schedule": env.float("EXPIRY_NOTICE_INTERVAL", default=3600.0),  # hourly
+    },
 }
 
 # --- i18n / static --------------------------------------------------------

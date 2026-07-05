@@ -67,6 +67,91 @@ def trim_to_plan_limits(user) -> dict:
     return removed
 
 
+# --- expiry notification (Telegram) ---------------------------------------
+
+# Only look back this far: if a plan expired long ago (e.g. Telegram was linked
+# only after the lapse, or this task was newly deployed), don't spam an ancient
+# lapse — just quietly mark it notified. Recent lapses are the ones worth telling.
+EXPIRY_NOTICE_LOOKBACK_DAYS = 3
+
+
+def _format_expiry_notice() -> str:
+    """HTML 'your plan expired' message pointing at the subscribe page."""
+    from django.conf import settings
+
+    subscribe_url = f"{settings.FRONTEND_URL}/account/billing"
+    return "\n".join([
+        "⌛ <b>Your plan has expired</b>",
+        "",
+        "Your subscription has ended, so you'll no longer receive trading "
+        "signals here on Telegram.",
+        "",
+        "Resubscribe to keep getting buy/sell signals delivered to your "
+        f"Telegram every day:\n👉 {subscribe_url}",
+        "",
+        "<i>Informational only. Not financial advice.</i>",
+    ])
+
+
+def run_expiry_notices() -> dict:
+    """Tell Telegram-linked users their paid plan just lapsed and they've stopped
+    receiving signals — with a resubscribe link.
+
+    Fires once per lapse: keyed on the expired plan_expiry value via
+    ``plan_expiry_notified_for`` so a user is notified at most once per
+    subscription period, and re-notified after a future resubscribe+lapse.
+    No-op if Telegram isn't configured.
+    """
+    from datetime import timedelta
+
+    from django.db.models import F
+    from django.utils import timezone
+
+    from apps.accounts import telegram
+    from .models import PlanTier, User
+
+    if not telegram.is_configured():
+        return {"notified": 0, "skipped": "telegram not configured"}
+
+    now = timezone.now()
+    cutoff = now - timedelta(days=EXPIRY_NOTICE_LOOKBACK_DAYS)
+    paid_tiers = [PlanTier.STARTER, PlanTier.PRO, PlanTier.PREMIUM]
+
+    # Lapsed paid users, linked to Telegram, not yet notified for THIS expiry.
+    lapsed = (
+        User.objects.filter(
+            plan_tier__in=paid_tiers,
+            plan_expiry__isnull=False,
+            plan_expiry__lte=now,
+            telegram_active=True,
+        )
+        .exclude(telegram_chat_id="")
+        .exclude(plan_expiry_notified_for=F("plan_expiry"))
+    )
+
+    notified = 0
+    for user in lapsed.iterator():
+        # An old lapse (e.g. linked Telegram only after expiring, or first deploy
+        # of this task): don't send a stale notice — just mark it handled so we
+        # never consider it again.
+        if user.plan_expiry < cutoff:
+            User.objects.filter(pk=user.pk).update(plan_expiry_notified_for=user.plan_expiry)
+            continue
+        if telegram.send_message(user.telegram_chat_id, _format_expiry_notice()):
+            User.objects.filter(pk=user.pk).update(plan_expiry_notified_for=user.plan_expiry)
+            notified += 1
+        # send failure (network): leave unmarked so the next tick retries.
+
+    if notified:
+        logger.info("expiry notices: notified=%d", notified)
+    return {"notified": notified}
+
+
+@shared_task(name="apps.accounts.tasks.notify_expired_plans")
+def notify_expired_plans() -> dict:
+    return run_expiry_notices()
+
+
 @shared_task(name="apps.accounts.tasks.enforce_plan_limits")
 def enforce_plan_limits() -> dict:
     """Daily sweep: trim any user holding more saved items than their effective
