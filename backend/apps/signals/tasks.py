@@ -595,6 +595,15 @@ def run_telegram_push() -> dict:
     # the replacement "new signal" below).
     closed = run_telegram_close_updates().get("closed", 0)
 
+    # Weekend window (Fri 21:00 → Sun 21:00 UTC, i.e. forex closed): suppress ALL
+    # NEW signal pushes. Users asked for this — thin weekend liquidity produces poor
+    # setups, and the scan already stops generating over the weekend, but a signal
+    # generated late Friday can still fall inside the delivery lookback. Only the
+    # "Trade update" closures above go out on weekends. Mirrors run_scan's skip.
+    if not forex_market_open():
+        logger.info("telegram push: weekend window — new signals suppressed, closures only")
+        return {"sent": 0, "closed": closed, "weekend": True}
+
     User = get_user_model()
     now = timezone.now()
     today = now.date()
