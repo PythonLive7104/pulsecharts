@@ -18,6 +18,7 @@ from django.core.management.base import BaseCommand, CommandError
 from django.utils import timezone
 
 from apps.accounts.plans import plan_key
+from apps.accounts.tasks import trim_to_plan_limits
 
 
 class Command(BaseCommand):
@@ -47,9 +48,18 @@ class Command(BaseCommand):
         )
         user.save(update_fields=["plan_tier", "plan_expiry"])
 
+        # Mirror the billing downgrade path: prune anything now over the new plan's
+        # limits (watchlist, layouts, followed strategies). No-op on an upgrade.
+        trimmed = trim_to_plan_limits(user)
+
         self.stdout.write(
             self.style.SUCCESS(
                 f"{user.email}: effective plan {before} -> {plan_key(user)} "
                 f"(tier={user.plan_tier}, expiry={user.plan_expiry or 'never'})"
             )
         )
+        if trimmed["watchlist"] or trimmed["layouts"] or trimmed["strategies"]:
+            self.stdout.write(
+                f"  trimmed to plan limits: watchlist -{trimmed['watchlist']}, "
+                f"strategies -{trimmed['strategies']}, layouts -{trimmed['layouts']}"
+            )

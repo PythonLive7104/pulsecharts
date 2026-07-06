@@ -2,7 +2,7 @@
 
 Single source of truth for what each plan unlocks. Three tiers:
 
-  - free     — live charts + a small taste of the signal feed (1 strategy)
+  - free     — live charts + a small taste of the signal feed (2 strategies)
   - starter  — core premium indicators + a real signal feed
   - pro      — everything, unlimited signals
 
@@ -33,20 +33,20 @@ PLANS: dict[str, dict] = {
         "price_usd": 0,
         "period": "",
         "tagline": "Live crypto charts and a taste of signals.",
-        "strategies": 1,            # strategies a user can follow
-        "signal_daily_quota": 5,    # signals/day in the feed (-1 = unlimited)
+        "strategies": 2,            # strategies a user can follow
+        "signal_daily_quota": 10,   # signals/day in the feed (-1 = unlimited)
         "watchlist_limit": 20,
         "layout_limit": 1,
         "default_watchlist": 20,    # symbols pre-loaded at signup (onboarding)
-        "default_strategies": 1,    # strategies followed by default
+        "default_strategies": 2,    # strategies followed by default
         "custom_strategies_per_month": 0,  # Pro-only feature
         "indicator_tiers": [FREE],
         "features": [
             "Live candlestick charts, all timeframes",
             "SMA, EMA & Volume overlays",
             "Starter watchlist of 20 coins, ready to go",
-            "1 signal strategy followed for you",
-            "Up to 5 signals/day",
+            "2 signal strategies followed for you",
+            "Up to 10 signals/day",
         ],
     },
     STARTER: {
@@ -56,7 +56,7 @@ PLANS: dict[str, dict] = {
         "period": "mo",
         "tagline": "Core indicators and a real signal feed.",
         "strategies": 4,
-        "signal_daily_quota": 30,
+        "signal_daily_quota": 40,
         "watchlist_limit": 40,
         "layout_limit": 10,
         "default_watchlist": 40,    # symbols pre-loaded at signup (onboarding)
@@ -68,7 +68,7 @@ PLANS: dict[str, dict] = {
             "RSI, MACD, Bollinger Bands & VWAP",
             "Watchlist of 40 coins, set up for you",
             "4 signal strategies followed by default",
-            "Up to 30 signals/day",
+            "Up to 40 signals/day",
             "Telegram signal alerts",
             "Save up to 10 chart layouts",
         ],

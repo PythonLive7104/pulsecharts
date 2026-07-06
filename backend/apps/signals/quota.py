@@ -49,3 +49,44 @@ def custom_strategy_quota_for(user) -> dict:
 def can_create_custom_strategy(user) -> bool:
     q = custom_strategy_quota_for(user)
     return q["limit"] > 0 and q["remaining"] > 0
+
+
+def trim_followed_strategies(user) -> int:
+    """Unfollow strategies beyond the user's effective plan cap (Section 13.3).
+
+    The follow cap is enforced at follow-time only, so a user who followed several
+    strategies on a higher plan keeps them after a downgrade. This brings them back
+    to their new cap, keeping the highest-value follows: built-in strategies in
+    onboarding-priority order first, then custom (Pro-only) ones — so a user leaving
+    Pro loses their custom-strategy follows before their built-ins. No-op for users
+    already within their cap (including unlimited plans). Returns count unfollowed.
+    """
+    from apps.accounts.onboarding import STRATEGY_PRIORITY
+
+    from .models import UserSignalSubscription
+
+    allowed = strategies_allowed_for(user)
+    if allowed == -1:  # unlimited
+        return 0
+
+    subs = list(
+        UserSignalSubscription.objects.filter(user=user).select_related("service")
+    )
+    if len(subs) <= allowed:
+        return 0
+
+    rank = {slug: i for i, slug in enumerate(STRATEGY_PRIORITY)}
+
+    def sort_key(sub):
+        svc = sub.service
+        # (built-ins before custom, then by curated priority, then stable by id)
+        return (svc.owner_id is not None, rank.get(svc.slug, len(rank)), sub.id)
+
+    subs.sort(key=sort_key)
+    keep_ids = {s.id for s in subs[:allowed]}
+    removed, _ = (
+        UserSignalSubscription.objects.filter(user=user)
+        .exclude(id__in=keep_ids)
+        .delete()
+    )
+    return removed

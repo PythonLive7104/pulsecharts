@@ -182,7 +182,7 @@ class SubscriptionListCreateView(generics.ListCreateAPIView):
 
     def create(self, request, *args, **kwargs):
         user = request.user
-        # Each plan caps how many strategies you can follow (free = 1).
+        # Each plan caps how many strategies you can follow (free = 2).
         allowed = strategies_allowed_for(user)
         following = UserSignalSubscription.objects.filter(user=user).count()
         if allowed == 0:

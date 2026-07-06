@@ -33,9 +33,10 @@ def trim_to_plan_limits(user) -> dict:
     ``*_limit_for`` is expiry-aware). Returns the counts removed.
     """
     from apps.chart_layouts.models import ChartLayout, layout_limit_for
+    from apps.signals.quota import trim_followed_strategies
     from apps.watchlists.models import WatchlistItem, watchlist_limit_for
 
-    removed = {"watchlist": 0, "layouts": 0}
+    removed = {"watchlist": 0, "layouts": 0, "strategies": 0}
 
     wl_limit = watchlist_limit_for(user)
     if wl_limit != -1:  # -1 == unlimited
@@ -59,10 +60,13 @@ def trim_to_plan_limits(user) -> dict:
             ChartLayout.objects.filter(user=user).exclude(id__in=keep).delete()[0]
         )
 
-    if removed["watchlist"] or removed["layouts"]:
+    # Followed strategies over the plan's follow cap (Section 13.3).
+    removed["strategies"] = trim_followed_strategies(user)
+
+    if removed["watchlist"] or removed["layouts"] or removed["strategies"]:
         logger.info(
-            "plan trim: %s removed watchlist=%d layouts=%d",
-            user.email, removed["watchlist"], removed["layouts"],
+            "plan trim: %s removed watchlist=%d layouts=%d strategies=%d",
+            user.email, removed["watchlist"], removed["layouts"], removed["strategies"],
         )
     return removed
 
@@ -157,9 +161,10 @@ def enforce_plan_limits() -> dict:
     """Daily sweep: trim any user holding more saved items than their effective
     plan allows (typically a lapsed paid plan that fell back to Free).
 
-    Only users holding more than the Free cap of either type are even considered —
-    anyone within the Free caps can never be over their limit — so the scan stays
-    small. ``trim_to_plan_limits`` is a no-op for users still inside their limits.
+    Only users holding more than the Free cap of any tracked type (watchlist,
+    layouts, followed strategies) are even considered — anyone within the Free caps
+    can never be over their limit — so the scan stays small. ``trim_to_plan_limits``
+    is a no-op for users still inside their limits.
     """
     from django.db.models import Count, Q
 
@@ -168,27 +173,35 @@ def enforce_plan_limits() -> dict:
 
     free_wl = PLANS[FREE]["watchlist_limit"]
     free_layouts = PLANS[FREE]["layout_limit"]
+    free_strategies = PLANS[FREE]["strategies"]
 
     candidates = (
         User.objects.annotate(
             n_wl=Count("watchlist_items", distinct=True),
             n_layouts=Count("chart_layouts", distinct=True),
+            n_subs=Count("signal_subscriptions", distinct=True),
         )
-        .filter(Q(n_wl__gt=free_wl) | Q(n_layouts__gt=free_layouts))
+        .filter(
+            Q(n_wl__gt=free_wl)
+            | Q(n_layouts__gt=free_layouts)
+            | Q(n_subs__gt=free_strategies)
+        )
     )
 
-    users_trimmed = wl_removed = layouts_removed = 0
+    users_trimmed = wl_removed = layouts_removed = strategies_removed = 0
     for user in candidates.iterator():
         r = trim_to_plan_limits(user)
-        if r["watchlist"] or r["layouts"]:
+        if r["watchlist"] or r["layouts"] or r["strategies"]:
             users_trimmed += 1
             wl_removed += r["watchlist"]
             layouts_removed += r["layouts"]
+            strategies_removed += r["strategies"]
 
     summary = {
         "users_trimmed": users_trimmed,
         "watchlist_removed": wl_removed,
         "layouts_removed": layouts_removed,
+        "strategies_removed": strategies_removed,
     }
     logger.info("enforce_plan_limits: %s", summary)
     return summary

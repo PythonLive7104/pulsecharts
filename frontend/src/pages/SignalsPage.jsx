@@ -87,7 +87,7 @@ export default function SignalsPage() {
       else await api.followService(svc.id);
       await load();
     } catch (e) {
-      // e.g. free-tier 403 "Your plan lets you follow 1 strategy. Upgrade…"
+      // e.g. free-tier 403 "Your plan lets you follow 2 strategies. Upgrade…"
       setFollowError(e.message);
     }
   }
@@ -134,7 +134,7 @@ export default function SignalsPage() {
   // still pitches the premium upgrade.
   const locked = Boolean(feed?.locked);
 
-  // Plan-aware upsell: Free and Starter have a capped daily feed (5 / 30), so
+  // Plan-aware upsell: Free and Starter have a capped daily feed (10 / 40), so
   // nudge them to upgrade for more — Pro is unlimited, so it never shows. The
   // copy sharpens once they've used up today's allowance.
   const planKey = entitlements?.plan_key;
@@ -151,7 +151,7 @@ export default function SignalsPage() {
         </strong>
         <span className="muted">
           {planKey === "free"
-            ? "Upgrade to Starter for 30 signals/day and Telegram alerts — or Pro for unlimited."
+            ? "Upgrade to Starter for 40 signals/day and Telegram alerts — or Pro for unlimited."
             : "Upgrade to Pro for unlimited daily signals."}
         </span>
       </div>
