@@ -616,7 +616,7 @@ def run_telegram_push() -> dict:
         # in-app quota does NOT grant Telegram delivery.
         if not user.is_premium:
             continue
-        quota = signal_quota_for(user)  # premium: starter 30, pro -1 (unlimited)
+        quota = signal_quota_for(user)  # premium: starter 40, pro -1 (unlimited)
         if quota == 0:
             continue
         followed = list(

@@ -234,7 +234,9 @@ class SignalFeedView(APIView):
         now = timezone.now()
         today = now.date()
 
-        # Premium-only: free users (quota 0) get a locked feed.
+        # A plan with no signal access (quota 0) gets a locked upgrade card. No
+        # current plan is 0 — Free gets a real 10/day feed — so this is a guard for
+        # any future no-access tier, not the Free path.
         if quota == 0:
             return Response({
                 "locked": True,
