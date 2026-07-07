@@ -79,7 +79,12 @@ PLANS: dict[str, dict] = {
         "price_usd": 19,
         "period": "mo",
         "tagline": "Every indicator and strategy, unlimited signals.",
-        "strategies": 10,
+        # Follow cap = 8 active built-in strategies + 5 custom (Pro-only) a user can
+        # build. Custom follows auto-subscribe and bypass this cap at creation but
+        # still count toward it, so the cap must cover both or re-following a built-in
+        # gets blocked once customs exist. Keep in sync with active built-ins +
+        # custom_strategies_per_month.
+        "strategies": 13,
         "signal_daily_quota": -1,
         "watchlist_limit": 150,
         "layout_limit": 50,
