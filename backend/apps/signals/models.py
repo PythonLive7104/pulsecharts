@@ -2,7 +2,7 @@
 
 v2 feature. Signals are generated server-side on a schedule (Celery, Section 20),
 stored, and served to users who follow the strategy that produced them — capped
-by their plan's daily quota (enforced server-side, Section 13.3).
+by their plan's weekly quota (enforced server-side, Section 13.3).
 """
 
 from django.conf import settings
@@ -162,7 +162,7 @@ class UserSignalSubscription(models.Model):
 
 
 class SignalDelivery(models.Model):
-    """Records that a signal was shown to a user — backs daily-quota enforcement
+    """Records that a signal was shown to a user — backs weekly-quota enforcement
     and prevents re-showing the same signal twice (13.3, 13.4)."""
 
     user = models.ForeignKey(

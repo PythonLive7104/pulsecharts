@@ -34,7 +34,7 @@ PLANS: dict[str, dict] = {
         "period": "",
         "tagline": "Live crypto charts and a taste of signals.",
         "strategies": 2,            # strategies a user can follow
-        "signal_daily_quota": 10,   # signals/day in the feed (-1 = unlimited)
+        "signal_weekly_quota": 20,  # signals/week in the feed (-1 = unlimited)
         "watchlist_limit": 20,
         "layout_limit": 1,
         "default_watchlist": 20,    # symbols pre-loaded at signup (onboarding)
@@ -46,7 +46,7 @@ PLANS: dict[str, dict] = {
             "SMA, EMA & Volume overlays",
             "Starter watchlist of 20 coins, ready to go",
             "2 signal strategies followed for you",
-            "Up to 10 signals/day",
+            "Up to 20 signals/week",
         ],
     },
     STARTER: {
@@ -56,7 +56,7 @@ PLANS: dict[str, dict] = {
         "period": "mo",
         "tagline": "Core indicators and a real signal feed.",
         "strategies": 4,
-        "signal_daily_quota": 40,
+        "signal_weekly_quota": 400,
         "watchlist_limit": 40,
         "layout_limit": 10,
         "default_watchlist": 40,    # symbols pre-loaded at signup (onboarding)
@@ -68,7 +68,7 @@ PLANS: dict[str, dict] = {
             "RSI, MACD, Bollinger Bands & VWAP",
             "Watchlist of 40 coins, set up for you",
             "4 signal strategies followed by default",
-            "Up to 40 signals/day",
+            "Up to 400 signals/week",
             "Telegram signal alerts",
             "Save up to 10 chart layouts",
         ],
@@ -85,7 +85,7 @@ PLANS: dict[str, dict] = {
         # gets blocked once customs exist. Keep in sync with active built-ins +
         # custom_strategies_per_month.
         "strategies": 13,
-        "signal_daily_quota": -1,
+        "signal_weekly_quota": -1,
         "watchlist_limit": 150,
         "layout_limit": 50,
         "default_watchlist": 150,   # symbols pre-loaded at signup (onboarding)
@@ -98,7 +98,7 @@ PLANS: dict[str, dict] = {
             "Stochastic, ATR, Fibonacci & Ichimoku Cloud",
             "Watchlist of 150 coins, set up for you",
             "Every signal strategy followed by default",
-            "Unlimited daily signals",
+            "Unlimited signals",
             "Telegram signal alerts",
             "Save up to 50 chart layouts",
         ],

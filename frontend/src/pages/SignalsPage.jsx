@@ -127,32 +127,32 @@ export default function SignalsPage() {
         : true,
   );
 
-  const quota = entitlements?.signal_daily_quota;
+  const quota = entitlements?.signal_weekly_quota;
   const quotaLabel = quota === -1 ? "Unlimited" : quota;
   // Locked only when the server says this plan has no signal access (quota 0).
   // Free/Starter get a (smaller) in-app feed + trade updates; the Telegram panel
   // still pitches the premium upgrade.
   const locked = Boolean(feed?.locked);
 
-  // Plan-aware upsell: Free and Starter have a capped daily feed (10 / 40), so
+  // Plan-aware upsell: Free and Starter have a capped weekly feed (20 / 400), so
   // nudge them to upgrade for more — Pro is unlimited, so it never shows. The
-  // copy sharpens once they've used up today's allowance.
+  // copy sharpens once they've used up this week's allowance.
   const planKey = entitlements?.plan_key;
   const showUpsell = planKey === "free" || planKey === "starter";
-  const usedToday = feed?.delivered_today ?? 0;
-  const atCap = quota != null && quota !== -1 && usedToday >= quota;
+  const usedThisWeek = feed?.delivered_this_week ?? 0;
+  const atCap = quota != null && quota !== -1 && usedThisWeek >= quota;
   const upsell = showUpsell ? (
     <div className="upgrade-banner">
       <div className="ub-text">
         <strong>
           {atCap
-            ? "You've reached today's signal limit"
-            : `${entitlements?.plan_label || "Free"} plan · ${usedToday} of ${quota} signals today`}
+            ? "You've reached this week's signal limit"
+            : `${entitlements?.plan_label || "Free"} plan · ${usedThisWeek} of ${quota} signals this week`}
         </strong>
         <span className="muted">
           {planKey === "free"
-            ? "Upgrade to Starter for 40 signals/day and Telegram alerts — or Pro for unlimited."
-            : "Upgrade to Pro for unlimited daily signals."}
+            ? "Upgrade to Starter for 400 signals/week and Telegram alerts — or Pro for unlimited."
+            : "Upgrade to Pro for unlimited signals."}
         </span>
       </div>
       <Link to="/account/billing" className="btn-primary">
@@ -325,7 +325,7 @@ export default function SignalsPage() {
             <h1>Your signal feed</h1>
             {feed && (
               <span className="quota-chip">
-                {feed.delivered_today} today{quota != null && ` · ${quotaLabel} / day`}
+                {feed.delivered_this_week} this week{quota != null && ` · ${quotaLabel} / week`}
               </span>
             )}
           </div>

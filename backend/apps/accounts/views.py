@@ -55,7 +55,7 @@ class EntitlementsView(APIView):
             "plan_expiry": user.plan_expiry,
             "is_premium": user.is_premium,
             **entitlements_for(plan["indicator_tiers"]),
-            "signal_daily_quota": plan["signal_daily_quota"],  # Section 13.3 (-1 = unlimited)
+            "signal_weekly_quota": plan["signal_weekly_quota"],  # Section 13.3 (-1 = unlimited)
             "strategies_allowed": plan["strategies"],
             "watchlist_limit": plan["watchlist_limit"],
             "layout_limit": plan["layout_limit"],

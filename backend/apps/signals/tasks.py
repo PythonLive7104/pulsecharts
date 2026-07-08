@@ -27,7 +27,7 @@ from .evaluate import outcome_label, walk
 from .indicators import compute_indicators
 from .models import Signal, SignalService, TelegramDelivery, UserSignalSubscription
 from .pregate import EMA_STACK_EXEMPT, candidate_direction_for_service
-from .quota import signal_quota_for
+from .quota import SIGNAL_QUOTA_WINDOW, signal_quota_for
 
 logger = logging.getLogger("signals.tasks")
 
@@ -595,8 +595,9 @@ def run_telegram_push() -> dict:
 
     For each user with a linked chat: pull the new signals from the strategies
     they follow (BUY/SELL, still PENDING, above the confidence threshold, recent)
-    that haven't been sent to them yet, capped by their plan's daily quota, and
-    send each as a Telegram message. No-op if Telegram isn't configured.
+    that haven't been sent to them yet, capped by their plan's weekly quota
+    (rolling 7-day window), and send each as a Telegram message. No-op if
+    Telegram isn't configured.
     """
     from django.contrib.auth import get_user_model
 
@@ -620,7 +621,7 @@ def run_telegram_push() -> dict:
 
     User = get_user_model()
     now = timezone.now()
-    today = now.date()
+    week_cutoff = now - SIGNAL_QUOTA_WINDOW  # rolling 7-day quota window
 
     sent = 0
     for user in User.objects.filter(telegram_active=True).exclude(telegram_chat_id=""):
@@ -630,7 +631,7 @@ def run_telegram_push() -> dict:
         # in-app quota does NOT grant Telegram delivery.
         if not user.is_premium:
             continue
-        quota = signal_quota_for(user)  # premium: starter 40, pro -1 (unlimited)
+        quota = signal_quota_for(user)  # premium: starter 400/wk, pro -1 (unlimited)
         if quota == 0:
             continue
         followed = list(
@@ -649,8 +650,10 @@ def run_telegram_push() -> dict:
         unlimited = quota < 0
         remaining = None
         if not unlimited:
-            sent_today = TelegramDelivery.objects.filter(user=user, sent_at__date=today).count()
-            remaining = quota - sent_today
+            sent_this_week = TelegramDelivery.objects.filter(
+                user=user, sent_at__gte=week_cutoff
+            ).count()
+            remaining = quota - sent_this_week
             if remaining <= 0:
                 continue
 

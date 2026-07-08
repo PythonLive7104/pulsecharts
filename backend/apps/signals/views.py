@@ -31,6 +31,7 @@ from .models import (
     UserSignalSubscription,
 )
 from .quota import (
+    SIGNAL_QUOTA_WINDOW,
     custom_strategy_quota_for,
     signal_quota_for,
     strategies_allowed_for,
@@ -50,7 +51,7 @@ RESULTS_LOOKBACK = timedelta(days=7)
 # How many resolved trades the "Past results" panel shows. Free gets a smaller
 # teaser (enough social proof to convert, not the whole track record); paid tiers
 # see the full history. This is closed/historical outcomes only — the live,
-# actionable feed stays strictly capped at the plan's daily quota.
+# actionable feed stays strictly capped at the plan's weekly quota.
 RESULTS_LIMIT_FREE = 10
 RESULTS_LIMIT_PAID = 50
 
@@ -223,25 +224,25 @@ class SubscriptionDeleteView(generics.DestroyAPIView):
 class SignalFeedView(APIView):
     """Personalized feed, quota-enforced server-side (Section 13.3).
 
-    New signals from followed strategies are delivered up to the plan's daily
-    quota; delivery is recorded so the same signal isn't shown twice and the
-    quota can't be bypassed by the client.
+    New signals from followed strategies are delivered up to the plan's weekly
+    quota (rolling 7-day window); delivery is recorded so the same signal isn't
+    shown twice and the quota can't be bypassed by the client.
     """
 
     def get(self, request):
         user = request.user
         quota = signal_quota_for(user)
         now = timezone.now()
-        today = now.date()
+        week_cutoff = now - SIGNAL_QUOTA_WINDOW  # rolling 7-day quota window
 
         # A plan with no signal access (quota 0) gets a locked upgrade card. No
-        # current plan is 0 — Free gets a real 10/day feed — so this is a guard for
+        # current plan is 0 — Free gets a real 20/week feed — so this is a guard for
         # any future no-access tier, not the Free path.
         if quota == 0:
             return Response({
                 "locked": True,
                 "quota": 0,
-                "delivered_today": 0,
+                "delivered_this_week": 0,
                 "signals": [],
                 "disclaimer": "Trading signals are a Premium feature.",
             })
@@ -251,7 +252,7 @@ class SignalFeedView(APIView):
             return Response({
                 "shadow": True,
                 "quota": quota,
-                "delivered_today": 0,
+                "delivered_this_week": 0,
                 "signals": [],
                 "disclaimer": "Signals are in validation. Check back soon.",
             })
@@ -266,7 +267,7 @@ class SignalFeedView(APIView):
                 "needs_watchlist": True,
                 "watchlist_limit": watchlist_limit_for(user),
                 "quota": quota,
-                "delivered_today": 0,
+                "delivered_this_week": 0,
                 "signals": [],
                 "disclaimer": "Add coins to your watchlist to receive signals for them.",
             })
@@ -275,11 +276,11 @@ class SignalFeedView(APIView):
             UserSignalSubscription.objects.filter(user=user).values_list("service_id", flat=True)
         )
 
-        delivered_today = SignalDelivery.objects.filter(
-            user=user, delivered_at__date=today
+        delivered_this_week = SignalDelivery.objects.filter(
+            user=user, delivered_at__gte=week_cutoff
         ).count()
         unlimited = quota < 0
-        remaining = None if unlimited else max(0, quota - delivered_today)
+        remaining = None if unlimited else max(0, quota - delivered_this_week)
 
         # Deliver new qualifying signals up to the remaining quota. Collapse by
         # confluence first, so a coin firing on several strategies costs one
@@ -323,17 +324,17 @@ class SignalFeedView(APIView):
                 ignore_conflicts=True,
             )
 
-        delivered_today = SignalDelivery.objects.filter(
-            user=user, delivered_at__date=today
+        delivered_this_week = SignalDelivery.objects.filter(
+            user=user, delivered_at__gte=week_cutoff
         ).count()
 
-        # Active feed: signals delivered today that are still live (PENDING).
-        today_ids = SignalDelivery.objects.filter(
-            user=user, delivered_at__date=today
+        # Active feed: signals delivered this week that are still live (PENDING).
+        week_ids = SignalDelivery.objects.filter(
+            user=user, delivered_at__gte=week_cutoff
         ).values_list("signal_id", flat=True)
         active = list(
             Signal.objects.filter(
-                id__in=today_ids,
+                id__in=week_ids,
                 service_id__in=followed_ids,  # only strategies you currently follow
                 symbol_id__in=watched_ids,
                 outcome=Signal.Outcome.PENDING,
@@ -408,7 +409,7 @@ class SignalFeedView(APIView):
         return Response(
             {
                 "quota": quota,
-                "delivered_today": delivered_today,
+                "delivered_this_week": delivered_this_week,
                 "signals": SignalSerializer(active, many=True).data,
                 "resolved": SignalSerializer(resolved, many=True).data,
                 "disclaimer": "Informational only. Not financial advice.",

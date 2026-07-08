@@ -1,4 +1,4 @@
-"""Daily signal quota by plan (Section 13.3). -1 means unlimited."""
+"""Weekly signal quota by plan (Section 13.3). -1 means unlimited."""
 
 from datetime import timedelta
 
@@ -8,9 +8,12 @@ from apps.accounts.plans import plan_for
 # not by how many are active — deleting one never refunds a slot.
 CUSTOM_STRATEGY_WINDOW = timedelta(days=30)
 
+# Signal delivery quota is enforced over a rolling 7-day window (feed + Telegram).
+SIGNAL_QUOTA_WINDOW = timedelta(days=7)
+
 
 def signal_quota_for(user) -> int:
-    return plan_for(user)["signal_daily_quota"]
+    return plan_for(user)["signal_weekly_quota"]
 
 
 def strategies_allowed_for(user) -> int:

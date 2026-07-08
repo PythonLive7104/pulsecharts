@@ -51,7 +51,7 @@ KNOWLEDGE = [
             "Yes — the free tier is genuinely free, no card required. It includes "
             "live crypto & forex charts, every timeframe, unlimited symbol "
             "switching, the SMA/EMA/Volume indicators, a 20-coin watchlist, and a "
-            "daily taste of trading signals (up to 10/day). Starter and Pro add the "
+            "taste of trading signals (up to 20/week). Starter and Pro add the "
             "advanced indicators, more signals, and Telegram alerts."
         ),
     },
@@ -60,9 +60,9 @@ KNOWLEDGE = [
         "keywords": ["premium", "paid", "pro", "starter", "upgrade", "subscription", "plan", "plans", "what's included", "benefits"],
         "answer": (
             "There are two paid tiers. Starter ($9) adds RSI, MACD, Bollinger "
-            "Bands and VWAP, up to 40 signals/day, Telegram alerts, and 10 saved "
+            "Bands and VWAP, up to 400 signals/week, Telegram alerts, and 10 saved "
             "layouts. Pro ($19) unlocks every indicator (Stochastic, ATR, Fibonacci, "
-            "Ichimoku Cloud), unlimited daily signals, build-your-own-strategy with "
+            "Ichimoku Cloud), unlimited signals, build-your-own-strategy with "
             "AI, and a 150-coin watchlist. Each is a one-time payment for 30 days of "
             "access — upgrade any time from your dashboard."
         ),
@@ -119,8 +119,8 @@ KNOWLEDGE = [
         "answer": (
             "Algorithmic strategies scan tracked crypto AND forex pairs and surface "
             "buy/sell setups with entry, stop-loss, take-profit targets, and a "
-            "confidence score. Free gets a daily taste (up to 10/day), Starter up to "
-            "40/day, and Pro unlimited — with Telegram alerts on the paid tiers. "
+            "confidence score. Free gets a taste (up to 20/week), Starter up to "
+            "400/week, and Pro unlimited — with Telegram alerts on the paid tiers. "
             "They're informational only, not financial advice."
         ),
     },
@@ -179,8 +179,8 @@ KNOWLEDGE = [
         "keywords": ["telegram", "notification", "notifications", "push", "bot"],
         "answer": (
             "Starter and Pro members can connect a Telegram bot to receive new "
-            "trading signals as push messages, capped by their plan's daily limit "
-            "(40/day on Starter, unlimited on Pro). You link it from your dashboard "
+            "trading signals as push messages, capped by their plan's weekly limit "
+            "(400/week on Starter, unlimited on Pro). You link it from your dashboard "
             "once you're on a paid plan."
         ),
     },
