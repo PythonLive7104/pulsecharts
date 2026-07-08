@@ -163,8 +163,14 @@ export default function SignalsPage() {
 
   // Recent trade updates (closures) — shown in-app to everyone, so free/starter
   // who don't use Telegram still see when a trade hit TP/SL or the trend flipped.
+  // Scale-out model (§19.2): a partial is banked at each target and the stop trails
+  // to breakeven after TP1, so a TP1/TP2 close means the runner came back to
+  // breakeven with the earlier third(s) already secured; TP3 is a full run.
   const CLOSURE_MSG = {
-    TP1: "✅ Hit TP1", TP2: "✅ Hit TP2", TP3: "✅ Hit TP3", TP4: "✅ Hit TP4",
+    TP1: "✅ TP1 banked · runner to breakeven",
+    TP2: "✅ TP1 & TP2 banked · runner to breakeven",
+    TP3: "✅ Full run — all targets hit",
+    TP4: "✅ Full run — all targets hit",
     SL: "🛑 Stopped out", INVALID: "⚠️ Invalidated — trend flipped",
     EXPIRED: "⌛ Expired",
   };
@@ -245,7 +251,7 @@ export default function SignalsPage() {
               <div className="lock-icon">🔒</div>
               <h1>Trading Signals</h1>
               <p className="muted">
-                AI-generated buy/sell signals with entry, stop-loss, and TP1–TP4 targets,
+                AI-generated buy/sell signals with entry, stop-loss, and TP1–TP3 targets,
                 confidence scores, and reasoning are included on the Starter &amp; Pro plans.
               </p>
               <Link to="/account/billing" className="btn-primary btn-lg">Upgrade</Link>
@@ -358,6 +364,9 @@ export default function SignalsPage() {
                     <span className="muted">
                       {accuracy.overall.wins}W / {accuracy.overall.losses}L ({accuracy.overall.resolved} resolved)
                       {accuracy.overall.breakeven > 0 && ` · ${accuracy.overall.breakeven} invalidated`}
+                      {accuracy.overall.avg_r != null && (
+                        <> · <b>{accuracy.overall.avg_r > 0 ? "+" : ""}{accuracy.overall.avg_r}R</b> avg / trade</>
+                      )}
                     </span>
                   </div>
                   <div className="acc-strats">
@@ -365,7 +374,8 @@ export default function SignalsPage() {
                       <div key={s.slug} className="acc-strat">
                         <span>{s.name}</span>
                         <span className="acc-strat-rate">
-                          {s.win_rate}% <span className="muted">({s.wins}/{s.resolved})</span>
+                          {s.win_rate}% <span className="muted">({s.wins}/{s.resolved})
+                          {s.avg_r != null && `, ${s.avg_r > 0 ? "+" : ""}${s.avg_r}R`}</span>
                         </span>
                       </div>
                     ))}

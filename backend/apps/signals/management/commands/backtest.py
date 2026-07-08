@@ -36,10 +36,15 @@ from apps.signals.pregate import candidate_direction, passes_pregate
 MIN_CANDLES = 210  # enough history for the 200 EMA / swing windows (matches tasks.py)
 
 
+# Realized R per best-TP under the live scale-out-in-thirds model (§19.2): bank 1/3
+# at each target, stop trails to breakeven after TP1 so the remainder closes flat.
+SCALEOUT_R = {1: 1 / 3, 2: 1.0, 3: 2.0, 4: 3.0}
+
+
 def _blank(name):
     return {
         "name": name, "trades": 0, "wins": 0, "losses": 0,
-        "r_tp1": 0.0, "r_best": 0.0, "mfe": 0.0, "mae": 0.0,
+        "r_tp1": 0.0, "r_scale": 0.0, "r_best": 0.0, "mfe": 0.0, "mae": 0.0,
         "tp_dist": {1: 0, 2: 0, 3: 0, 4: 0},
     }
 
@@ -50,11 +55,13 @@ def _record(bucket, res):
     if best_tp >= 1:
         bucket["wins"] += 1
         bucket["tp_dist"][best_tp] += 1
-        bucket["r_tp1"] += 1.0                       # conservative: exit at TP1 (+1R)
-        bucket["r_best"] += TP_MULTIPLES[best_tp]    # optimistic: exit at best target
+        bucket["r_tp1"] += 1.0                       # conservative: exit all at TP1 (+1R)
+        bucket["r_scale"] += SCALEOUT_R[best_tp]     # realized: scale out in thirds
+        bucket["r_best"] += TP_MULTIPLES[best_tp]    # optimistic: exit all at best target
     else:
         bucket["losses"] += 1
         bucket["r_tp1"] -= 1.0
+        bucket["r_scale"] -= 1.0
         bucket["r_best"] -= 1.0
     bucket["mfe"] += res["mfe_pct"]
     bucket["mae"] += res["mae_pct"]
@@ -81,7 +88,7 @@ def _outcome(direction, snap, future, asset_class="crypto"):
 def _totals(stats):
     t = _blank("ALL")
     for b in stats.values():
-        for k in ("trades", "wins", "losses", "r_tp1", "r_best", "mfe", "mae"):
+        for k in ("trades", "wins", "losses", "r_tp1", "r_scale", "r_best", "mfe", "mae"):
             t[k] += b[k]
         for n in (1, 2, 3, 4):
             t["tp_dist"][n] += b["tp_dist"][n]
@@ -276,7 +283,8 @@ class Command(BaseCommand):
         return (
             f"  {b['name']:<26} {b['wins']/t*100:5.1f}%  "
             f"{b['wins']:>3}W /{b['losses']:>3}L  n={t:<4} "
-            f"exp(TP1)={b['r_tp1']/t:+.2f}R  exp(best)={b['r_best']/t:+.2f}R  "
+            f"exp(TP1)={b['r_tp1']/t:+.2f}R  exp(scale)={b['r_scale']/t:+.2f}R  "
+            f"exp(best)={b['r_best']/t:+.2f}R  "
             f"avgMFE={b['mfe']/t:+.1f}% avgMAE={b['mae']/t:+.1f}%"
         )
 
@@ -336,9 +344,10 @@ class Command(BaseCommand):
     def _footer(self, llm=False):
         base = (
             "\nReading this honestly:\n"
-            "  • Win % = reached TP1 before the stop. exp(TP1) = exit at TP1 (caps\n"
-            "    winners at +1R, conservative). exp(best) = exit at the furthest\n"
-            "    target hit (hindsight peak, optimistic). Reality is in between.\n"
+            "  • Win % = reached TP1 before the stop. exp(TP1) = exit all at TP1 (caps\n"
+            "    winners at +1R, conservative). exp(scale) = the LIVE model: scale out\n"
+            "    in thirds, stop to breakeven after TP1 (what to actually expect).\n"
+            "    exp(best) = exit all at the furthest target hit (hindsight, optimistic).\n"
             "  • Small historical sample, currently-listed coins only (survivorship),\n"
             "    one market regime. Directional, not proof — don't claim accuracy (§13.7)."
         )

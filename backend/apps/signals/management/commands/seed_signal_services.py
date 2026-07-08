@@ -63,6 +63,9 @@ SERVICES = [
     {
         "name": "Bollinger Breakout",
         "slug": "bollinger-breakout",
+        "is_active": False,  # disabled: weakest of the roster — negative at TP1 (-0.06R)
+                             # and only +0.04R even under scale-out (n=332); other breakout
+                             # strategies (volatility, donchian) were cut for the same reason.
         "strategy_type": "breakout",
         "description": "Close beyond a Bollinger Band on expanding volume — breakout continuation.",
         "strategy_focus": (

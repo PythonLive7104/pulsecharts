@@ -81,8 +81,9 @@ export default function BillingPage() {
       const res = await api.redeemPromoCode(promoCode);
       await loadEntitlements();
       const until = res?.plan_expiry ? new Date(res.plan_expiry).toLocaleDateString() : null;
+      const planLabel = res?.plan_tier === "pro" ? "Pro" : res?.plan_tier === "starter" ? "Starter" : "Premium";
       setPromoOk(true);
-      setPromoMsg(`Pro unlocked${until ? ` until ${until}` : ""} — enjoy the premium features!`);
+      setPromoMsg(`${planLabel} unlocked${until ? ` until ${until}` : ""} — enjoy the premium features!`);
       setPromoCode("");
     } catch (e) {
       setPromoMsg(e.message);
@@ -131,10 +132,10 @@ export default function BillingPage() {
       </div>
 
       <div className="card">
-        <h2>Have a Pro access code?</h2>
+        <h2>Have an access code?</h2>
         <p className="muted">
-          Got an invite code? Redeem it to unlock <strong>Pro</strong> and trial the premium
-          features — including building your own AI strategies.
+          Got an invite code? Redeem it to unlock a <strong>premium plan</strong> and trial the
+          premium features — including building your own AI strategies.
         </p>
         <div className="promo-redeem">
           <input

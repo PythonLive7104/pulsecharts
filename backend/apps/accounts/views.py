@@ -167,11 +167,13 @@ class ReferralRedeemView(APIView):
 
 
 class RedeemPromoCodeView(APIView):
-    """POST /api/me/referral/redeem-code/ {code} — redeem the admin Pro promo code.
+    """POST /api/me/referral/redeem-code/ {code} — redeem an admin promo code.
 
-    Grants Pro for settings.ADMIN_PRO_DAYS days so invited users can trial premium.
-    One redemption per user per code value (settings.ADMIN_PRO_CODE); rotating the
-    code opens a fresh window. Not tied to credits or the referral graph.
+    Grants the plan the entered code maps to for a fixed window so invited users
+    can trial premium: settings.ADMIN_PRO_CODE → Pro (ADMIN_PRO_DAYS), or
+    settings.ADMIN_STARTER_CODE → Starter (ADMIN_STARTER_DAYS). One redemption per
+    user per code value (tracked separately, so a user may redeem each once);
+    rotating a code opens a fresh window. Not tied to credits or the referral graph.
     """
 
     def post(self, request):
@@ -179,10 +181,20 @@ class RedeemPromoCodeView(APIView):
 
         from django.utils import timezone
 
-        from apps.accounts.plans import PRO
+        from apps.accounts.plans import PRO, STARTER, plan_key, plan_rank
 
-        admin_code = (settings.ADMIN_PRO_CODE or "").strip()
-        if not admin_code:
+        # Each configured code maps to (plan tier, grant days, the model field that
+        # records prior redemption of THAT code). Ordered Pro-first so a value that
+        # somehow matched both is treated as the higher grant.
+        code_map = [
+            (settings.ADMIN_PRO_CODE, PRO, settings.ADMIN_PRO_DAYS,
+             "pro_promo_code_used", "Pro"),
+            (settings.ADMIN_STARTER_CODE, STARTER, settings.ADMIN_STARTER_DAYS,
+             "starter_promo_code_used", "Starter"),
+        ]
+        active = [(c.strip(), tier, days, field, label)
+                  for c, tier, days, field, label in code_map if (c or "").strip()]
+        if not active:
             return Response(
                 {"detail": "No promo code is active right now."},
                 status=status.HTTP_400_BAD_REQUEST,
@@ -191,26 +203,36 @@ class RedeemPromoCodeView(APIView):
         entered = (request.data.get("code") or "").strip()
         if not entered:
             return Response({"detail": "Enter a code."}, status=status.HTTP_400_BAD_REQUEST)
-        if entered.upper() != admin_code.upper():
+
+        match = next((m for m in active if entered.upper() == m[0].upper()), None)
+        if match is None:
             return Response({"detail": "That code isn't valid."}, status=status.HTTP_400_BAD_REQUEST)
+        code, tier, days, field, label = match
 
         user = request.user
         # One grant per code value — don't let the same code be re-redeemed to stack days.
-        if user.pro_promo_code_used and user.pro_promo_code_used.upper() == admin_code.upper():
+        if (getattr(user, field) or "").upper() == code.upper():
             return Response(
                 {"detail": "You've already redeemed this code."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        # Never downgrade: a user on an active higher tier redeeming a lower-tier
+        # code (e.g. a Pro user entering the Starter code) keeps their plan.
+        if plan_rank(plan_key(user)) > plan_rank(tier):
+            return Response(
+                {"detail": f"You're already on a higher plan than {label}."},
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
         now = timezone.now()
         # Extend from the current expiry if still active, otherwise start fresh.
         base = user.plan_expiry if (user.plan_expiry and user.plan_expiry > now) else now
-        user.plan_tier = PRO
-        user.plan_expiry = base + timedelta(days=settings.ADMIN_PRO_DAYS)
-        user.pro_promo_code_used = admin_code
-        user.save(update_fields=["plan_tier", "plan_expiry", "pro_promo_code_used"])
+        user.plan_tier = tier
+        user.plan_expiry = base + timedelta(days=days)
+        setattr(user, field, code)
+        user.save(update_fields=["plan_tier", "plan_expiry", field])
 
-        # Top watchlist + followed strategies up to Pro defaults (idempotent).
+        # Top watchlist + followed strategies up to the new plan's defaults (idempotent).
         try:
             from .onboarding import provision_default_setup
 
@@ -218,11 +240,11 @@ class RedeemPromoCodeView(APIView):
         except Exception:
             logger.exception("Promo upgrade provisioning failed for %s", user.email)
 
-        logger.info("Promo code redeemed: %s -> Pro until %s", user.email, user.plan_expiry)
+        logger.info("Promo code redeemed: %s -> %s until %s", user.email, label, user.plan_expiry)
         return Response({
             "plan_tier": user.plan_tier,
             "plan_expiry": user.plan_expiry,
-            "days": settings.ADMIN_PRO_DAYS,
+            "days": days,
         })
 
 

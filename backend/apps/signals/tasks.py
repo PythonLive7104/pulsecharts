@@ -370,11 +370,16 @@ def run_evaluation(limit: int | None = None) -> dict:
         res = walk(
             sig.direction, sig.entry_price, sig.stop_loss,
             [t for t in (sig.tp1, sig.tp2, sig.tp3, sig.tp4) if t is not None], eval_candles,
+            breakeven_after_tp1=True,
         )
-        # Resolve only on a hit: a take-profit (win) or the stop-loss (loss).
-        # Otherwise the call remains Active, no matter how long it's been open.
+        # "Let winners run" (§19.2): don't lock a winner in the moment it tags TP1 —
+        # keep it Active so it can reach TP2/TP3, and resolve only when the trade is
+        # actually terminal (the stop or breakeven-stop is hit, or the last TP is
+        # reached). A trade that has merely tagged TP1 and is still running is NOT
+        # terminal, so it stays pending. `outcome_label` records the furthest target
+        # reached, so a runner closed at breakeven after TP1 still books a TP1 win.
         label = outcome_label(res)
-        if label:
+        if label and res["terminal"]:
             # Guard against a race: the candle fetch above is slow, and a
             # concurrent scan may have already closed this call as a breakeven
             # trend-flip invalidation. Only write the SL/TP outcome if the call is
@@ -527,6 +532,15 @@ def format_closure_for_telegram(s: Signal) -> str:
     if s.outcome in tp_hit:
         label, price = tp_hit[s.outcome]
         lines.append(f"{label} hit: <b>{p(price)}</b>")
+        # Scale-out model (§19.2): a partial is banked at each target and the stop
+        # trails to breakeven after TP1, so a TP1/TP2 close means the runner came
+        # back to breakeven with the earlier third(s) already secured.
+        if s.outcome == Signal.Outcome.TP1:
+            lines.append("<i>First target banked; runner closed at breakeven.</i>")
+        elif s.outcome == Signal.Outcome.TP2:
+            lines.append("<i>TP1 & TP2 banked; runner closed at breakeven.</i>")
+        elif s.outcome == Signal.Outcome.TP3:
+            lines.append("<i>Full run — all three targets hit.</i>")
     else:
         # SL / INVALIDATED / EXPIRED — the stop is the relevant risk level.
         lines.append(f"Stop loss: <b>{p(s.stop_loss)}</b>")

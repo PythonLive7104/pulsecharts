@@ -158,7 +158,7 @@ export default function LandingPage() {
           <div className="step">
             <span className="step-num">5</span>
             <h3>Read your signal feed</h3>
-            <p>Each signal card gives the direction, entry, stop-loss and four take-profit targets (TP1–TP4), a conviction score, and a plain-English reason. Informational only — not financial advice.</p>
+            <p>Each signal card gives the direction, entry, stop-loss and three take-profit targets (TP1–TP3), a conviction score, and a plain-English reason. Informational only — not financial advice.</p>
           </div>
           <div className="step">
             <span className="step-num">6</span>
@@ -189,7 +189,7 @@ export default function LandingPage() {
           <div className="feature">
             <div className="feature-icon">🤖</div>
             <h3>Algorithmic trading signals <span className="feature-tag premium">Premium</span></h3>
-            <p>An always-on engine scans the strategies you follow — across <strong>both crypto and forex</strong> — and surfaces buy/sell signals, each with an entry, a stop-loss, four take-profit targets (TP1–TP4), risk/reward math and a plain-English reason it was flagged. Get them in-app or pushed straight to your <strong>Telegram</strong>, with trade updates when a target or stop is hit. Informational only, never financial advice.</p>
+            <p>An always-on engine scans the strategies you follow — across <strong>both crypto and forex</strong> — and surfaces buy/sell signals, each with an entry, a stop-loss, three take-profit targets (TP1–TP3), risk/reward math and a plain-English reason it was flagged. Get them in-app or pushed straight to your <strong>Telegram</strong>, with trade updates when a target or stop is hit. Informational only, never financial advice.</p>
           </div>
           <div className="feature">
             <div className="feature-icon">🧠</div>

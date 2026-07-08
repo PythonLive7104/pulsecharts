@@ -93,6 +93,9 @@ class User(AbstractUser):
     # at redeem time). Guards one grant per code value — if the admin rotates the
     # code, the stored value differs and the user can redeem the new one.
     pro_promo_code_used = models.CharField(max_length=64, blank=True, default="")
+    # Same guard for the admin Starter-promo code (settings.ADMIN_STARTER_CODE).
+    # Tracked separately from the Pro code so a user can redeem each once.
+    starter_promo_code_used = models.CharField(max_length=64, blank=True, default="")
 
     USERNAME_FIELD = "email"
     REQUIRED_FIELDS = []
