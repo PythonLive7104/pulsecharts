@@ -6,6 +6,7 @@ import { api } from "../api";
 import { useStore } from "../store/useStore";
 import ThemeToggle from "../components/ThemeToggle";
 import SignalCard from "../components/SignalCard";
+import SignalsNotice from "../components/SignalsNotice";
 import StrategyBuilder from "../components/StrategyBuilder";
 import Logo from "../components/Logo";
 
@@ -229,6 +230,7 @@ export default function SignalsPage() {
 
   return (
     <div className="signals-page">
+      <SignalsNotice />
       <header className="topbar">
         <Link to="/" className="brand"><Logo /></Link>
         <nav className="signals-nav">
