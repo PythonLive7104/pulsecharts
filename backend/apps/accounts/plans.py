@@ -105,6 +105,38 @@ PLANS: dict[str, dict] = {
     },
 }
 
+# Purchase option, NOT a tier — deliberately kept out of PLANS so plan_key /
+# plan_rank / PAID_TIERS never have to know about it. Buying it grants the Pro
+# tier with a null plan_expiry, which plan_key() below already reads as
+# "never expires". Everything downstream (entitlements, gating, quotas) sees a
+# normal Pro user.
+LIFETIME = "lifetime"
+
+LIFETIME_PLAN: dict = {
+    "key": LIFETIME,
+    "label": "Pro Lifetime",
+    "price_usd": 89,
+    "period": "once",
+    "grants_tier": PRO,
+    "tagline": "Every Pro feature, forever. One payment, no renewals.",
+    "features": [
+        "Everything in Pro, for life",
+        "One payment — never expires, never renews",
+        "Build your own strategy with AI (up to 5/mo)",
+        "Every indicator: Stochastic, ATR, Fibonacci & Ichimoku Cloud",
+        "Watchlist of 150 coins, set up for you",
+        "Unlimited signals + Telegram alerts",
+        "Save up to 50 chart layouts",
+    ],
+}
+
+# Everything a user can pay for, keyed by what the checkout endpoint accepts.
+PURCHASE_OPTIONS: dict[str, dict] = {
+    STARTER: PLANS[STARTER],
+    PRO: PLANS[PRO],
+    LIFETIME: LIFETIME_PLAN,
+}
+
 # Legacy tier value (before the 3-tier split) maps to Pro.
 _ALIASES = {"premium": PRO}
 
@@ -138,6 +170,28 @@ def plan_for(user) -> dict:
 
 def is_paid(user) -> bool:
     return plan_key(user) in PAID_TIERS
+
+
+def is_lifetime(user) -> bool:
+    """True for a user on a paid tier that never expires — i.e. someone who bought
+    the lifetime option (or was granted a permanent plan by staff).
+
+    A null plan_expiry on a paid tier is exactly what plan_key() treats as
+    non-expiring, so this is the same condition read from the other side.
+    """
+    if plan_key(user) not in PAID_TIERS:
+        return False
+    return getattr(user, "plan_expiry", None) is None
+
+
+def purchase_price_usd(option: str) -> int | float | None:
+    """USD price of a purchasable option ('starter' | 'pro' | 'lifetime')."""
+    return PURCHASE_OPTIONS.get(option, {}).get("price_usd")
+
+
+def tier_granted_by(option: str) -> str:
+    """The plan tier a purchase grants. Lifetime grants Pro; the rest grant themselves."""
+    return PURCHASE_OPTIONS.get(option, {}).get("grants_tier", option)
 
 
 def plan_rank(key: str) -> int:

@@ -450,6 +450,15 @@ from datetime import timedelta  # noqa: E402
 
 TELEGRAM_LOOKBACK = timedelta(hours=6)  # don't push signals older than this
 
+# How long after a signal resolves we'll still send its "trade update". Sized to
+# outlast any plausible worker/beat outage — the window is anchored to the signal's
+# (immutable) resolved_at, so a shorter one silently lost closures whenever the
+# task didn't run for a day. Anything that ages past this is retired unnotified
+# rather than left pending forever: a stop-out alert arriving days late is worse
+# than none, and retiring it stops a widened window from ever resurrecting a flood
+# of ancient closures.
+CLOSURE_SEND_WINDOW = timedelta(hours=72)
+
 
 def _fmt_price(x) -> str:
     """Price with precision suited to magnitude, so sub-dollar coins (DOGE, kPEPE)
@@ -557,14 +566,33 @@ def run_telegram_close_updates() -> dict:
 
     Sends one update per delivered signal (closure_notified guards re-sends). Not
     gated on current premium — if you were sent a call, you're told how it ended.
-    Limited to recently-resolved signals so enabling this never floods old ones.
+
+    Closures resolved longer ago than CLOSURE_SEND_WINDOW are retired unnotified
+    (see below) rather than silently skipped, so an outage delays updates instead
+    of losing them.
     """
     from apps.accounts import telegram
 
     if not telegram.is_configured():
-        return {"closed": 0}
+        return {"closed": 0, "retired": 0}
 
-    cutoff = timezone.now() - timedelta(hours=24)
+    cutoff = timezone.now() - CLOSURE_SEND_WINDOW
+
+    # Too stale to be worth sending. Mark them done so they stop counting as
+    # pending work — and so widening the window later can't resurrect them.
+    # PENDING signals have a null resolved_at and never match `__lt`.
+    retired = (
+        TelegramDelivery.objects.filter(closure_notified=False, signal__resolved_at__lt=cutoff)
+        .exclude(signal__outcome=Signal.Outcome.PENDING)
+        .update(closure_notified=True)
+    )
+    if retired:
+        logger.warning(
+            "telegram close updates: retired %d stale closure(s) older than %s "
+            "without sending (worker likely lagged)",
+            retired, CLOSURE_SEND_WINDOW,
+        )
+
     pending = (
         TelegramDelivery.objects.filter(closure_notified=False, signal__resolved_at__gte=cutoff)
         .exclude(signal__outcome=Signal.Outcome.PENDING)
@@ -587,7 +615,7 @@ def run_telegram_close_updates() -> dict:
 
     if sent:
         logger.info("telegram close updates: sent=%d", sent)
-    return {"closed": sent}
+    return {"closed": sent, "retired": retired}
 
 
 def run_telegram_push() -> dict:

@@ -22,7 +22,7 @@ import hmac
 import requests
 from django.conf import settings
 
-from apps.accounts.plans import PLANS
+from apps.accounts.plans import purchase_price_usd
 
 _BASE_URL = "https://api.paystack.co"
 
@@ -42,9 +42,10 @@ def _headers() -> dict:
 
 
 def plan_amount_cents(plan: str) -> int:
-    """The plan's price as an integer number of cents (Paystack's subunit for USD).
-    Derived from the single source of truth for prices (apps.accounts.plans)."""
-    price = PLANS.get(plan, {}).get("price_usd")
+    """The price of a purchasable option ('starter' | 'pro' | 'lifetime') as an
+    integer number of cents (Paystack's subunit for USD). Derived from the single
+    source of truth for prices (apps.accounts.plans)."""
+    price = purchase_price_usd(plan)
     if not price:
         raise PaystackError(f"No price configured for the '{plan}' plan.")
     return int(round(float(price) * 100))

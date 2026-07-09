@@ -266,6 +266,52 @@ a.brand:hover { text-decoration: none; }
 .plan-card ul { list-style: none; padding: 0; margin: 0 0 22px; }
 .plan-card li { padding: 6px 0; font-size: 14px; color: var(--text); }
 
+/* Monthly ⇄ Lifetime billing-period switch (landing pricing + account billing) */
+.billing-toggle {
+  display: inline-flex;
+  gap: 4px;
+  margin: 0 auto 28px;
+  padding: 4px;
+  background: var(--bg-elev);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+}
+.billing-toggle button {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 9px 20px;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--muted);
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+.billing-toggle button:hover { color: var(--text-strong); }
+.billing-toggle button.active { background: var(--accent); color: #fff; }
+.billing-toggle-tag {
+  background: rgba(255, 255, 255, 0.18);
+  color: inherit;
+  font-size: 11px;
+  font-weight: 600;
+  padding: 2px 8px;
+  border-radius: 999px;
+}
+.billing-toggle button:not(.active) .billing-toggle-tag {
+  background: var(--accent);
+  color: #fff;
+}
+
+/* Lifetime is a single product — don't stretch it across the full grid width. */
+.plan-grid-single { grid-template-columns: minmax(280px, 420px); justify-content: center; }
+.plan-card-lifetime .plan-price span { font-size: 15px; }
+.plan-lifetime-compare { margin: -10px 0 14px; font-size: 13px; font-weight: 600; color: var(--accent); }
+.billing-plan-grid + .plan-note,
+.billing-toggle + .plan-grid { margin-top: 16px; }
+
 /* Indicators showcase */
 .indicators-showcase { padding: 56px 0; }
 .indicator-columns { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 20px; }

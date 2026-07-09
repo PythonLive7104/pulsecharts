@@ -8,7 +8,7 @@ import Logo from "../components/Logo";
 import SupportChat from "../components/SupportChat";
 import { useStore } from "../store/useStore";
 import { api } from "../api";
-import { PLAN_FALLBACK } from "../lib/plans";
+import { LIFETIME_FALLBACK, PLAN_FALLBACK, isLifetime } from "../lib/plans";
 
 // Lazy so three.js + R3F load in their own chunk only on the landing page,
 // keeping the trading app bundle lean.
@@ -47,12 +47,33 @@ const FAQS = [
 
 export default function LandingPage() {
   const isAuthed = useStore((s) => s.isAuthed);
+  const entitlements = useStore((s) => s.entitlements);
+  const loadEntitlements = useStore((s) => s.loadEntitlements);
   const [plans, setPlans] = useState(PLAN_FALLBACK);
+  const [lifetime, setLifetime] = useState(LIFETIME_FALLBACK);
+  // "monthly" | "lifetime" — which billing period the pricing grid shows.
+  const [billing, setBilling] = useState("monthly");
+
   useEffect(() => {
     api.plans()
-      .then((d) => { if (d?.plans?.length) setPlans(d.plans); })
+      .then((d) => {
+        if (d?.plans?.length) setPlans(d.plans);
+        if (d?.lifetime) setLifetime(d.lifetime);
+      })
       .catch(() => { /* keep fallback */ });
   }, []);
+
+  // Needed only to know whether this visitor already owns lifetime, in which case
+  // the whole pricing section (and its nav link) is hidden.
+  useEffect(() => {
+    if (isAuthed) loadEntitlements();
+  }, [isAuthed, loadEntitlements]);
+
+  const ownsLifetime = isLifetime(entitlements);
+  // Break-even framing for the lifetime card, derived from live prices so the copy
+  // can't drift if either price changes.
+  const monthlyPro = plans.find((p) => p.key === "pro")?.price_usd || 0;
+  const breakEvenMonths = monthlyPro > 0 ? Math.ceil(lifetime.price_usd / monthlyPro) : null;
 
   return (
     <>
@@ -63,7 +84,7 @@ export default function LandingPage() {
           <a href="#how">How it works</a>
           <a href="#features">Features</a>
           <a href="#indicators">Indicators</a>
-          <a href="#pricing">Pricing</a>
+          {!ownsLifetime && <a href="#pricing">Pricing</a>}
           <a href="#faq">FAQ</a>
           <ThemeToggle />
           {isAuthed ? (
@@ -249,38 +270,89 @@ export default function LandingPage() {
         </div>
       </section>
 
-      {/* Pricing */}
+      {/* Pricing — hidden entirely for lifetime owners, who have nothing to buy. */}
+      {!ownsLifetime && (
       <section id="pricing" className="pricing">
         <h2>Simple pricing</h2>
         <p className="section-sub">Priced to be the affordable alternative — start free, upgrade only if you want the advanced tools.</p>
-        <div className="plan-grid">
-          {plans.map((p) => {
-            const isFree = p.price_usd === 0;
-            const popular = p.key === "starter";
-            // Logged-in users shouldn't be sent to signup: free → dashboard,
-            // paid → the in-app billing/upgrade page.
-            const ctaTo = !isAuthed ? "/signup" : isFree ? "/app" : "/account/billing";
-            const ctaLabel = !isAuthed
-              ? isFree ? "Get started" : "Start free, upgrade later"
-              : isFree ? "Open dashboard →" : "Upgrade";
-            return (
-              <div key={p.key} className={`plan-card ${popular ? "featured" : ""}`}>
-                {popular && <span className="plan-badge">Most popular</span>}
-                <h3>{p.label}</h3>
-                <p className="plan-price">${p.price_usd}<span>/{p.period || "mo"}</span></p>
-                {p.tagline && <p className="plan-tagline muted">{p.tagline}</p>}
-                <ul>{p.features.map((f) => <li key={f}>✓ {f}</li>)}</ul>
-                <Link to={ctaTo} className={`btn-block ${popular ? "btn-primary" : "btn-ghost"}`}>
-                  {ctaLabel}
-                </Link>
-              </div>
-            );
-          })}
+
+        <div className="billing-toggle" role="tablist" aria-label="Billing period">
+          <button
+            role="tab"
+            aria-selected={billing === "monthly"}
+            className={billing === "monthly" ? "active" : ""}
+            onClick={() => setBilling("monthly")}
+          >
+            Monthly
+          </button>
+          <button
+            role="tab"
+            aria-selected={billing === "lifetime"}
+            className={billing === "lifetime" ? "active" : ""}
+            onClick={() => setBilling("lifetime")}
+          >
+            Lifetime
+            <span className="billing-toggle-tag">Best value</span>
+          </button>
         </div>
+
+        {billing === "monthly" ? (
+          <div className="plan-grid">
+            {plans.map((p) => {
+              const isFree = p.price_usd === 0;
+              const popular = p.key === "starter";
+              // Logged-in users shouldn't be sent to signup: free → dashboard,
+              // paid → the in-app billing/upgrade page.
+              const ctaTo = !isAuthed ? "/signup" : isFree ? "/app" : "/account/billing";
+              const ctaLabel = !isAuthed
+                ? isFree ? "Get started" : "Start free, upgrade later"
+                : isFree ? "Open dashboard →" : "Upgrade";
+              return (
+                <div key={p.key} className={`plan-card ${popular ? "featured" : ""}`}>
+                  {popular && <span className="plan-badge">Most popular</span>}
+                  <h3>{p.label}</h3>
+                  <p className="plan-price">${p.price_usd}<span>/{p.period || "mo"}</span></p>
+                  {p.tagline && <p className="plan-tagline muted">{p.tagline}</p>}
+                  <ul>{p.features.map((f) => <li key={f}>✓ {f}</li>)}</ul>
+                  <Link to={ctaTo} className={`btn-block ${popular ? "btn-primary" : "btn-ghost"}`}>
+                    {ctaLabel}
+                  </Link>
+                </div>
+              );
+            })}
+          </div>
+        ) : (
+          <div className="plan-grid plan-grid-single">
+            <div className="plan-card featured plan-card-lifetime">
+              <span className="plan-badge">Pay once, own it</span>
+              <h3>{lifetime.label}</h3>
+              <p className="plan-price">
+                ${lifetime.price_usd}<span>&nbsp;once</span>
+              </p>
+              {breakEvenMonths && (
+                <p className="plan-lifetime-compare muted">
+                  Pays for itself in ~{breakEvenMonths} months at ${monthlyPro}/mo — then it's yours free.
+                </p>
+              )}
+              {lifetime.tagline && <p className="plan-tagline muted">{lifetime.tagline}</p>}
+              <ul>{lifetime.features.map((f) => <li key={f}>✓ {f}</li>)}</ul>
+              <Link
+                to={isAuthed ? "/account/billing" : "/signup"}
+                className="btn-block btn-primary"
+              >
+                {isAuthed ? "Get lifetime access" : "Create an account to buy"}
+              </Link>
+            </div>
+          </div>
+        )}
+
         <p className="plan-note muted">
-          Premium billing is rolling out soon — create a free account today and upgrade in-app once it's live.
+          {billing === "lifetime"
+            ? "One payment, no subscription, no expiry — Pro features stay unlocked on your account for good."
+            : "Premium billing is rolling out soon — create a free account today and upgrade in-app once it's live."}
         </p>
       </section>
+      )}
 
       {/* FAQ */}
       <section id="faq" className="faq">
@@ -322,7 +394,7 @@ export default function LandingPage() {
           <div className="footer-col">
             <h4>Product</h4>
             <a href="#features">Features</a>
-            <a href="#pricing">Pricing</a>
+            {!ownsLifetime && <a href="#pricing">Pricing</a>}
             <Link to="/app">Open app</Link>
           </div>
           <div className="footer-col">

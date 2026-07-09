@@ -196,6 +196,11 @@ class Subscription(models.Model):
         PAST_DUE = "past_due", "Past due"
         CANCELED = "canceled", "Canceled"
         EXPIRED = "expired", "Expired"
+        # The money came back out of our account. Both revoke the grant this row
+        # paid for (apps.billing.views), and the row is kept — never deleted — so
+        # there's evidence to contest the chargeback with.
+        DISPUTED = "disputed", "Disputed (chargeback)"
+        REFUNDED = "refunded", "Refunded"
 
     user = models.ForeignKey(
         User, on_delete=models.CASCADE, related_name="subscriptions"

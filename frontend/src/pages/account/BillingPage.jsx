@@ -4,7 +4,7 @@
 import { useEffect, useState } from "react";
 import { useStore } from "../../store/useStore";
 import { api } from "../../api";
-import { PLAN_FALLBACK } from "../../lib/plans";
+import { LIFETIME_FALLBACK, PLAN_FALLBACK, isLifetime } from "../../lib/plans";
 
 export default function BillingPage() {
   const entitlements = useStore((s) => s.entitlements);
@@ -12,8 +12,12 @@ export default function BillingPage() {
   const isPremium = entitlements?.is_premium;
   const expiry = entitlements?.plan_expiry;
   const currentKey = entitlements?.plan_key || "free";
+  // Lifetime owners have nothing left to buy — every pricing surface below hides.
+  const ownsLifetime = isLifetime(entitlements);
 
   const [plans, setPlans] = useState(PLAN_FALLBACK);
+  const [lifetime, setLifetime] = useState(LIFETIME_FALLBACK);
+  const [billing, setBilling] = useState("monthly"); // "monthly" | "lifetime"
   const [notice, setNotice] = useState(null);
   const [busy, setBusy] = useState(false);
   const [history, setHistory] = useState(null);
@@ -36,7 +40,10 @@ export default function BillingPage() {
 
   useEffect(() => {
     api.plans()
-      .then((d) => { if (d?.plans?.length) setPlans(d.plans); })
+      .then((d) => {
+        if (d?.plans?.length) setPlans(d.plans);
+        if (d?.lifetime) setLifetime(d.lifetime);
+      })
       .catch(() => { /* keep fallback */ });
     api.billingHistory().then(setHistory).catch(() => setHistory([]));
     loadRef();
@@ -118,19 +125,26 @@ export default function BillingPage() {
         <h2>Current plan</h2>
         <div className="plan-status">
           <span className={`plan-badge-lg ${isPremium ? "premium" : ""}`}>
-            {entitlements?.plan_label || (isPremium ? "Premium" : "Free")}
+            {ownsLifetime
+              ? `${entitlements?.plan_label || "Pro"} · Lifetime`
+              : entitlements?.plan_label || (isPremium ? "Premium" : "Free")}
           </span>
-          {isPremium && expiry && (
+          {ownsLifetime ? (
+            <span className="muted">Never expires</span>
+          ) : isPremium && expiry ? (
             <span className="muted">Renews {new Date(expiry).toLocaleDateString()}</span>
-          )}
+          ) : null}
         </div>
         <p className="muted">
-          {isPremium
-            ? "You have full access to your plan's indicators, strategies and saved layouts."
-            : "Live charts, all timeframes, and SMA/EMA/Volume are free forever. Upgrade for advanced indicators, more strategies and a bigger watchlist."}
+          {ownsLifetime
+            ? "You own PulseCharts Pro for life — every indicator, strategy and layout stays unlocked, with nothing left to renew."
+            : isPremium
+              ? "You have full access to your plan's indicators, strategies and saved layouts."
+              : "Live charts, all timeframes, and SMA/EMA/Volume are free forever. Upgrade for advanced indicators, more strategies and a bigger watchlist."}
         </p>
       </div>
 
+      {!ownsLifetime && (
       <div className="card">
         <h2>Have an access code?</h2>
         <p className="muted">
@@ -156,50 +170,96 @@ export default function BillingPage() {
         </div>
         {promoMsg && <p className={promoOk ? "success" : "error"}>{promoMsg}</p>}
       </div>
+      )}
 
-      <div className="card">
-        <h2>Choose your plan</h2>
-        <div className="plan-grid billing-plan-grid">
-          {plans.map((p) => {
-            const isFree = p.price_usd === 0;
-            const isCurrent = p.key === currentKey;
-            const popular = p.key === "starter";
-            return (
-              <div
-                key={p.key}
-                className={`plan-card ${popular ? "featured" : ""} ${isCurrent ? "current" : ""}`}
-              >
-                {isCurrent ? (
-                  <span className="plan-badge">Current plan</span>
-                ) : popular ? (
-                  <span className="plan-badge">Most popular</span>
-                ) : null}
-                <h3>{p.label}</h3>
-                <p className="plan-price">${p.price_usd}<span>/{p.period || "mo"}</span></p>
-                {p.tagline && <p className="plan-tagline muted">{p.tagline}</p>}
-                <ul>{p.features.map((f) => <li key={f}>✓ {f}</li>)}</ul>
-                {isCurrent ? (
-                  <button className="btn-ghost btn-block" disabled>Your plan</button>
-                ) : isFree ? (
-                  <button className="btn-ghost btn-block" disabled>Included</button>
-                ) : (
-                  <button className="btn-primary btn-block" onClick={() => upgrade(p.key)} disabled={busy}>
-                    {busy ? "…" : `Upgrade to ${p.label}`}
-                  </button>
-                )}
+      {/* Pricing is pointless for a lifetime owner — hide the whole card. */}
+      {!ownsLifetime && (
+        <div className="card">
+          <h2>Choose your plan</h2>
+
+          <div className="billing-toggle" role="tablist" aria-label="Billing period">
+            <button
+              role="tab"
+              aria-selected={billing === "monthly"}
+              className={billing === "monthly" ? "active" : ""}
+              onClick={() => setBilling("monthly")}
+            >
+              Monthly
+            </button>
+            <button
+              role="tab"
+              aria-selected={billing === "lifetime"}
+              className={billing === "lifetime" ? "active" : ""}
+              onClick={() => setBilling("lifetime")}
+            >
+              Lifetime
+              <span className="billing-toggle-tag">Best value</span>
+            </button>
+          </div>
+
+          {billing === "monthly" ? (
+            <div className="plan-grid billing-plan-grid">
+              {plans.map((p) => {
+                const isFree = p.price_usd === 0;
+                const isCurrent = p.key === currentKey;
+                const popular = p.key === "starter";
+                return (
+                  <div
+                    key={p.key}
+                    className={`plan-card ${popular ? "featured" : ""} ${isCurrent ? "current" : ""}`}
+                  >
+                    {isCurrent ? (
+                      <span className="plan-badge">Current plan</span>
+                    ) : popular ? (
+                      <span className="plan-badge">Most popular</span>
+                    ) : null}
+                    <h3>{p.label}</h3>
+                    <p className="plan-price">${p.price_usd}<span>/{p.period || "mo"}</span></p>
+                    {p.tagline && <p className="plan-tagline muted">{p.tagline}</p>}
+                    <ul>{p.features.map((f) => <li key={f}>✓ {f}</li>)}</ul>
+                    {isCurrent ? (
+                      <button className="btn-ghost btn-block" disabled>Your plan</button>
+                    ) : isFree ? (
+                      <button className="btn-ghost btn-block" disabled>Included</button>
+                    ) : (
+                      <button className="btn-primary btn-block" onClick={() => upgrade(p.key)} disabled={busy}>
+                        {busy ? "…" : `Upgrade to ${p.label}`}
+                      </button>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          ) : (
+            <div className="plan-grid plan-grid-single">
+              <div className="plan-card featured plan-card-lifetime">
+                <span className="plan-badge">Pay once, own it</span>
+                <h3>{lifetime.label}</h3>
+                <p className="plan-price">${lifetime.price_usd}<span>&nbsp;once</span></p>
+                {lifetime.tagline && <p className="plan-tagline muted">{lifetime.tagline}</p>}
+                <ul>{lifetime.features.map((f) => <li key={f}>✓ {f}</li>)}</ul>
+                <button
+                  className="btn-primary btn-block"
+                  onClick={() => upgrade("lifetime")}
+                  disabled={busy}
+                >
+                  {busy ? "…" : `Get lifetime access — $${lifetime.price_usd}`}
+                </button>
               </div>
-            );
-          })}
+            </div>
+          )}
+          {notice && <p className="muted notice">{notice}</p>}
         </div>
-        {notice && <p className="muted notice">{notice}</p>}
-      </div>
+      )}
 
       {ref && (
         <div className="card">
           <h2>Refer &amp; earn</h2>
           <p className="muted">
             Share your code — you earn ${ref.reward_per_referral} every time someone signs up with it.
-            Cash your balance in for a plan: ${ref.prices.starter} → Starter, ${ref.prices.pro} → Pro (30 days each).
+            {ownsLifetime
+              ? " Your access never expires, so there's no plan left to redeem — your balance just keeps growing."
+              : ` Cash your balance in for a plan: $${ref.prices.starter} → Starter, $${ref.prices.pro} → Pro (30 days each).`}
           </p>
 
           <div className="referral-grid">
@@ -235,16 +295,20 @@ export default function BillingPage() {
             <button className="btn-ghost" onClick={copyShareLink}>Copy link</button>
           </div>
 
-          <div className="referral-redeem">
-            <button className="btn-primary" disabled={!ref.can_redeem_starter}
-              onClick={() => redeemCredits("starter")}>
-              Redeem ${ref.prices.starter} → Starter
-            </button>
-            <button className="btn-primary" disabled={!ref.can_redeem_pro}
-              onClick={() => redeemCredits("pro")}>
-              Redeem ${ref.prices.pro} → Pro
-            </button>
-          </div>
+          {/* A timed plan grant would replace a lifetime user's permanent access
+              with a 30-day expiry — the API refuses it, so don't offer it. */}
+          {!ownsLifetime && (
+            <div className="referral-redeem">
+              <button className="btn-primary" disabled={!ref.can_redeem_starter}
+                onClick={() => redeemCredits("starter")}>
+                Redeem ${ref.prices.starter} → Starter
+              </button>
+              <button className="btn-primary" disabled={!ref.can_redeem_pro}
+                onClick={() => redeemCredits("pro")}>
+                Redeem ${ref.prices.pro} → Pro
+              </button>
+            </div>
+          )}
           {refMsg && <p className="muted notice">{refMsg}</p>}
         </div>
       )}

@@ -12,6 +12,29 @@ export function planAllows(planKey, minPlan) {
   return planRank(planKey || "free") >= planRank(minPlan || "free");
 }
 
+// True once a user's paid access never expires (the lifetime purchase). The
+// backend sends this on /api/me/entitlements/; every pricing/upsell surface hides
+// itself when it's set, since there is nothing left to sell.
+export function isLifetime(entitlements) {
+  return Boolean(entitlements?.is_lifetime);
+}
+
+// Mirrors LIFETIME_PLAN in backend apps/accounts/plans.py. A purchase option, not
+// a tier — buying it grants Pro with no expiry.
+export const LIFETIME_FALLBACK = {
+  key: "lifetime", label: "Pro Lifetime", price_usd: 89, period: "once",
+  tagline: "Every Pro feature, forever. One payment, no renewals.",
+  features: [
+    "Everything in Pro, for life",
+    "One payment — never expires, never renews",
+    "Build your own strategy with AI (up to 5/mo)",
+    "Every indicator: Stochastic, ATR, Fibonacci & Ichimoku Cloud",
+    "Watchlist of 150 coins, set up for you",
+    "Unlimited signals + Telegram alerts",
+    "Save up to 50 chart layouts",
+  ],
+};
+
 // Static plan catalog mirroring backend apps/accounts/plans.py. Used as a
 // fallback so pricing/billing UIs render the three tiers even if /api/plans/ is
 // unreachable; the live endpoint (api.plans()) is the source of truth at runtime.
