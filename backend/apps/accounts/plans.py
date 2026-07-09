@@ -172,16 +172,38 @@ def is_paid(user) -> bool:
     return plan_key(user) in PAID_TIERS
 
 
-def is_lifetime(user) -> bool:
-    """True for a user on a paid tier that never expires — i.e. someone who bought
-    the lifetime option (or was granted a permanent plan by staff).
+def has_perpetual_access(user) -> bool:
+    """True for a user on a paid tier that never expires, however they got there —
+    a lifetime purchase OR a staff grant (`set_plan --tier pro` with no --days).
 
     A null plan_expiry on a paid tier is exactly what plan_key() treats as
-    non-expiring, so this is the same condition read from the other side.
+    non-expiring, so this is the same condition read from the other side. Guards
+    every timed-grant path, since writing an expiry onto these users would silently
+    downgrade them.
     """
     if plan_key(user) not in PAID_TIERS:
         return False
     return getattr(user, "plan_expiry", None) is None
+
+
+def is_lifetime_purchaser(user) -> bool:
+    """True only for users who actually BOUGHT the lifetime plan — perpetual access
+    backed by a real payment record.
+
+    Deliberately narrower than has_perpetual_access(): a staff-granted perpetual Pro
+    has no lifetime Subscription row, so they still see pricing and can still buy.
+    This is the flag the UI hides pricing on. A charged-back lifetime row flips to
+    `disputed`, so it stops counting here too.
+    """
+    if not has_perpetual_access(user):
+        return False
+    from .models import Subscription  # local import: models imports this module
+
+    return Subscription.objects.filter(
+        user=user,
+        renewal_date__isnull=True,  # what a lifetime grant writes
+        status=Subscription.Status.ACTIVE,
+    ).exists()
 
 
 def purchase_price_usd(option: str) -> int | float | None:

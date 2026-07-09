@@ -4,7 +4,7 @@
 import { useEffect, useState } from "react";
 import { useStore } from "../../store/useStore";
 import { api } from "../../api";
-import { LIFETIME_FALLBACK, PLAN_FALLBACK, isLifetime } from "../../lib/plans";
+import { LIFETIME_FALLBACK, PLAN_FALLBACK, isLifetime, planNeverExpires } from "../../lib/plans";
 
 export default function BillingPage() {
   const entitlements = useStore((s) => s.entitlements);
@@ -12,8 +12,11 @@ export default function BillingPage() {
   const isPremium = entitlements?.is_premium;
   const expiry = entitlements?.plan_expiry;
   const currentKey = entitlements?.plan_key || "free";
-  // Lifetime owners have nothing left to buy — every pricing surface below hides.
+  // Lifetime BUYERS have nothing left to buy — the plan grid hides for them only.
   const ownsLifetime = isLifetime(entitlements);
+  // Anyone whose access never expires (incl. staff-granted Pro) can't redeem a
+  // code or credits without downgrading themselves — the API refuses it.
+  const neverExpires = planNeverExpires(entitlements);
 
   const [plans, setPlans] = useState(PLAN_FALLBACK);
   const [lifetime, setLifetime] = useState(LIFETIME_FALLBACK);
@@ -129,7 +132,7 @@ export default function BillingPage() {
               ? `${entitlements?.plan_label || "Pro"} · Lifetime`
               : entitlements?.plan_label || (isPremium ? "Premium" : "Free")}
           </span>
-          {ownsLifetime ? (
+          {neverExpires ? (
             <span className="muted">Never expires</span>
           ) : isPremium && expiry ? (
             <span className="muted">Renews {new Date(expiry).toLocaleDateString()}</span>
@@ -138,13 +141,15 @@ export default function BillingPage() {
         <p className="muted">
           {ownsLifetime
             ? "You own PulseCharts Pro for life — every indicator, strategy and layout stays unlocked, with nothing left to renew."
-            : isPremium
-              ? "You have full access to your plan's indicators, strategies and saved layouts."
-              : "Live charts, all timeframes, and SMA/EMA/Volume are free forever. Upgrade for advanced indicators, more strategies and a bigger watchlist."}
+            : neverExpires
+              ? "Your plan has no expiry date — full access to your indicators, strategies and saved layouts."
+              : isPremium
+                ? "You have full access to your plan's indicators, strategies and saved layouts."
+                : "Live charts, all timeframes, and SMA/EMA/Volume are free forever. Upgrade for advanced indicators, more strategies and a bigger watchlist."}
         </p>
       </div>
 
-      {!ownsLifetime && (
+      {!neverExpires && (
       <div className="card">
         <h2>Have an access code?</h2>
         <p className="muted">
@@ -257,7 +262,7 @@ export default function BillingPage() {
           <h2>Refer &amp; earn</h2>
           <p className="muted">
             Share your code — you earn ${ref.reward_per_referral} every time someone signs up with it.
-            {ownsLifetime
+            {neverExpires
               ? " Your access never expires, so there's no plan left to redeem — your balance just keeps growing."
               : ` Cash your balance in for a plan: $${ref.prices.starter} → Starter, $${ref.prices.pro} → Pro (30 days each).`}
           </p>
@@ -295,9 +300,9 @@ export default function BillingPage() {
             <button className="btn-ghost" onClick={copyShareLink}>Copy link</button>
           </div>
 
-          {/* A timed plan grant would replace a lifetime user's permanent access
-              with a 30-day expiry — the API refuses it, so don't offer it. */}
-          {!ownsLifetime && (
+          {/* A timed plan grant would replace never-expiring access with a 30-day
+              expiry — the API refuses it, so don't offer it. */}
+          {!neverExpires && (
             <div className="referral-redeem">
               <button className="btn-primary" disabled={!ref.can_redeem_starter}
                 onClick={() => redeemCredits("starter")}>

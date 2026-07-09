@@ -12,11 +12,18 @@ export function planAllows(planKey, minPlan) {
   return planRank(planKey || "free") >= planRank(minPlan || "free");
 }
 
-// True once a user's paid access never expires (the lifetime purchase). The
-// backend sends this on /api/me/entitlements/; every pricing/upsell surface hides
-// itself when it's set, since there is nothing left to sell.
+// True only for users who BOUGHT the lifetime plan. Pricing sections hide on this,
+// since there's nothing left to sell them.
 export function isLifetime(entitlements) {
   return Boolean(entitlements?.is_lifetime);
+}
+
+// True whenever paid access never expires — a lifetime purchase OR a staff-granted
+// perpetual plan. Broader than isLifetime(): a staff-granted Pro still sees pricing,
+// but can't redeem a code or credits (a timed grant would overwrite their null
+// expiry and downgrade them), so the redeem surfaces hide on this instead.
+export function planNeverExpires(entitlements) {
+  return Boolean(entitlements?.plan_never_expires);
 }
 
 // Mirrors LIFETIME_PLAN in backend apps/accounts/plans.py. A purchase option, not

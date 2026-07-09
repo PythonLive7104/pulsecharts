@@ -44,18 +44,22 @@ class EntitlementsView(APIView):
     """
 
     def get(self, request):
-        from apps.accounts.plans import is_lifetime, plan_for
+        from apps.accounts.plans import has_perpetual_access, is_lifetime_purchaser, plan_for
 
         user = request.user
         plan = plan_for(user)
-        lifetime = is_lifetime(user)
         data = {
             "plan_tier": user.plan_tier,
             "plan_key": plan["key"],          # effective tier (expiry-aware)
             "plan_label": plan["label"],
-            "plan_expiry": user.plan_expiry,  # null on lifetime — never expires
+            "plan_expiry": user.plan_expiry,  # null when access never expires
             "is_premium": user.is_premium,
-            "is_lifetime": lifetime,          # hides every pricing/upsell surface
+            # Bought lifetime — hides the pricing sections. A staff-granted perpetual
+            # Pro is NOT this, and still sees pricing.
+            "is_lifetime": is_lifetime_purchaser(user),
+            # Access never expires, however it was granted. Hides only the redeem
+            # surfaces, which the API refuses for these users.
+            "plan_never_expires": has_perpetual_access(user),
             **entitlements_for(plan["indicator_tiers"]),
             "signal_weekly_quota": plan["signal_weekly_quota"],  # Section 13.3 (-1 = unlimited)
             "strategies_allowed": plan["strategies"],
@@ -132,18 +136,18 @@ class ReferralRedeemView(APIView):
 
         from django.utils import timezone
 
-        from apps.accounts.plans import PLANS, PRO, STARTER, is_lifetime
+        from apps.accounts.plans import PLANS, PRO, STARTER, has_perpetual_access
 
         plan = request.data.get("plan")
         if plan not in (STARTER, PRO):
             return Response({"detail": "Choose 'starter' or 'pro'."}, status=status.HTTP_400_BAD_REQUEST)
 
         user = request.user
-        # A timed grant would replace a lifetime user's null expiry with a date,
-        # silently downgrading them. Refuse before any credits are spent.
-        if is_lifetime(user):
+        # A timed grant would replace a never-expiring plan's null expiry with a
+        # date, silently downgrading them. Refuse before any credits are spent.
+        if has_perpetual_access(user):
             return Response(
-                {"detail": "You're on the lifetime plan — keep your credits for something else."},
+                {"detail": "Your plan doesn't expire — keep your credits for something else."},
                 status=status.HTTP_400_BAD_REQUEST,
             )
         price = PLANS[plan]["price_usd"]
@@ -192,7 +196,7 @@ class RedeemPromoCodeView(APIView):
 
         from django.utils import timezone
 
-        from apps.accounts.plans import PRO, STARTER, is_lifetime, plan_key, plan_rank
+        from apps.accounts.plans import PRO, STARTER, has_perpetual_access, plan_key, plan_rank
 
         # Each configured code maps to (plan tier, grant days, the model field that
         # records prior redemption of THAT code). Ordered Pro-first so a value that
@@ -229,11 +233,11 @@ class RedeemPromoCodeView(APIView):
             )
         # Never downgrade: a user on an active higher tier redeeming a lower-tier
         # code (e.g. a Pro user entering the Starter code) keeps their plan. A
-        # lifetime account outranks every timed grant, including an equal-tier one,
-        # since applying it would swap a null expiry for a dated one.
-        if is_lifetime(user):
+        # never-expiring plan outranks every timed grant, including an equal-tier
+        # one, since applying it would swap a null expiry for a dated one.
+        if has_perpetual_access(user):
             return Response(
-                {"detail": "You're on the lifetime plan — no code needed."},
+                {"detail": "Your plan doesn't expire — no code needed."},
                 status=status.HTTP_400_BAD_REQUEST,
             )
         if plan_rank(plan_key(user)) > plan_rank(tier):

@@ -37,7 +37,8 @@ from apps.accounts.plans import (
     LIFETIME_PLAN,
     PRO,
     PURCHASE_OPTIONS,
-    is_lifetime,
+    has_perpetual_access,
+    is_lifetime_purchaser,
     plan_rank,
     tier_granted_by,
 )
@@ -79,10 +80,18 @@ class CheckoutView(APIView):
                 {"detail": "Choose a paid plan: 'starter', 'pro' or 'lifetime'."},
                 status=status.HTTP_400_BAD_REQUEST,
             )
-        # Nothing left to sell someone whose access already never expires.
-        if is_lifetime(request.user):
+        # Nothing left to sell an existing lifetime buyer.
+        if is_lifetime_purchaser(request.user):
             return Response(
                 {"detail": "You're on the lifetime plan — no further payment needed."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        # A staff-granted perpetual plan may still be converted into a real lifetime
+        # purchase, but never into a timed one — that would write an expiry onto
+        # access that currently has none, downgrading them for money.
+        if has_perpetual_access(request.user) and plan != LIFETIME:
+            return Response(
+                {"detail": "Your plan doesn't expire — a monthly plan would replace it, not extend it."},
                 status=status.HTTP_400_BAD_REQUEST,
             )
         try:
@@ -300,9 +309,9 @@ class WebhookView(APIView):
         # A null renewal/expiry is what marks access as permanent.
         renewal = None if lifetime else timezone.now() + timedelta(days=GRANT_DAYS)
 
-        # Never demote someone who already owns lifetime — a later Starter/Pro
-        # payment must not hand a permanent account a 31-day expiry.
-        if is_lifetime(user) and not lifetime:
+        # Never demote someone whose access already never expires — a later
+        # Starter/Pro payment must not hand a permanent account a 31-day expiry.
+        if has_perpetual_access(user) and not lifetime:
             renewal = None
             if plan_rank(user.plan_tier) > plan_rank(tier):
                 tier = user.plan_tier
