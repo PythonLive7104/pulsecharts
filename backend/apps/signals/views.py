@@ -420,8 +420,29 @@ class SignalFeedView(APIView):
 class SignalAccuracyView(APIView):
     """GET /api/signal-services/accuracy/ — realized win-rate stats (Section 18).
 
-    Scoped to the caller: the shared built-in strategies, plus their own custom ones.
+    Scoped to the SAME filter as the "Past results" panel (SignalFeedView): the
+    caller's followed strategies, watched symbols, and the results lookback window.
+    This is deliberate — the two views sit side by side, so a resolved trade that
+    counts toward the accuracy number is exactly one the user can also see in their
+    results list. Following only your own custom strategies means this scope also
+    keeps another user's private strategy out of your stats.
     """
 
     def get(self, request):
-        return Response(accuracy_stats(user=request.user))
+        user = request.user
+        followed_ids = list(
+            UserSignalSubscription.objects.filter(user=user).values_list("service_id", flat=True)
+        )
+        watched_ids = list(
+            WatchlistItem.objects.filter(user=user).values_list("symbol_id", flat=True)
+        )
+        # Same predicate as SignalFeedView's resolved_pool. resolved_at__gte both
+        # bounds the window and excludes still-open (null resolved_at) calls.
+        base = Signal.objects.filter(
+            confluence.deliverable_q(),
+            service_id__in=followed_ids,
+            symbol_id__in=watched_ids,
+            direction__in=[Signal.Direction.BUY, Signal.Direction.SELL],
+            resolved_at__gte=timezone.now() - RESULTS_LOOKBACK,
+        )
+        return Response(accuracy_stats(base))

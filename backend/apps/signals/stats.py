@@ -6,19 +6,21 @@ with no TP. A trend-flip invalidation closes the call flat at 0 P/L — counted 
 neither a win nor a loss. EXPIRED, PENDING and invalidated are reported separately
 so the win rate isn't flattered or penalised by them.
 
-Two scoping rules make the headline honest:
+The overall figure counts TRADES, not Signal rows. The scan writes one row per
+strategy, so a setup that six strategies agreed on becomes six identical rows that
+resolve together — while the user was delivered a single confluence-collapsed card.
+Counting rows made one stopped-out trade read as six losses and weighted the win
+rate by how many strategies happened to agree. Rows are deduped on
+(symbol, timeframe, direction, entry_price) — the same trade grain the "Past
+results" panel uses — so each trade counts once.
 
-1. The overall figure counts TRADES, not Signal rows. The scan writes one row per
-   strategy, so a setup that six strategies agreed on becomes six identical rows
-   that resolve together — while the user was delivered a single confluence-collapsed
-   card. Counting rows made one stopped-out trade read as six losses and weighted the
-   win rate by how many strategies happened to agree. Rows are deduped on
-   (symbol, timeframe, direction, entry_price) — the same trade grain the "Past
-   results" panel uses — so each trade counts once.
-2. Custom (user-created) strategies are excluded from the shared aggregate and are
-   only ever returned to their own owner. They are private rules on private
-   watchlists; they neither belong in the product's advertised accuracy nor in
-   another user's response.
+The caller passes the ``base`` queryset that defines scope. The signals page scopes
+it to the SAME filter as "Past results" (the user's followed strategies, watched
+symbols, and results lookback window), so the accuracy headline and the results
+list always reconcile. Because a user can only ever follow their own custom
+strategies (they auto-subscribe the owner and aren't followable by anyone else),
+scoping by followed strategies also keeps one user's private custom strategy out of
+another user's stats — no separate owner filter is needed.
 """
 
 from django.db.models import Count
@@ -82,24 +84,22 @@ def _trade_counts(qs) -> dict:
     return counts
 
 
-def accuracy_stats(user=None) -> dict:
-    """Overall + per-strategy realized accuracy.
+def accuracy_stats(base=None) -> dict:
+    """Overall + per-strategy realized accuracy over ``base``.
 
-    `overall` is trade-level and covers built-in strategies only. `strategies` is
-    per-strategy (one row per trade already, so no dedup needed) and lists the
-    built-ins plus — when `user` is given — that user's own custom strategies.
+    ``base`` is the queryset defining scope (see module docstring). Defaults to every
+    resolved built-in signal, all-time — the widest honest sample — for callers that
+    want a product-wide figure or pass no user context. ``overall`` is trade-level
+    (deduped); ``strategies`` is per-strategy, which is already one row per trade
+    since the scan writes at most one signal per symbol/strategy/timeframe.
     """
-    builtin = Signal.objects.filter(service__owner__isnull=True)
-    overall_counts = _trade_counts(builtin)
-
-    visible = builtin
-    if user is not None and getattr(user, "is_authenticated", False):
-        visible = Signal.objects.filter(service__owner__isnull=True) | \
-            Signal.objects.filter(service__owner=user)
+    if base is None:
+        base = Signal.objects.filter(service__owner__isnull=True)
+    overall_counts = _trade_counts(base)
 
     per_service = {}
     rows = (
-        visible.values("service__slug", "service__name", "outcome")
+        base.values("service__slug", "service__name", "outcome")
         .annotate(n=Count("id"))
     )
     for r in rows:
