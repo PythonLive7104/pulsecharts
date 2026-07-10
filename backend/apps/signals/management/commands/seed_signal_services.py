@@ -142,9 +142,12 @@ class Command(BaseCommand):
         # strategy doesn't linger after deploy (update_or_create never deletes).
         # Preserve history — a stale service WITH signals is deactivated, not
         # cascade-deleted; only a truly orphaned one (no signals) is hard-deleted.
+        # Scoped to built-ins (owner=None): SERVICES only describes built-ins, so a
+        # user's custom strategy is never "stale" — including them here deactivated
+        # (or deleted, when brand new) somebody's strategy on every deploy.
         keep = {s["slug"] for s in SERVICES}
         deleted = deactivated = 0
-        for svc in SignalService.objects.exclude(slug__in=keep):
+        for svc in SignalService.objects.filter(owner__isnull=True).exclude(slug__in=keep):
             if svc.signals.exists():
                 if svc.is_active:
                     svc.is_active = False
