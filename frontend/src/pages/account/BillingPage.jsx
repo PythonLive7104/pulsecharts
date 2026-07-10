@@ -42,6 +42,11 @@ export default function BillingPage() {
   }
 
   useEffect(() => {
+    // Entitlements drive the current-plan pill, the "Current plan" ribbon, and
+    // whether the redeem/pricing surfaces show. The store starts null and isn't
+    // persisted, so a hard refresh landing directly here would otherwise read
+    // every fallback as Free and offer a paying user the upgrade grid.
+    loadEntitlements();
     api.plans()
       .then((d) => {
         if (d?.plans?.length) setPlans(d.plans);
@@ -50,7 +55,7 @@ export default function BillingPage() {
       .catch(() => { /* keep fallback */ });
     api.billingHistory().then(setHistory).catch(() => setHistory([]));
     loadRef();
-  }, []);
+  }, [loadEntitlements]);
 
   function copyShareLink() {
     if (ref?.share_url) {
