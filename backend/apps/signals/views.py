@@ -418,7 +418,10 @@ class SignalFeedView(APIView):
 
 
 class SignalAccuracyView(APIView):
-    """GET /api/signal-services/accuracy/ — realized win-rate stats (Section 18)."""
+    """GET /api/signal-services/accuracy/ — realized win-rate stats (Section 18).
+
+    Scoped to the caller: the shared built-in strategies, plus their own custom ones.
+    """
 
     def get(self, request):
-        return Response(accuracy_stats())
+        return Response(accuracy_stats(user=request.user))

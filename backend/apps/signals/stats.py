@@ -5,6 +5,20 @@ signal that reached at least TP1 before being stopped out; a "loss" is a stop hi
 with no TP. A trend-flip invalidation closes the call flat at 0 P/L — counted as
 neither a win nor a loss. EXPIRED, PENDING and invalidated are reported separately
 so the win rate isn't flattered or penalised by them.
+
+Two scoping rules make the headline honest:
+
+1. The overall figure counts TRADES, not Signal rows. The scan writes one row per
+   strategy, so a setup that six strategies agreed on becomes six identical rows
+   that resolve together — while the user was delivered a single confluence-collapsed
+   card. Counting rows made one stopped-out trade read as six losses and weighted the
+   win rate by how many strategies happened to agree. Rows are deduped on
+   (symbol, timeframe, direction, entry_price) — the same trade grain the "Past
+   results" panel uses — so each trade counts once.
+2. Custom (user-created) strategies are excluded from the shared aggregate and are
+   only ever returned to their own owner. They are private rules on private
+   watchlists; they neither belong in the product's advertised accuracy nor in
+   another user's response.
 """
 
 from django.db.models import Count
@@ -45,15 +59,47 @@ def _summarize(counts: dict) -> dict:
     }
 
 
-def accuracy_stats() -> dict:
-    """Overall + per-strategy realized accuracy."""
-    overall_counts = dict(
-        Signal.objects.values_list("outcome").annotate(n=Count("id")).values_list("outcome", "n")
-    )
+def _trade_counts(qs) -> dict:
+    """Outcome counts over distinct TRADES rather than Signal rows.
+
+    A trade is (symbol, timeframe, direction, entry_price): every strategy that
+    called the same setup shares those, and they resolve together. A later, distinct
+    call on the same pair has a different entry, so it stays its own trade. Where
+    rows for one trade somehow disagree, the worst outcome wins — never report a
+    trade as a win because one of its rows was more optimistic.
+    """
+    rank = {"SL": 0, "EXPIRED": 1, "INVALID": 2, "PENDING": 3,
+            "TP1": 4, "TP2": 5, "TP3": 6, "TP4": 7}
+    trades: dict[tuple, str] = {}
+    for r in qs.values("symbol_id", "timeframe", "direction", "entry_price", "outcome"):
+        key = (r["symbol_id"], r["timeframe"], r["direction"], r["entry_price"])
+        cur = trades.get(key)
+        if cur is None or rank.get(r["outcome"], 9) < rank.get(cur, 9):
+            trades[key] = r["outcome"]
+    counts: dict[str, int] = {}
+    for outcome in trades.values():
+        counts[outcome] = counts.get(outcome, 0) + 1
+    return counts
+
+
+def accuracy_stats(user=None) -> dict:
+    """Overall + per-strategy realized accuracy.
+
+    `overall` is trade-level and covers built-in strategies only. `strategies` is
+    per-strategy (one row per trade already, so no dedup needed) and lists the
+    built-ins plus — when `user` is given — that user's own custom strategies.
+    """
+    builtin = Signal.objects.filter(service__owner__isnull=True)
+    overall_counts = _trade_counts(builtin)
+
+    visible = builtin
+    if user is not None and getattr(user, "is_authenticated", False):
+        visible = Signal.objects.filter(service__owner__isnull=True) | \
+            Signal.objects.filter(service__owner=user)
 
     per_service = {}
     rows = (
-        Signal.objects.values("service__slug", "service__name", "outcome")
+        visible.values("service__slug", "service__name", "outcome")
         .annotate(n=Count("id"))
     )
     for r in rows:
@@ -70,7 +116,8 @@ def accuracy_stats() -> dict:
         "overall": _summarize(overall_counts),
         "strategies": strategies,
         "note": "Win = reached TP1+ before stop. Invalidated (trend flipped), "
-                "expired and pending are excluded from win rate. avg_r = per-trade "
+                "expired and pending are excluded from win rate. Counted once per "
+                "trade, not once per strategy that called it. avg_r = per-trade "
                 "expectancy under the scale-out-in-thirds model (TP1=+0.33R, TP2=+1R, "
                 "TP3=+2R, SL=-1R, trend-flip=0R).",
     }
