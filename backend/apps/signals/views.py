@@ -370,28 +370,25 @@ class SignalFeedView(APIView):
             ).select_related("service")
             confluence.annotate(active, pool)
 
-        # Results history: resolved calls the user was ACTUALLY delivered, so they
-        # can see which of their past signals worked out — win or loss. Scoped to
-        # this user's SignalDelivery rows (not just followed strategy + watchlist):
-        # its win/loss track record is the social proof that drives upgrades, so an
-        # empty panel hurts conversion. Instead of hiding undelivered results, cap
-        # the COUNT by plan: Free sees a small teaser, paid tiers the full history
-        # (RESULTS_LIMIT_*). These are closed/historical trades — the live,
-        # actionable feed above is what stays strictly quota-capped, so this teaser
-        # doesn't hand over the paid product. Newest resolution first. One row per
-        # TRADE, not per strategy: the scan stores one signal per strategy, so a
-        # single trade resolved as N identical rows (e.g. XAU 1h SELL "stopped out"
-        # ×6). Dedup on (symbol, tf, direction, entry) — strategies firing the same
-        # setup share the entry/stop, while a later DISTINCT trade on the same pair
-        # has a different entry, so it stays a separate row. (The per-strategy win
-        # rates in SignalAccuracyView are unaffected — different endpoint.) Over-fetch
-        # before the dedup so we still fill the plan's limit.
+        # Results history: resolved calls the user was ACTUALLY delivered — the same
+        # SignalDelivery rows that back the Trade updates panel, the Telegram pushes
+        # and the accuracy headline, so all four reconcile. It used to be the wider
+        # followed-strategy × watchlist pool (a track-record teaser), which surfaced
+        # closures for trades the user was never handed and read as their own. A
+        # signal delivered under a strategy the user has SINCE unfollowed still
+        # counts: it was given to them and it resolved, so it stays on their record.
+        # Newest resolution first, capped by plan (RESULTS_LIMIT_*). One row per TRADE
+        # (symbol, tf, direction, entry): pre-fix duplicate deliveries must not render
+        # one trade as several rows, while a later DISTINCT trade on the same pair has
+        # a different entry and stays separate. Over-fetch before the dedup so we
+        # still fill the plan's limit.
         results_limit = RESULTS_LIMIT_PAID if is_paid(user) else RESULTS_LIMIT_FREE
+        delivered_ids = SignalDelivery.objects.filter(user=user).values_list(
+            "signal_id", flat=True
+        )
         resolved_pool = (
             Signal.objects.filter(
-                confluence.deliverable_q(),  # custom strategies bypass the conf floor
-                service_id__in=followed_ids,
-                symbol_id__in=watched_ids,
+                id__in=delivered_ids,
                 direction__in=[Signal.Direction.BUY, Signal.Direction.SELL],
                 resolved_at__gte=now - RESULTS_LOOKBACK,
             )
@@ -408,27 +405,6 @@ class SignalFeedView(APIView):
             resolved.append(s)
             if len(resolved) >= results_limit:
                 break
-
-        # Flag which of those resolved trades the user was ACTUALLY delivered. The
-        # pool above is intentionally wider than the user's deliveries (track-record
-        # teaser), but the "Trade updates" panel speaks about the user's OWN trades
-        # ("SEI-USD BUY — stopped out"), so it must only render flagged rows.
-        # Matched at the TRADE grain, not signal_id: delivery picks a confluence
-        # representative, so the delivered row and the row surfaced here can be
-        # different strategies calling the same setup.
-        if resolved:
-            delivered_trades = set(
-                SignalDelivery.objects.filter(
-                    user=user, signal__resolved_at__gte=now - RESULTS_LOOKBACK,
-                ).values_list(
-                    "signal__symbol_id", "signal__timeframe", "signal__direction",
-                    "signal__entry_price",
-                )
-            )
-            for s in resolved:
-                s.was_delivered = (
-                    s.symbol_id, s.timeframe, s.direction, s.entry_price
-                ) in delivered_trades
 
         return Response(
             {

@@ -174,11 +174,9 @@ export default function SignalsPage() {
     SL: "🛑 Stopped out", INVALID: "⚠️ Invalidated — trend flipped",
     EXPIRED: "⌛ Expired",
   };
-  // Only trades the user was actually delivered. "Past results" below is a wider
-  // strategy track record that includes calls never handed to this user, but these
-  // rows are phrased as the user's own trade, so they must match what Telegram sent.
+  // feed.resolved is delivered-only server-side, so these are the user's own trades
+  // and match what Telegram pushed. Just the last 48h of them.
   const recentClosures = (feed?.resolved || [])
-    .filter((s) => s.delivered)
     .filter((s) => s.resolved_at && Date.now() - new Date(s.resolved_at).getTime() < 48 * 3600 * 1000)
     .slice(0, 6);
 
@@ -409,7 +407,7 @@ export default function SignalsPage() {
               aria-expanded={showResults}
             >
               <span className="results-caret">{showResults ? "▾" : "▸"}</span>
-              Past results ({resolved.length})
+              Your past results ({resolved.length})
               <span className="results-wl">
                 <span className="win">{winCount}W</span> / <span className="loss">{lossCount}L</span>
               </span>
@@ -418,7 +416,7 @@ export default function SignalsPage() {
             {showResults && (
               resolved.length === 0 ? (
                 <p className="muted results-empty">
-                  No resolved signals yet. Calls from the strategies you follow show up here —
+                  No resolved signals yet. Signals delivered to you show up here —
                   win or loss — once they hit a take-profit or stop.
                 </p>
               ) : (

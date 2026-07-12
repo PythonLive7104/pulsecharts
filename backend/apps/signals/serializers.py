@@ -57,18 +57,10 @@ class SignalSerializer(serializers.ModelSerializer):
     # hasn't annotated confluence (e.g. resolved history).
     confluence_count = serializers.SerializerMethodField()
     confluence_services = serializers.SerializerMethodField()
-    # True only when this exact trade was actually handed to the requesting user
-    # (a SignalDelivery row exists). The resolved history deliberately includes
-    # trades the user was never delivered, so anything phrased as "your trade"
-    # must gate on this. Absent annotation → False.
-    delivered = serializers.SerializerMethodField()
 
     class Meta:
         model = Signal
         exclude = ("service", "created_at")
-
-    def get_delivered(self, obj):
-        return getattr(obj, "was_delivered", False)
 
     def get_confluence_count(self, obj):
         return getattr(obj, "confluence_count", 1)
