@@ -174,7 +174,11 @@ export default function SignalsPage() {
     SL: "🛑 Stopped out", INVALID: "⚠️ Invalidated — trend flipped",
     EXPIRED: "⌛ Expired",
   };
+  // Only trades the user was actually delivered. "Past results" below is a wider
+  // strategy track record that includes calls never handed to this user, but these
+  // rows are phrased as the user's own trade, so they must match what Telegram sent.
   const recentClosures = (feed?.resolved || [])
+    .filter((s) => s.delivered)
     .filter((s) => s.resolved_at && Date.now() - new Date(s.resolved_at).getTime() < 48 * 3600 * 1000)
     .slice(0, 6);
 
@@ -354,11 +358,22 @@ export default function SignalsPage() {
           {accuracy && (
             <div className="accuracy-panel">
               <div className="acc-head">
-                <h3>Realized accuracy</h3>
+                <h3>Your realized accuracy</h3>
                 <span className="muted">{accuracy.note}</span>
               </div>
               {accuracy.overall.resolved > 0 ? (
                 <div className="acc-body">
+                  {/* A dozen trades is noise, not a track record. Say so plainly rather
+                      than rendering a small sample as a confident headline. */}
+                  {accuracy.provisional && (
+                    <p className="acc-provisional muted">
+                      Provisional — only {accuracy.overall.resolved} resolved{" "}
+                      {accuracy.overall.resolved === 1 ? "trade" : "trades"} so far. A sample
+                      this small swings hard on a single result and isn&apos;t a reliable
+                      guide to future performance; it settles as it approaches{" "}
+                      {accuracy.min_sample}+.
+                    </p>
+                  )}
                   <div className="acc-bigstat">
                     <span className="acc-rate">{accuracy.overall.win_rate}%</span>
                     <span className="muted">

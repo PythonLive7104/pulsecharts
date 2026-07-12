@@ -1073,6 +1073,8 @@ a.brand:hover { text-decoration: none; }
 .acc-head h3 { margin: 0; font-size: 15px; color: var(--text-strong); }
 .acc-head .muted { font-size: 11px; }
 .acc-body { display: flex; gap: 24px; margin-top: 12px; flex-wrap: wrap; }
+/* Full-width row above the stats — .acc-body is a wrapping flex row. */
+.acc-provisional { flex: 0 0 100%; margin: 0; font-size: 12px; line-height: 1.5; }
 .acc-bigstat { display: flex; flex-direction: column; }
 .acc-rate { font-size: 30px; font-weight: 700; color: var(--accent); line-height: 1; }
 .acc-bigstat .muted { font-size: 12px; margin-top: 4px; }

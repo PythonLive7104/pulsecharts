@@ -54,6 +54,9 @@ RESULTS_LOOKBACK = timedelta(days=7)
 # actionable feed stays strictly capped at the plan's weekly quota.
 RESULTS_LIMIT_FREE = 10
 RESULTS_LIMIT_PAID = 50
+# Below this many resolved trades, the accuracy figure is reported as provisional
+# rather than as a track record — a dozen trades is noise, not a win rate.
+MIN_ACCURACY_SAMPLE = 20
 
 
 def _visible_services(user):
@@ -406,6 +409,27 @@ class SignalFeedView(APIView):
             if len(resolved) >= results_limit:
                 break
 
+        # Flag which of those resolved trades the user was ACTUALLY delivered. The
+        # pool above is intentionally wider than the user's deliveries (track-record
+        # teaser), but the "Trade updates" panel speaks about the user's OWN trades
+        # ("SEI-USD BUY — stopped out"), so it must only render flagged rows.
+        # Matched at the TRADE grain, not signal_id: delivery picks a confluence
+        # representative, so the delivered row and the row surfaced here can be
+        # different strategies calling the same setup.
+        if resolved:
+            delivered_trades = set(
+                SignalDelivery.objects.filter(
+                    user=user, signal__resolved_at__gte=now - RESULTS_LOOKBACK,
+                ).values_list(
+                    "signal__symbol_id", "signal__timeframe", "signal__direction",
+                    "signal__entry_price",
+                )
+            )
+            for s in resolved:
+                s.was_delivered = (
+                    s.symbol_id, s.timeframe, s.direction, s.entry_price
+                ) in delivered_trades
+
         return Response(
             {
                 "quota": quota,
@@ -420,29 +444,47 @@ class SignalFeedView(APIView):
 class SignalAccuracyView(APIView):
     """GET /api/signal-services/accuracy/ — realized win-rate stats (Section 18).
 
-    Scoped to the SAME filter as the "Past results" panel (SignalFeedView): the
-    caller's followed strategies, watched symbols, and the results lookback window.
-    This is deliberate — the two views sit side by side, so a resolved trade that
-    counts toward the accuracy number is exactly one the user can also see in their
-    results list. Following only your own custom strategies means this scope also
-    keeps another user's private strategy out of your stats.
+    YOUR track record: scoped to the signals this user was actually DELIVERED, so the
+    headline describes the cards they were handed, not every call the strategies made
+    on coins they happen to watch. (The wider pool still backs the "Past results"
+    teaser list, which is explicitly a strategy history — but a percentage rendered as
+    a headline reads as "how did MY signals do", so it must answer that question.)
+
+    Staff can pass ?scope=all for the product-wide figure across every user's signals.
+    That is a wider, more honest sample for tuning — it is NOT a way to keep a poor
+    number away from users. Section 18 commits to reporting realized accuracy honestly
+    even when it is unflattering, and users trading real money off these cards are
+    exactly who the number is for.
     """
 
     def get(self, request):
         user = request.user
-        followed_ids = list(
-            UserSignalSubscription.objects.filter(user=user).values_list("service_id", flat=True)
+
+        if request.query_params.get("scope") == "all" and user.is_staff:
+            base = Signal.objects.filter(
+                service__owner__isnull=True,
+                direction__in=[Signal.Direction.BUY, Signal.Direction.SELL],
+                resolved_at__isnull=False,
+            )
+            return Response({**accuracy_stats(base), "scope": "all"})
+
+        # The exact signals delivered to this user (same rows the Trade updates panel
+        # and the Telegram pushes are built from), bounded to the results window.
+        # resolved_at__gte both bounds the window and excludes still-open calls.
+        delivered_ids = SignalDelivery.objects.filter(user=user).values_list(
+            "signal_id", flat=True
         )
-        watched_ids = list(
-            WatchlistItem.objects.filter(user=user).values_list("symbol_id", flat=True)
-        )
-        # Same predicate as SignalFeedView's resolved_pool. resolved_at__gte both
-        # bounds the window and excludes still-open (null resolved_at) calls.
         base = Signal.objects.filter(
-            confluence.deliverable_q(),
-            service_id__in=followed_ids,
-            symbol_id__in=watched_ids,
+            id__in=delivered_ids,
             direction__in=[Signal.Direction.BUY, Signal.Direction.SELL],
             resolved_at__gte=timezone.now() - RESULTS_LOOKBACK,
         )
-        return Response(accuracy_stats(base))
+        stats = accuracy_stats(base)
+        # A handful of trades is not a track record. Flag small samples so the UI can
+        # present the figure as provisional rather than as a confident headline —
+        # under-reporting the sample size is how misleading accuracy claims get made
+        # (Section 13.7), in either direction.
+        stats["provisional"] = (stats["overall"]["resolved"] or 0) < MIN_ACCURACY_SAMPLE
+        stats["min_sample"] = MIN_ACCURACY_SAMPLE
+        stats["scope"] = "delivered"
+        return Response(stats)
