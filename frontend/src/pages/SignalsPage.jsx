@@ -395,13 +395,23 @@ export default function SignalsPage() {
                   <div className="acc-bigstat">
                     <span className="acc-rate">{accuracy.overall.win_rate}%</span>
                     <span className="muted">
-                      {accuracy.overall.wins}W / {accuracy.overall.losses}L ({accuracy.overall.resolved} counted
-                      {accuracy.overall.running > 0 && `, incl. ${accuracy.overall.running} still running`})
+                      {accuracy.overall.wins}W / {accuracy.overall.losses}L over{" "}
+                      {accuracy.overall.resolved} trades
                       {accuracy.overall.breakeven > 0 && ` · ${accuracy.overall.breakeven} invalidated`}
                       {accuracy.overall.avg_r != null && (
                         <> · <b>{accuracy.overall.avg_r > 0 ? "+" : ""}{accuracy.overall.avg_r}R</b> avg / trade</>
                       )}
                     </span>
+                    {/* Spell out the split so this panel visibly reconciles with the
+                        "Past results" count below, which lists closed trades only. */}
+                    {accuracy.overall.running > 0 && (
+                      <span className="muted acc-split">
+                        {accuracy.overall.resolved - accuracy.overall.running} closed (
+                        {accuracy.overall.wins - accuracy.overall.running}W /{" "}
+                        {accuracy.overall.losses}L) + {accuracy.overall.running} still running with
+                        TP1 banked
+                      </span>
+                    )}
                   </div>
                   <div className="acc-strats">
                     {accuracy.strategies.filter((s) => s.resolved > 0).map((s) => (
