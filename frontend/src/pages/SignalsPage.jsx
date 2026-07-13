@@ -174,10 +174,28 @@ export default function SignalsPage() {
     SL: "🛑 Stopped out", INVALID: "⚠️ Invalidated — trend flipped",
     EXPIRED: "⌛ Expired",
   };
-  // feed.resolved is delivered-only server-side, so these are the user's own trades
-  // and match what Telegram pushed. Just the last 48h of them.
-  const recentClosures = (feed?.resolved || [])
-    .filter((s) => s.resolved_at && Date.now() - new Date(s.resolved_at).getTime() < 48 * 3600 * 1000)
+  // Trade updates = every event Telegram would have pushed you, in one list: trades
+  // that CLOSED (feed.resolved — delivered-only server-side) *and* still-open trades
+  // that TAGGED a target (feed.signals with best_tp > 0). Leaving the second kind out
+  // was why a trade could bank TP1/TP2 on Telegram while the dashboard showed nothing:
+  // an open trade never resolves, so it never entered a resolved-only list.
+  const RECENT = 48 * 3600 * 1000;
+  const fresh = (t) => t && Date.now() - new Date(t).getTime() < RECENT;
+  const recentClosures = [
+    ...(feed?.resolved || [])
+      .filter((s) => fresh(s.resolved_at))
+      .map((s) => ({ s, at: s.resolved_at, msg: CLOSURE_MSG[s.outcome] || s.outcome, cls:
+        ["TP1", "TP2", "TP3", "TP4"].includes(s.outcome) ? "win" : s.outcome === "SL" ? "loss" : "neutral" })),
+    // best_tp_at is only stamped when a target NEWLY tags, so trades that already
+    // banked one before that field existed have none — fall back to entry time so
+    // they still show (an honest lower bound: the tag happened after entry).
+    ...(feed?.signals || [])
+      .map((s) => ({ ...s, best_tp_at: s.best_tp_at || s.generated_at }))
+      .filter((s) => s.best_tp > 0 && fresh(s.best_tp_at))
+      .map((s) => ({ s, at: s.best_tp_at, cls: "win",
+        msg: `🎯 TP${s.best_tp} tagged · running${s.best_tp > 1 ? "" : " · stop to breakeven"}` })),
+  ]
+    .sort((a, b) => new Date(b.at) - new Date(a.at))
     .slice(0, 6);
 
   // Telegram delivery panel — shown to ALL users. Premium users can connect;
@@ -339,17 +357,13 @@ export default function SignalsPage() {
           {recentClosures.length > 0 && (
             <div className="trade-updates">
               <h3>Trade updates</h3>
-              {recentClosures.map((s) => {
-                const win = ["TP1", "TP2", "TP3", "TP4"].includes(s.outcome);
-                const cls = win ? "win" : s.outcome === "SL" ? "loss" : "neutral";
-                return (
-                  <div key={s.id} className={`tu-row ${cls}`}>
-                    <span className="tu-sym">{s.symbol} {s.direction} · {s.timeframe}</span>
-                    <span className="tu-msg">{CLOSURE_MSG[s.outcome] || s.outcome}</span>
-                    <span className="tu-time muted">{new Date(s.resolved_at).toLocaleString()}</span>
-                  </div>
-                );
-              })}
+              {recentClosures.map(({ s, at, msg, cls }) => (
+                <div key={`${s.id}-${at}`} className={`tu-row ${cls}`}>
+                  <span className="tu-sym">{s.symbol} {s.direction} · {s.timeframe}</span>
+                  <span className="tu-msg">{msg}</span>
+                  <span className="tu-time muted">{new Date(at).toLocaleString()}</span>
+                </div>
+              ))}
             </div>
           )}
 

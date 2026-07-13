@@ -382,6 +382,10 @@ def run_evaluation(limit: int | None = None) -> dict:
         # terminal, so it stays pending. `outcome_label` records the furthest target
         # reached, so a runner closed at breakeven after TP1 still books a TP1 win.
         label = outcome_label(res)
+        # Stamp the moment a NEW target was tagged, so the dashboard can timestamp the
+        # event instead of guessing. Only when it actually advanced — a re-evaluation
+        # that finds the same best_tp must not keep bumping the clock.
+        tagged = {"best_tp_at": now} if res["best_tp"] > sig.best_tp else {}
         if label and res["terminal"]:
             # Guard against a race: the candle fetch above is slow, and a
             # concurrent scan may have already closed this call as a breakeven
@@ -392,7 +396,7 @@ def run_evaluation(limit: int | None = None) -> dict:
                 id=sig.id, outcome=Signal.Outcome.PENDING
             ).update(
                 outcome=label, resolved_at=now, best_tp=res["best_tp"],
-                mfe_pct=res["mfe_pct"], mae_pct=res["mae_pct"],
+                mfe_pct=res["mfe_pct"], mae_pct=res["mae_pct"], **tagged,
             )
             resolved += updated  # 0 if it was already closed elsewhere
         else:
@@ -402,7 +406,7 @@ def run_evaluation(limit: int | None = None) -> dict:
             # tagged — so that has to be visible (and pushable) now, not at closure.
             Signal.objects.filter(id=sig.id, outcome=Signal.Outcome.PENDING).update(
                 best_tp=res["best_tp"],
-                mfe_pct=res["mfe_pct"], mae_pct=res["mae_pct"],
+                mfe_pct=res["mfe_pct"], mae_pct=res["mae_pct"], **tagged,
             )
             still += 1
 

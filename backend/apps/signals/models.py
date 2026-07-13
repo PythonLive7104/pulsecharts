@@ -139,6 +139,10 @@ class Signal(models.Model):
     # due. This is what drives the "TP1 tagged — take your partial" push and the live
     # progress on the card.
     best_tp = models.PositiveSmallIntegerField(default=0)
+    # When best_tp last increased — i.e. when the newest target was tagged. Lets the
+    # dashboard timestamp a "TP2 tagged" event and interleave it with closures in one
+    # chronological Trade-updates list, the same way Telegram sends them.
+    best_tp_at = models.DateTimeField(null=True, blank=True)
 
     created_at = models.DateTimeField(auto_now_add=True)
 
