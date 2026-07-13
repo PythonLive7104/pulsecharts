@@ -7,5 +7,11 @@
 # Caddy obtains and renews Let's Encrypt certs automatically once SITE_DOMAIN's
 # DNS A record points at this server and ports 80 + 443 are reachable.
 {$SITE_DOMAIN}, www.{$SITE_DOMAIN} {
+	# Compress everything on the way out — static bundle AND proxied API JSON.
+	# Nothing was compressed before: the 455 KB JS bundle, the 47 KB CSS and the
+	# (very compressible) signal-feed JSON all went over the wire raw, which is
+	# seconds of load time on a slow connection even though the API itself answers
+	# in 60ms. zstd for clients that support it, gzip for everyone else.
+	encode zstd gzip
 	reverse_proxy frontend:80
 }
