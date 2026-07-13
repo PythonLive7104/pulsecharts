@@ -119,12 +119,20 @@ export default function SignalsPage() {
   const resolved = feed?.resolved || [];
   const winCount = resolved.filter((s) => WIN_OUTCOMES.has(s.outcome)).length;
   const lossCount = resolved.filter((s) => s.outcome === "SL").length;
+  // Neither a win nor a loss: the trend flipped (INVALID) or the call ran out of time
+  // without touching a stop or a target (EXPIRED). Both close flat. They're in the
+  // list, so give them a chip — otherwise the header count exceeds W+L with nothing
+  // to explain the gap.
+  const isFlat = (s) => s.outcome === "INVALID" || s.outcome === "EXPIRED";
+  const flatCount = resolved.filter(isFlat).length;
   const shownResults = resolved.filter((s) =>
     resultFilter === "win"
       ? WIN_OUTCOMES.has(s.outcome)
       : resultFilter === "loss"
         ? s.outcome === "SL"
-        : true,
+        : resultFilter === "flat"
+          ? isFlat(s)
+          : true,
   );
 
   const quota = entitlements?.signal_weekly_quota;
@@ -441,6 +449,7 @@ export default function SignalsPage() {
               Your past results ({resolved.length})
               <span className="results-wl">
                 <span className="win">{winCount}W</span> / <span className="loss">{lossCount}L</span>
+                {flatCount > 0 && <span className="muted"> / {flatCount} flat</span>}
               </span>
             </button>
 
@@ -471,6 +480,15 @@ export default function SignalsPage() {
                     >
                       ✕ Losses ({lossCount})
                     </button>
+                    {flatCount > 0 && (
+                      <button
+                        className={`chip ${resultFilter === "flat" ? "active" : ""}`}
+                        onClick={() => setResultFilter("flat")}
+                        title="Closed flat — the trend flipped, or the call ran out of time without hitting a stop or a target. Neither a win nor a loss, so excluded from the win rate."
+                      >
+                        — Flat ({flatCount})
+                      </button>
+                    )}
                   </div>
                   <div className="signal-list signal-scroll">
                     {shownResults.map((s) => <SignalCard key={s.id} s={s} />)}
