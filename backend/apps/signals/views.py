@@ -460,43 +460,47 @@ class SignalAccuracyView(APIView):
         delivered_ids = SignalDelivery.objects.filter(user=user).values_list(
             "signal_id", flat=True
         )
-        # CLOSED trades only. An open trade that banked TP1 is briefly tempting to count
-        # as a win — a third is secured and the stop is at breakeven, so it can't lose —
-        # and for a while this view did. Don't: the trades that have NOT yet tagged TP1
-        # are excluded too, and some of those are walking into a stop, so counting open
-        # winners while ignoring open losers-in-progress inflates the figure (it read
-        # 83% against a closed record of 41%, and showed a custom strategy at "96.9%
-        # (31/32)" on 31 unfinished trades).
+        # Closed trades PLUS still-running trades that have already banked a target. A
+        # TP1-tagged runner has a third secured at 1R with the stop at breakeven, so it
+        # can no longer become a loss — its win/loss classification is settled even
+        # though its final R isn't. It's counted at its locked floor (stats.
+        # _effective_outcome), never at its potential.
         #
-        # The bias that motivated counting them — losers resolve in minutes, winners run
-        # for hours — was really a symptom of the missing expiry (calls never closed, so
-        # unfinished winners accumulated forever). SIGNAL_EVAL_BARS now forces every
-        # trade closed, so the closed sample completes on its own and needs no
-        # accounting workaround. Realized means realized.
+        # This is only honest if the OTHER open trades are disclosed too. Open calls
+        # that haven't tagged TP1 are genuinely undecided — some are walking into a
+        # stop — and silently dropping them while counting the tagged ones would
+        # cherry-pick the winners out of the open pile and inflate the win rate. They
+        # can't be counted (nobody knows how they end), so they must at least be
+        # SHOWN: `undecided` below, surfaced next to the headline.
         base = Signal.objects.filter(
+            Q(resolved_at__gte=timezone.now() - RESULTS_LOOKBACK)
+            | Q(outcome=Signal.Outcome.PENDING, best_tp__gte=1),
             id__in=delivered_ids,
             direction__in=[Signal.Direction.BUY, Signal.Direction.SELL],
-            resolved_at__gte=timezone.now() - RESULTS_LOOKBACK,
         )
         stats = accuracy_stats(base)
-        # Reported alongside, NOT inside, the win rate: open trades that have banked a
-        # target are real locked-in progress the user should see, but they are not a
-        # result until they close (which they now will, within SIGNAL_EVAL_BARS).
-        stats["running"] = (
-            Signal.objects.filter(
-                id__in=delivered_ids,
-                outcome=Signal.Outcome.PENDING,
-                best_tp__gte=1,
-            )
-            .values("symbol_id", "timeframe", "direction", "entry_price")
-            .distinct()
-            .count()
+
+        def _trades(qs):
+            return qs.values(
+                "symbol_id", "timeframe", "direction", "entry_price"
+            ).distinct().count()
+
+        open_qs = Signal.objects.filter(
+            id__in=delivered_ids,
+            direction__in=[Signal.Direction.BUY, Signal.Direction.SELL],
+            outcome=Signal.Outcome.PENDING,
         )
+        # Open, no target tagged yet: outcome genuinely unknown. NOT in the win rate.
+        stats["undecided"] = _trades(open_qs.filter(best_tp=0))
+        # The closed-only record, always shown alongside: the headline leans on open
+        # positions, and the reader is entitled to see the settled number too.
+        stats["closed_only"] = accuracy_stats(base.exclude(outcome=Signal.Outcome.PENDING))["overall"]
         # A handful of trades is not a track record. Flag small samples so the UI can
         # present the figure as provisional rather than as a confident headline —
         # under-reporting the sample size is how misleading accuracy claims get made
-        # (Section 13.7), in either direction.
-        stats["provisional"] = (stats["overall"]["resolved"] or 0) < MIN_ACCURACY_SAMPLE
+        # (Section 13.7), in either direction. Judged on CLOSED trades: a headline
+        # resting mostly on open positions isn't settled however large it gets.
+        stats["provisional"] = (stats["closed_only"]["resolved"] or 0) < MIN_ACCURACY_SAMPLE
         stats["min_sample"] = MIN_ACCURACY_SAMPLE
         stats["scope"] = "delivered"
         return Response(stats)

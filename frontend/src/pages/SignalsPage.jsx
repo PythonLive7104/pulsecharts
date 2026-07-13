@@ -408,18 +408,27 @@ export default function SignalsPage() {
                     <span className="acc-rate">{accuracy.overall.win_rate}%</span>
                     <span className="muted">
                       {accuracy.overall.wins}W / {accuracy.overall.losses}L over{" "}
-                      {accuracy.overall.resolved} closed trades
+                      {accuracy.overall.resolved} trades
                       {accuracy.overall.breakeven > 0 && ` · ${accuracy.overall.breakeven} invalidated`}
                       {accuracy.overall.avg_r != null && (
                         <> · <b>{accuracy.overall.avg_r > 0 ? "+" : ""}{accuracy.overall.avg_r}R</b> avg / trade</>
                       )}
                     </span>
-                    {/* Open trades sit BESIDE the win rate, never inside it. */}
-                    {accuracy.running > 0 && (
+                    {/* The headline leans on open positions, so the settled record and
+                        the undecided pile both stay visible next to it. Without the
+                        undecided count the figure would be the open WINNERS only. */}
+                    {accuracy.closed_only && (accuracy.overall.running > 0 || accuracy.undecided > 0) && (
                       <span className="muted acc-split">
-                        Plus {accuracy.running} still running with TP1 banked (locked at
-                        ≥ +0.33R each, stop at breakeven) — not counted above until they
-                        close.
+                        Settled: <b>{accuracy.closed_only.win_rate ?? "—"}%</b>{" "}
+                        ({accuracy.closed_only.wins}W / {accuracy.closed_only.losses}L
+                        {accuracy.closed_only.avg_r != null && (
+                          <>, {accuracy.closed_only.avg_r > 0 ? "+" : ""}
+                          {accuracy.closed_only.avg_r}R</>
+                        )} closed)
+                        {accuracy.overall.running > 0 &&
+                          ` · ${accuracy.overall.running} running with TP1 banked (can't lose, counted at floor)`}
+                        {accuracy.undecided > 0 &&
+                          ` · ${accuracy.undecided} open and undecided — not counted either way`}
                       </span>
                     )}
                   </div>

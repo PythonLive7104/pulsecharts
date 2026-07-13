@@ -154,10 +154,13 @@ def accuracy_stats(base=None) -> dict:
     return {
         "overall": _summarize(overall_counts, overall_running),
         "strategies": strategies,
-        "note": "Win = reached TP1+ before stop. Closed trades only — a trade still "
-                "running is not a result yet, however well it's doing. Invalidated "
-                "(trend flipped), expired and open trades are excluded from the win "
-                "rate. Counted once per "
+        "note": "Win = reached TP1+ before stop. A still-running trade that already "
+                "banked TP1 counts at its locked-in floor — a third is secured and the "
+                "stop is at breakeven, so it can't become a loss. Open trades that "
+                "haven't tagged a target yet are undecided and are NOT counted (they're "
+                "shown separately, so the win rate isn't just the open winners). "
+                "Invalidated (trend flipped) and expired trades close flat and are "
+                "excluded from the win rate. Counted once per "
                 "trade, not once per strategy that called it. avg_r = per-trade "
                 "expectancy under the scale-out-in-thirds model (TP1=+0.33R, TP2=+1R, "
                 "TP3=+2R, SL=-1R, trend-flip=0R).",
