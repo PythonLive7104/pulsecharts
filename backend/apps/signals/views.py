@@ -54,6 +54,10 @@ RESULTS_LOOKBACK = timedelta(days=7)
 # actionable feed stays strictly capped at the plan's weekly quota.
 RESULTS_LIMIT_FREE = 10
 RESULTS_LIMIT_PAID = 50
+# How many live signal cards a feed page carries. A large watchlist across several
+# strategies yields >100 concurrent cards; sending and rendering them in one go is what
+# made the page take seconds to paint. The client pages through the rest.
+FEED_PAGE_SIZE = 20
 # Below this many resolved trades, the accuracy figure is reported as provisional
 # rather than as a track record — a dozen trades is noise, not a win rate.
 MIN_ACCURACY_SAMPLE = 20
@@ -265,6 +269,15 @@ class SignalFeedView(APIView):
         now = timezone.now()
         week_cutoff = now - SIGNAL_QUOTA_WINDOW  # rolling 7-day quota window
 
+        def _int_param(name, default, lo, hi):
+            try:
+                return max(lo, min(hi, int(request.query_params.get(name, default))))
+            except (TypeError, ValueError):
+                return default
+
+        limit = _int_param("limit", FEED_PAGE_SIZE, 1, 100)
+        offset = _int_param("offset", 0, 0, 10_000)
+
         # A plan with no signal access (quota 0) gets a locked upgrade card. No
         # current plan is 0 — Free gets a real 20/week feed — so this is a guard for
         # any future no-access tier, not the Free path.
@@ -382,6 +395,14 @@ class SignalFeedView(APIView):
                 seen.add(key)
                 deduped.append(s)
         active = deduped
+
+        # Page the active feed. A 150-symbol watchlist across 7 strategies produces well
+        # over a hundred live cards; serializing and rendering them all made the page
+        # take seconds to appear even though the query itself answers in ~60ms. The
+        # dedup above must run over the FULL set first (a trade's newest row can sit
+        # anywhere in the list), so the slice happens here, after it.
+        active_total = len(active)
+        active = active[offset:offset + limit]
         # Annotate each shown signal with how many followed strategies currently
         # agree on it (the sibling pool within the feed lookback), for the card's
         # "N strategies agree" badge.
@@ -407,6 +428,23 @@ class SignalFeedView(APIView):
         # one trade as several rows, while a later DISTINCT trade on the same pair has
         # a different entry and stays separate. Over-fetch before the dedup so we
         # still fill the plan's limit.
+        # Only page 0 carries the resolved history — a "load more" click is asking for
+        # the next slice of live cards, not for the results list to be rebuilt.
+        if offset:
+            return Response(
+                {
+                    "quota": quota,
+                    "delivered_this_week": delivered_this_week,
+                    "signals": SignalSerializer(active, many=True).data,
+                    "signals_total": active_total,
+                    "offset": offset,
+                    "limit": limit,
+                    "has_more": offset + len(active) < active_total,
+                    "resolved": [],
+                    "disclaimer": "Informational only. Not financial advice.",
+                }
+            )
+
         results_limit = RESULTS_LIMIT_PAID if is_paid(user) else RESULTS_LIMIT_FREE
         delivered_ids = SignalDelivery.objects.filter(user=user).values_list(
             "signal_id", flat=True
@@ -436,6 +474,10 @@ class SignalFeedView(APIView):
                 "quota": quota,
                 "delivered_this_week": delivered_this_week,
                 "signals": SignalSerializer(active, many=True).data,
+                "signals_total": active_total,
+                "offset": offset,
+                "limit": limit,
+                "has_more": offset + len(active) < active_total,
                 "resolved": SignalSerializer(resolved, many=True).data,
                 "disclaimer": "Informational only. Not financial advice.",
             }

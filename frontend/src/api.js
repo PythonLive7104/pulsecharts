@@ -145,7 +145,9 @@ export const api = {
     request("/me/signal-subscriptions/", { method: "POST", body: { service_id: serviceId } }),
   unfollowService: (subId) =>
     request(`/me/signal-subscriptions/${subId}/`, { method: "DELETE" }),
-  signalFeed: () => request("/me/signals/feed/"),
+  // offset pages the LIVE cards only; offset > 0 skips the resolved history.
+  signalFeed: (offset = 0) =>
+    request(`/me/signals/feed/${offset ? `?offset=${offset}` : ""}`),
   signalAccuracy: () => request("/signal-services/accuracy/"),
 
   // --- referrals (earn credits, redeem for a plan) ---

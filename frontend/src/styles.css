@@ -1090,6 +1090,22 @@ a.brand:hover { text-decoration: none; }
 .acc-rate { font-size: 30px; font-weight: 700; color: var(--accent); line-height: 1; }
 .acc-bigstat .muted { font-size: 12px; margin-top: 4px; }
 .acc-split { font-size: 11px; opacity: 0.85; }
+
+/* Feed pagination */
+.load-more {
+  width: 100%;
+  padding: 10px;
+  margin-top: 4px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--accent);
+  background: var(--bg-elev);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  cursor: pointer;
+}
+.load-more:hover:not(:disabled) { border-color: var(--accent); }
+.load-more:disabled { opacity: 0.6; cursor: default; }
 .acc-strats { flex: 1; min-width: 220px; display: flex; flex-direction: column; gap: 6px; }
 .acc-strat { display: flex; justify-content: space-between; font-size: 13px; padding: 4px 0; border-top: 1px solid var(--border); }
 .acc-strat:first-child { border-top: none; }

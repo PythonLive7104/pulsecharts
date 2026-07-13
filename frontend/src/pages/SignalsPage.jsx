@@ -29,6 +29,7 @@ export default function SignalsPage() {
   const [followError, setFollowError] = useState(null);
   // Telegram delivery (premium): connection status + deep link.
   const [tg, setTg] = useState(null);
+  const [loadingMore, setLoadingMore] = useState(false);
 
   // Match the signal feed's scroll height to the strategies sidebar so the feed
   // scrolls internally instead of running the page on forever.
@@ -44,6 +45,26 @@ export default function SignalsPage() {
 
   // `silent` skips the loading spinner — used by the background poll so the feed
   // refreshes in place without flickering.
+  // Append the next page of live cards. Only the `signals` array grows — the rest of
+  // the payload (quota, resolved history) belongs to page 0 and is left alone.
+  async function loadMore() {
+    if (loadingMore || !feed?.has_more) return;
+    setLoadingMore(true);
+    try {
+      const next = await api.signalFeed(feed.signals.length);
+      setFeed((prev) => ({
+        ...prev,
+        signals: [...prev.signals, ...(next.signals || [])],
+        signals_total: next.signals_total ?? prev.signals_total,
+        has_more: next.has_more,
+      }));
+    } catch {
+      /* leave the button in place so the user can retry */
+    } finally {
+      setLoadingMore(false);
+    }
+  }
+
   async function load(silent = false) {
     if (!silent) setLoading(true);
 
@@ -556,6 +577,13 @@ export default function SignalsPage() {
             style={scrollH ? { height: scrollH, maxHeight: scrollH } : undefined}
           >
             {feed?.signals?.map((s) => <SignalCard key={s.id} s={s} />)}
+            {feed?.has_more && (
+              <button className="load-more" onClick={loadMore} disabled={loadingMore}>
+                {loadingMore
+                  ? "Loading…"
+                  : `Show more (${feed.signals.length} of ${feed.signals_total})`}
+              </button>
+            )}
           </div>
 
           <p className="feed-disclaimer">
