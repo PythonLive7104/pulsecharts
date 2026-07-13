@@ -228,6 +228,16 @@ def run_scan(symbol_limit: int | None = None, use_pregate: bool | None = None) -
                 continue
             indicators = compute_indicators(candles)
 
+            # Thesis-invalidation exit: close open calls whose ENTRY CONDITION no longer
+            # holds, instead of leaving them to run into the stop. The dedup branch below
+            # only ever invalidates when the same strategy fires a full OPPOSITE signal —
+            # which must clear the whole reversed EMA stack, ADX, regime and confidence
+            # gates — so the common case (the stack simply breaks: 9 crosses back under
+            # 21) produces cand=None, hits `continue`, and the trade rides to its stop.
+            # That is the loss this exit is meant to prevent.
+            if settings.SIGNAL_EXIT_ON_TREND_BREAK:
+                invalidated += _invalidate_trend_breaks(sym, tf, indicators, now)
+
             for svc in system_services + custom_by_symbol.get(sym.id, []):
                 pair = (sym.id, svc.id, tf)
                 cand = candidate_direction_for_service(svc, indicators)
@@ -337,6 +347,46 @@ INTERVAL_SECONDS = {
     "1m": 60, "3m": 180, "5m": 300, "15m": 900, "30m": 1800,
     "1h": 3600, "2h": 7200, "4h": 14400, "8h": 28800, "12h": 43200, "1d": 86400,
 }
+
+
+def _invalidate_trend_breaks(sym, tf, ind, now) -> int:
+    """Close open calls on (sym, tf) whose EMA-stack thesis has broken.
+
+    Entry for a trend call requires the full stack (BUY: 9 > 21 > 200; SELL: inverted).
+    When that ordering fails the reason for being in the trade is gone, so the call is
+    closed flat (INVALIDATED, 0R) rather than left to bleed to its stop (-1R). This is
+    the "get out when the trend turns" exit — turning a would-be loss into a scratch.
+
+    Deliberately narrow:
+    - Only BUILT-IN trend strategies. Custom strategies run the user's own rule, and
+      breakout strategies (EMA_STACK_EXEMPT) never required the stack to enter, so
+      neither may be closed by a condition they were never gated on.
+    - Only calls that have NOT banked a target (best_tp=0). A runner that already
+      tagged TP1 has its stop at breakeven and a third secured — it cannot lose, so
+      there is nothing to rescue, and closing it flat would ERASE the banked +0.33R.
+    """
+    ema9, ema21, ema200 = ind.get("ema9"), ind.get("ema21"), ind.get("ema200")
+    if ema9 is None or ema21 is None or ema200 is None:
+        return 0
+
+    base = Signal.objects.filter(
+        symbol=sym,
+        timeframe=tf,
+        outcome=Signal.Outcome.PENDING,
+        best_tp=0,
+        service__owner__isnull=True,
+    ).exclude(service__slug__in=EMA_STACK_EXEMPT)
+
+    n = 0
+    if not (ema9 > ema21 > ema200):  # bull thesis gone
+        n += base.filter(direction=Signal.Direction.BUY).update(
+            outcome=Signal.Outcome.INVALIDATED, resolved_at=now
+        )
+    if not (ema9 < ema21 < ema200):  # bear thesis gone
+        n += base.filter(direction=Signal.Direction.SELL).update(
+            outcome=Signal.Outcome.INVALIDATED, resolved_at=now
+        )
+    return n
 
 
 def run_evaluation(limit: int | None = None) -> dict:

@@ -339,6 +339,21 @@ SIGNAL_EMA_GATE = env("SIGNAL_EMA_GATE", default="stack50")
 # than just chasing the fast EMAs. Backtest with `backtest --no-ema200 --fib`.
 SIGNAL_EMA200_TREND_FILTER = env.bool("SIGNAL_EMA200_TREND_FILTER", default=True)
 
+# Thesis-invalidation exit: close an open trend call flat (INVALIDATED, 0R) as soon as
+# its entry condition breaks — ANY break in the EMA ordering that justified the trade
+# (BUY needs 9 > 21 > 200; a cross of 9 under 21, or 21 under 200, kills it) — instead
+# of letting it ride to the stop (-1R). Only applies to built-in trend strategies
+# (breakouts never needed the stack) and only before a target is banked (a TP1 runner is
+# already stop-at-breakeven; closing it flat would erase its +0.33R).
+#
+# ON by the developer's call: the trend is the trade, so when the trend is gone the
+# trade is gone. Note the trade-off it accepts — a 9/21 cross is noisy and often
+# re-crosses within a bar or two, so this WILL also scratch trades that would have
+# recovered. It buys smaller losses at the cost of some winners. Watch the realized avg
+# R after a couple of days: if expectancy drops, the exit is cutting too early and the
+# lever is SIGNAL_EXIT_ON_TREND_BREAK=False (or a slower break rule).
+SIGNAL_EXIT_ON_TREND_BREAK = env.bool("SIGNAL_EXIT_ON_TREND_BREAK", default=True)
+
 # Overextension guard (A — apps/signals/pregate.py). Blocks NEW non-breakout
 # entries once price has stretched more than this many ATRs beyond EMA21 — a
 # parabolic blow-off where the trend gates are MAXIMALLY satisfied yet a fresh
