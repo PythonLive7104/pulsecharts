@@ -125,7 +125,11 @@ export default function SignalsPage() {
   // to explain the gap.
   const isFlat = (s) => s.outcome === "INVALID" || s.outcome === "EXPIRED";
   const flatCount = resolved.filter(isFlat).length;
-  const shownResults = resolved.filter((s) =>
+  // Open trades that already banked a target. The accuracy headline counts these (at
+  // their locked floor), so they must be inspectable HERE too — otherwise the two
+  // panels quote different populations with nothing on screen to reconcile them.
+  const running = (feed?.signals || []).filter((s) => s.best_tp > 0);
+  const shownResults = (resultFilter === "running" ? running : resolved).filter((s) =>
     resultFilter === "win"
       ? WIN_OUTCOMES.has(s.outcome)
       : resultFilter === "loss"
@@ -411,13 +415,17 @@ export default function SignalsPage() {
                       )}
                     </span>
                     {/* Spell out the split so this panel visibly reconciles with the
-                        "Past results" count below, which lists closed trades only. */}
-                    {accuracy.overall.running > 0 && (
+                        "Past results" count below, and so a headline resting mostly on
+                        open positions can't pass as a settled record. */}
+                    {accuracy.overall.running > 0 && accuracy.closed_only && (
                       <span className="muted acc-split">
-                        {accuracy.overall.resolved - accuracy.overall.running} closed (
-                        {accuracy.overall.wins - accuracy.overall.running}W /{" "}
-                        {accuracy.overall.losses}L) + {accuracy.overall.running} still running with
-                        TP1 banked
+                        Closed only: <b>{accuracy.closed_only.win_rate ?? "—"}%</b>{" "}
+                        ({accuracy.closed_only.wins}W / {accuracy.closed_only.losses}L
+                        {accuracy.closed_only.avg_r != null && (
+                          <>, {accuracy.closed_only.avg_r > 0 ? "+" : ""}
+                          {accuracy.closed_only.avg_r}R</>
+                        )}) · + {accuracy.overall.running} still running with TP1 banked,
+                        counted at their locked floor
                       </span>
                     )}
                   </div>
@@ -446,7 +454,8 @@ export default function SignalsPage() {
               aria-expanded={showResults}
             >
               <span className="results-caret">{showResults ? "▾" : "▸"}</span>
-              Your past results ({resolved.length})
+              Your past results ({resolved.length} closed
+              {running.length > 0 && ` · ${running.length} running`})
               <span className="results-wl">
                 <span className="win">{winCount}W</span> / <span className="loss">{lossCount}L</span>
                 {flatCount > 0 && <span className="muted"> / {flatCount} flat</span>}
@@ -487,6 +496,15 @@ export default function SignalsPage() {
                         title="Closed flat — the trend flipped, or the call ran out of time without hitting a stop or a target. Neither a win nor a loss, so excluded from the win rate."
                       >
                         — Flat ({flatCount})
+                      </button>
+                    )}
+                    {running.length > 0 && (
+                      <button
+                        className={`chip ${resultFilter === "running" ? "active" : ""}`}
+                        onClick={() => setResultFilter("running")}
+                        title="Still open, but already banked TP1+ with the stop at breakeven — they can no longer become losses. The accuracy figure counts these at their locked-in floor, which is why it reads higher than the closed-only record."
+                      >
+                        ● Running ({running.length})
                       </button>
                     )}
                   </div>

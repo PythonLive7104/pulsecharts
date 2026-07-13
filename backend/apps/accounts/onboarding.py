@@ -45,7 +45,7 @@ def _ordered_active_services():
 
 
 @transaction.atomic
-def provision_default_setup(user) -> dict:
+def provision_default_setup(user, as_plan: str | None = None, include_forex: bool = False) -> dict:
     """Seed `user` with a default watchlist + followed strategies for their plan.
 
     - Watchlist: the top N active *crypto* symbols (by curated sort order), where
@@ -53,15 +53,25 @@ def provision_default_setup(user) -> dict:
     - Strategies: the top N active strategies by priority, where N is the plan's
       `default_strategies` (-1 = every active strategy).
 
+    ``as_plan`` sizes the defaults as if the user were on that plan (e.g. "pro")
+    instead of their actual one — for provisioning an admin/monitoring account with
+    full coverage without having to put a fake subscription on it. It does NOT grant
+    the plan: entitlements, quotas and gating still read the user's real plan, so an
+    over-seeded watchlist is only ever a superset of what they'd otherwise watch.
+
+    ``include_forex`` also seeds the active forex pairs, which signup never does
+    (it's crypto-only). Useful for an account that needs to see every signal the
+    engine produces, forex included.
+
     Idempotent: symbols/strategies the user already has are skipped, so re-running
     never duplicates. Returns a summary of what was added (for logging/commands).
     """
-    from apps.accounts.plans import plan_for
+    from apps.accounts.plans import PLANS, plan_for
     from apps.market_data.models import Symbol
     from apps.signals.models import UserSignalSubscription
     from apps.watchlists.models import WatchlistItem
 
-    plan = plan_for(user)
+    plan = PLANS[as_plan] if as_plan else plan_for(user)
 
     # --- Watchlist: top N active crypto symbols ---
     want_symbols = plan.get("default_watchlist", 0)
@@ -75,6 +85,12 @@ def provision_default_setup(user) -> dict:
                 is_active=True, asset_class=Symbol.AssetClass.CRYPTO
             ).order_by("sort_order", "ticker")[:want_symbols]
         )
+        if include_forex:
+            top_symbols += list(
+                Symbol.objects.filter(
+                    is_active=True, asset_class=Symbol.AssetClass.FOREX
+                ).order_by("sort_order", "ticker")
+            )
         start = len(existing_ids)
         new_items = [
             WatchlistItem(user=user, symbol=sym, sort_order=start + i)

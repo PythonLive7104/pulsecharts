@@ -180,15 +180,25 @@ class SubscriptionListCreateView(generics.ListCreateAPIView):
     serializer_class = SubscriptionSerializer
 
     def get_queryset(self):
+        # Live follows only. A subscription row outlives the strategy being disabled
+        # (nothing deletes follows when a strategy is switched off), so a user who
+        # followed a strategy that was later retired kept counting it forever — the
+        # dashboard showed "10 strategies followed" against a roster of 7. The rows
+        # are deliberately KEPT, not deleted: re-enabling a strategy should restore
+        # the follows it had.
         return UserSignalSubscription.objects.filter(
-            user=self.request.user
+            user=self.request.user, service__is_active=True
         ).select_related("service")
 
     def create(self, request, *args, **kwargs):
         user = request.user
-        # Each plan caps how many strategies you can follow (free = 2).
+        # Each plan caps how many strategies you can follow (free = 2). Count only
+        # follows of ACTIVE strategies — otherwise a dead follow silently eats a slot
+        # and a Free user could be locked out of following anything real.
         allowed = strategies_allowed_for(user)
-        following = UserSignalSubscription.objects.filter(user=user).count()
+        following = UserSignalSubscription.objects.filter(
+            user=user, service__is_active=True
+        ).count()
         if allowed == 0:
             return Response(
                 {"detail": "Trading signals aren't available on your plan. Upgrade to follow strategies."},
@@ -464,11 +474,23 @@ class SignalAccuracyView(APIView):
             direction__in=[Signal.Direction.BUY, Signal.Direction.SELL],
         )
         stats = accuracy_stats(base)
+        # The closed-only record, alongside the headline. Counting open TP1-banked
+        # trades fixes a real downward bias (losers resolve instantly, winners run),
+        # but it cuts the other way once they dominate: open trades that have NOT
+        # tagged TP1 are excluded, and some of those are heading for a stop — so the
+        # sample counts open winners while ignoring open losers-in-progress. With 56
+        # runners against 19 closed trades the headline stops describing a settled
+        # record. Ship both figures and let the reader see the split rather than
+        # picking whichever one flatters.
+        closed_base = base.exclude(outcome=Signal.Outcome.PENDING)
+        stats["closed_only"] = accuracy_stats(closed_base)["overall"]
         # A handful of trades is not a track record. Flag small samples so the UI can
         # present the figure as provisional rather than as a confident headline —
         # under-reporting the sample size is how misleading accuracy claims get made
-        # (Section 13.7), in either direction.
-        stats["provisional"] = (stats["overall"]["resolved"] or 0) < MIN_ACCURACY_SAMPLE
+        # (Section 13.7), in either direction. Judged on CLOSED trades: a headline
+        # resting mostly on open positions is provisional however many there are.
+        closed_n = stats["closed_only"]["resolved"] or 0
+        stats["provisional"] = closed_n < MIN_ACCURACY_SAMPLE
         stats["min_sample"] = MIN_ACCURACY_SAMPLE
         stats["scope"] = "delivered"
         return Response(stats)

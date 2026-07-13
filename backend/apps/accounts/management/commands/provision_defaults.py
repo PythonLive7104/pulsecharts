@@ -27,6 +27,21 @@ class Command(BaseCommand):
         )
         parser.add_argument("--email", help="Provision a single user by email.")
         parser.add_argument(
+            "--as-plan",
+            choices=["free", "starter", "pro"],
+            help=(
+                "Size the defaults as if the user were on this plan, instead of their "
+                "actual one (e.g. --as-plan pro to give an admin/monitoring account the "
+                "full Pro watchlist). Does NOT grant the plan — quotas and gating still "
+                "read the user's real plan."
+            ),
+        )
+        parser.add_argument(
+            "--include-forex",
+            action="store_true",
+            help="Also seed the active forex pairs (signup seeds crypto only).",
+        )
+        parser.add_argument(
             "--dry-run",
             action="store_true",
             help="Report who would be provisioned without writing anything.",
@@ -57,7 +72,9 @@ class Command(BaseCommand):
                 users_touched += 1
                 continue
 
-            result = provision_default_setup(user)
+            result = provision_default_setup(
+                user, as_plan=opts.get("as_plan"), include_forex=opts["include_forex"]
+            )
             if result["symbols"] or result["strategies"]:
                 users_touched += 1
                 total_symbols += result["symbols"]
