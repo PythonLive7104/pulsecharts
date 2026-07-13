@@ -422,13 +422,26 @@ SIGNAL_TIMEFRAMES = env.list("SIGNAL_TIMEFRAMES", default=["1h", "4h"])
 # weekdays (Saturday worst at ~27%). On by default; set False to scan crypto 24/7.
 SIGNAL_SKIP_CRYPTO_WEEKEND = env.bool("SIGNAL_SKIP_CRYPTO_WEEKEND", default=True)
 
-# Cap how many symbols a single scan evaluates (controls LLM cost). 0 = all active.
-# TESTING: 3 keeps cost low; raise for production coverage.
-SIGNAL_SCAN_SYMBOL_LIMIT = env.int("SIGNAL_SCAN_SYMBOL_LIMIT", default=3)
+# Cap how many symbols a single scan evaluates. 0 = all active (the default).
+#
+# The cap existed to control LLM cost, but the engine now runs SIGNAL_ENGINE_MODE=rules
+# — no LLM call — so it was guarding a bill that no longer exists while doing real
+# damage: it slices the crypto set as watched[:limit] under Symbol.Meta.ordering, i.e.
+# the SAME N coins every scan, forever. Every other watched coin was never scanned at
+# all. Leave at 0 unless candle-fetch load actually becomes a problem.
+SIGNAL_SCAN_SYMBOL_LIMIT = env.int("SIGNAL_SCAN_SYMBOL_LIMIT", default=0)
 
-# Outcome evaluation (Section 13.7, 18): how many candles after generation to
-# wait before marking an unresolved signal EXPIRED.
-SIGNAL_EVAL_BARS = env.int("SIGNAL_EVAL_BARS", default=96)
+# Outcome evaluation (Section 13.7, 18): how many candles after generation before an
+# unresolved call is closed out. 48 bars = 2 days on 1h, 8 days on 4h.
+#
+# This is NOT cosmetic. The scan won't issue a new signal while a strategy still has
+# an open call on that symbol+timeframe, so an open call holds its slot — and with no
+# expiry, calls accumulated forever (712 of them) until almost every slot on the
+# scanned coins was blocked, fresh signals dried up, and delivery (which needs
+# SIGNAL_CONFLUENCE_MIN fresh strategies agreeing) starved. A 1h setup that has gone
+# 2 days without touching its stop or a target is dead regardless of where price sits.
+# A call that already banked TP1/TP2 closes at that banked level, not as EXPIRED.
+SIGNAL_EVAL_BARS = env.int("SIGNAL_EVAL_BARS", default=48)
 
 # Shadow mode: keep generating + evaluating signals but DON'T surface them in the
 # user feed (run for weeks, validate realized accuracy before any claims, 13.7).

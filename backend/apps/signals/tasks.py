@@ -342,10 +342,21 @@ INTERVAL_SECONDS = {
 def run_evaluation(limit: int | None = None) -> dict:
     """Resolve PENDING signals against the price action that followed.
 
-    A signal stays Active until the trade actually plays out: it resolves only
-    when the stop-loss is hit (loss) or a take-profit is hit (win). There is no
-    time-based expiry — a call is live until price reaches its stop or a target.
-    Cheap — no LLM, just candle fetches.
+    A signal stays Active while the trade is genuinely live: it resolves when the stop
+    is hit (loss), the final target is reached (win), or — after
+    ``settings.SIGNAL_EVAL_BARS`` candles — it simply ran out of time.
+
+    That last clause is load-bearing, not housekeeping. The scan won't issue a new
+    signal while a strategy has an open call on that symbol+timeframe, so every open
+    call holds a slot; without expiry they accumulated indefinitely (712 at the point
+    this was found) until the scanned coins had almost no free slots left, new signals
+    stopped being generated, and delivery — which needs SIGNAL_CONFLUENCE_MIN *fresh*
+    strategies to agree — starved. It also bounded the evaluator, which fetches candles
+    once per open call on every pass.
+
+    A timed-out call that already banked TP1/TP2 resolves at that banked level (the
+    scale-out P&L is locked in — see §19.2), NOT as EXPIRED. Only a call that never
+    reached a target expires flat. Cheap — no LLM, just candle fetches.
     """
     pending = (
         Signal.objects.filter(outcome=Signal.Outcome.PENDING)
@@ -356,7 +367,7 @@ def run_evaluation(limit: int | None = None) -> dict:
         pending = pending[:limit]
 
     now = timezone.now()
-    resolved = still = 0
+    resolved = still = expired = 0
 
     for sig in pending:
         gen_ms = int(sig.generated_at.timestamp() * 1000)
@@ -399,6 +410,17 @@ def run_evaluation(limit: int | None = None) -> dict:
                 mfe_pct=res["mfe_pct"], mae_pct=res["mae_pct"], **tagged,
             )
             resolved += updated  # 0 if it was already closed elsewhere
+        elif len(eval_candles) >= settings.SIGNAL_EVAL_BARS:
+            # Out of time. Close it at whatever it actually banked: a call that tagged
+            # TP1/TP2 books that (the partial is real money), one that never reached a
+            # target expires flat. Either way the slot is freed so the strategy can
+            # signal on this symbol again.
+            Signal.objects.filter(id=sig.id, outcome=Signal.Outcome.PENDING).update(
+                outcome=label or Signal.Outcome.EXPIRED, resolved_at=now,
+                best_tp=res["best_tp"],
+                mfe_pct=res["mfe_pct"], mae_pct=res["mae_pct"], **tagged,
+            )
+            expired += 1
         else:
             # Still running. Record how far it has got anyway: a trade that has
             # banked TP1/TP2 and is still chasing TP3 is NOT terminal, but the user
@@ -410,8 +432,11 @@ def run_evaluation(limit: int | None = None) -> dict:
             )
             still += 1
 
-    summary = {"resolved": resolved, "still_pending": still}
-    logger.info("signal eval: resolved=%(resolved)d still_pending=%(still_pending)d", summary)
+    summary = {"resolved": resolved, "timed_out": expired, "still_pending": still}
+    logger.info(
+        "signal eval: resolved=%(resolved)d timed_out=%(timed_out)d "
+        "still_pending=%(still_pending)d", summary,
+    )
     return summary
 
 
@@ -694,9 +719,22 @@ def run_telegram_close_updates() -> dict:
             retired, CLOSURE_SEND_WINDOW,
         )
 
+    # EXPIRED means the call simply ran out of time without touching its stop or a
+    # target — nothing happened, and there is nothing for the user to do. Retire those
+    # silently instead of pushing "⌛ expired" for each. Without this, re-enabling
+    # expiry would drain the accumulated backlog of stale open calls straight into
+    # users' Telegram as a burst of hundreds of non-events. A timed-out call that DID
+    # bank TP1/TP2 resolves as TP1/TP2, not EXPIRED, so real outcomes still send.
+    retired += (
+        TelegramDelivery.objects.filter(
+            closure_notified=False, signal__outcome=Signal.Outcome.EXPIRED
+        ).update(closure_notified=True)
+    )
+
     pending = (
         TelegramDelivery.objects.filter(closure_notified=False, signal__resolved_at__gte=cutoff)
         .exclude(signal__outcome=Signal.Outcome.PENDING)
+        .exclude(signal__outcome=Signal.Outcome.EXPIRED)
         .select_related("signal", "signal__symbol", "signal__service", "user")
     )
 
