@@ -59,6 +59,23 @@ RESULTS_LIMIT_PAID = 50
 MIN_ACCURACY_SAMPLE = 20
 
 
+def _followed_service_ids(user):
+    """Service ids this user follows AND is allowed to see.
+
+    Enforced at read time, not just at write time. A subscription row to someone else's
+    custom strategy should never exist — but one did (onboarding auto-followed every
+    active service, private strategies included), and because the feed trusted the
+    subscription table blindly, another user's private signals were delivered straight
+    into the victim's feed and Telegram. Re-check ownership here so a bad row can only
+    ever be inert, never a leak.
+    """
+    return list(
+        UserSignalSubscription.objects.filter(user=user)
+        .filter(Q(service__owner__isnull=True) | Q(service__owner=user))
+        .values_list("service_id", flat=True)
+    )
+
+
 def _visible_services(user):
     """Active built-in strategies plus this user's own custom strategies. Other
     users' custom strategies are never listed."""
@@ -285,9 +302,7 @@ class SignalFeedView(APIView):
                 "disclaimer": "Add coins to your watchlist to receive signals for them.",
             })
 
-        followed_ids = list(
-            UserSignalSubscription.objects.filter(user=user).values_list("service_id", flat=True)
-        )
+        followed_ids = _followed_service_ids(user)
 
         delivered_this_week = SignalDelivery.objects.filter(
             user=user, delivered_at__gte=week_cutoff

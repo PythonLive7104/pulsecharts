@@ -14,7 +14,7 @@ import logging
 import requests
 from celery import shared_task
 from django.conf import settings
-from django.db.models import F
+from django.db.models import F, Q
 from django.utils import timezone
 
 from apps.market_data.feeds import get_candles, get_candles_since
@@ -803,8 +803,13 @@ def run_telegram_push() -> dict:
         quota = signal_quota_for(user)  # premium: starter 400/wk, pro -1 (unlimited)
         if quota == 0:
             continue
+        # Same ownership re-check as the feed (_followed_service_ids): a subscription to
+        # another user's PRIVATE custom strategy must never push their signals to this
+        # user's Telegram, however the row got there.
         followed = list(
-            UserSignalSubscription.objects.filter(user=user).values_list("service_id", flat=True)
+            UserSignalSubscription.objects.filter(user=user)
+            .filter(Q(service__owner__isnull=True) | Q(service__owner=user))
+            .values_list("service_id", flat=True)
         )
         if not followed:
             continue

@@ -35,10 +35,19 @@ STRATEGY_PRIORITY = [
 
 
 def _ordered_active_services():
-    """Active signal services in default-follow priority order."""
+    """Active BUILT-IN signal services in default-follow priority order.
+
+    ``owner__isnull=True`` is a privacy boundary, not a tidy-up. Custom strategies are
+    private to the user who built them, and Pro's ``default_strategies = -1`` means
+    "follow every active strategy" — so without this filter, provisioning a Pro user
+    subscribed them to every OTHER user's private custom strategy, and those users'
+    signals were then delivered into their feed and Telegram. Never auto-follow a
+    strategy someone else owns; a user only ever follows their own (auto-subscribed at
+    creation, see SignalServiceListView.post).
+    """
     from apps.signals.models import SignalService
 
-    services = list(SignalService.objects.filter(is_active=True))
+    services = list(SignalService.objects.filter(is_active=True, owner__isnull=True))
     rank = {slug: i for i, slug in enumerate(STRATEGY_PRIORITY)}
     services.sort(key=lambda s: (rank.get(s.slug, len(rank)), s.id))
     return services

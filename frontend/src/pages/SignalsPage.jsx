@@ -46,21 +46,27 @@ export default function SignalsPage() {
   // refreshes in place without flickering.
   async function load(silent = false) {
     if (!silent) setLoading(true);
+
+    // Accuracy + Telegram status are decoration: the page is perfectly usable without
+    // them and they pop in when they land. Firing them alongside the blocking set (so
+    // they still share the same round trip) but NOT awaiting them keeps the whole page
+    // from being held hostage by the slowest request — previously a single Promise.all
+    // over all five meant a blank "Loading…" until every last one returned.
+    api.signalAccuracy().then(setAccuracy).catch(() => setAccuracy(null));
+    api.telegramStatus().then(setTg).catch(() => setTg(null));
+
     try {
-      const [svc, sub, fd, acc, tgStatus] = await Promise.all([
+      // The three the page genuinely cannot render without.
+      const [svc, sub, fd] = await Promise.all([
         api.signalServices(),
         api.signalSubscriptions(),
         api.signalFeed(),
-        api.signalAccuracy().catch(() => null),
-        api.telegramStatus().catch(() => null),
       ]);
       // /signal-services/ now returns { services, custom_quota }.
       setServices(svc?.services ?? svc ?? []);
       setCustomQuota(svc?.custom_quota ?? null);
       setSubs(sub);
       setFeed(fd);
-      setAccuracy(acc);
-      setTg(tgStatus);
     } catch {
       /* not authed / offline */
     } finally {
