@@ -450,10 +450,18 @@ class SignalAccuracyView(APIView):
         delivered_ids = SignalDelivery.objects.filter(user=user).values_list(
             "signal_id", flat=True
         )
+        # Closed trades in the window, PLUS trades still running that have already
+        # banked a target. The latter are not undecided — a third is banked and the
+        # stop is at breakeven — and leaving them out skewed the whole number: a stop
+        # is hit in minutes and counted immediately, while a winner stays open for
+        # hours running to TP3, so the "realized" sample held nearly every loss and
+        # only the finished wins. They're counted at their locked-in floor (stats.
+        # _effective_outcome), never at their potential.
         base = Signal.objects.filter(
+            Q(resolved_at__gte=timezone.now() - RESULTS_LOOKBACK)
+            | Q(outcome=Signal.Outcome.PENDING, best_tp__gte=1),
             id__in=delivered_ids,
             direction__in=[Signal.Direction.BUY, Signal.Direction.SELL],
-            resolved_at__gte=timezone.now() - RESULTS_LOOKBACK,
         )
         stats = accuracy_stats(base)
         # A handful of trades is not a track record. Flag small samples so the UI can

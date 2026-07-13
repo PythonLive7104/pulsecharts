@@ -395,7 +395,8 @@ export default function SignalsPage() {
                   <div className="acc-bigstat">
                     <span className="acc-rate">{accuracy.overall.win_rate}%</span>
                     <span className="muted">
-                      {accuracy.overall.wins}W / {accuracy.overall.losses}L ({accuracy.overall.resolved} resolved)
+                      {accuracy.overall.wins}W / {accuracy.overall.losses}L ({accuracy.overall.resolved} counted
+                      {accuracy.overall.running > 0 && `, incl. ${accuracy.overall.running} still running`})
                       {accuracy.overall.breakeven > 0 && ` · ${accuracy.overall.breakeven} invalidated`}
                       {accuracy.overall.avg_r != null && (
                         <> · <b>{accuracy.overall.avg_r > 0 ? "+" : ""}{accuracy.overall.avg_r}R</b> avg / trade</>

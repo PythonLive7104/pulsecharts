@@ -36,7 +36,26 @@ TP_OUTCOMES = {"TP1", "TP2", "TP3", "TP4"}
 SCALEOUT_R = {"TP1": 1 / 3, "TP2": 1.0, "TP3": 2.0, "TP4": 3.0, "SL": -1.0, "INVALID": 0.0}
 
 
-def _summarize(counts: dict) -> dict:
+def _effective_outcome(outcome: str, best_tp: int) -> str:
+    """Outcome for stats purposes, counting still-open trades that already banked a
+    target.
+
+    A PENDING trade that has tagged TP1+ is NOT undecided: a third is banked and the
+    stop is at breakeven (§19.2), so its floor is exactly the R of the TP it reached
+    (TP1 → 1/3 R: one third at 1R, the rest flat) and it can no longer become a loss.
+    Excluding it while counting every stop-out biases the whole figure downward,
+    because losers resolve immediately and winners stay open for hours chasing TP3 —
+    the sample would hold nearly all the losses and only the finished wins.
+
+    Counting it at its floor is the conservative correction: never better than what
+    is already locked in, and the upside (a runner reaching TP3) only lands later.
+    """
+    if outcome == "PENDING" and best_tp:
+        return f"TP{min(best_tp, 4)}"
+    return outcome
+
+
+def _summarize(counts: dict, running: int = 0) -> dict:
     wins = sum(counts.get(o, 0) for o in TP_OUTCOMES)
     losses = counts.get("SL", 0)
     # Trend-flip invalidations close flat — neither win nor loss. Kept out of the
@@ -54,6 +73,11 @@ def _summarize(counts: dict) -> dict:
         "expired": counts.get("EXPIRED", 0),
         "pending": counts.get("PENDING", 0),
         "resolved": resolved,
+        # How many of the counted trades are still open with a target already banked
+        # (counted at their locked-in floor — see _effective_outcome). Surfaced so the
+        # UI can say so out loud rather than quietly mixing open trades into a figure
+        # labelled "realized".
+        "running": running,
         "win_rate": round(wins / resolved * 100, 1) if resolved else None,
         "avg_r": round(total_r / closed, 3) if closed else None,
         "by_outcome": {o: counts.get(o, 0) for o in
@@ -72,16 +96,22 @@ def _trade_counts(qs) -> dict:
     """
     rank = {"SL": 0, "EXPIRED": 1, "INVALID": 2, "PENDING": 3,
             "TP1": 4, "TP2": 5, "TP3": 6, "TP4": 7}
-    trades: dict[tuple, str] = {}
-    for r in qs.values("symbol_id", "timeframe", "direction", "entry_price", "outcome"):
+    trades: dict[tuple, tuple[str, bool]] = {}
+    for r in qs.values("symbol_id", "timeframe", "direction", "entry_price",
+                       "outcome", "best_tp"):
         key = (r["symbol_id"], r["timeframe"], r["direction"], r["entry_price"])
+        outcome = _effective_outcome(r["outcome"], r["best_tp"])
+        still_open = r["outcome"] == "PENDING"
         cur = trades.get(key)
-        if cur is None or rank.get(r["outcome"], 9) < rank.get(cur, 9):
-            trades[key] = r["outcome"]
+        if cur is None or rank.get(outcome, 9) < rank.get(cur[0], 9):
+            trades[key] = (outcome, still_open)
     counts: dict[str, int] = {}
-    for outcome in trades.values():
+    running = 0
+    for outcome, still_open in trades.values():
         counts[outcome] = counts.get(outcome, 0) + 1
-    return counts
+        if still_open and outcome in TP_OUTCOMES:
+            running += 1
+    return counts, running
 
 
 def accuracy_stats(base=None) -> dict:
@@ -95,28 +125,41 @@ def accuracy_stats(base=None) -> dict:
     """
     if base is None:
         base = Signal.objects.filter(service__owner__isnull=True)
-    overall_counts = _trade_counts(base)
+    overall_counts, overall_running = _trade_counts(base)
 
-    per_service = {}
-    rows = (
-        base.values("service__slug", "service__name", "outcome")
-        .annotate(n=Count("id"))
+    # Per-strategy: same effective-outcome mapping as the overall figure, so an open
+    # trade that banked TP1 lands in both or neither. (Rolled up in Python rather than
+    # via annotate() because the mapping depends on best_tp, not just outcome.)
+    per_service: dict[str, dict] = {}
+    rows = base.values("service__slug", "service__name", "outcome", "best_tp").annotate(
+        n=Count("id")
     )
     for r in rows:
         slug = r["service__slug"]
-        bucket = per_service.setdefault(slug, {"name": r["service__name"], "_counts": {}})
-        bucket["_counts"][r["outcome"]] = r["n"]
+        bucket = per_service.setdefault(
+            slug, {"name": r["service__name"], "_counts": {}, "_running": 0}
+        )
+        outcome = _effective_outcome(r["outcome"], r["best_tp"])
+        bucket["_counts"][outcome] = bucket["_counts"].get(outcome, 0) + r["n"]
+        if r["outcome"] == "PENDING" and outcome in TP_OUTCOMES:
+            bucket["_running"] += r["n"]
 
     strategies = []
     for slug, b in per_service.items():
-        strategies.append({"slug": slug, "name": b["name"], **_summarize(b["_counts"])})
+        strategies.append(
+            {"slug": slug, "name": b["name"], **_summarize(b["_counts"], b["_running"])}
+        )
     strategies.sort(key=lambda s: (s["win_rate"] is None, -(s["win_rate"] or 0)))
 
     return {
-        "overall": _summarize(overall_counts),
+        "overall": _summarize(overall_counts, overall_running),
         "strategies": strategies,
-        "note": "Win = reached TP1+ before stop. Invalidated (trend flipped), "
-                "expired and pending are excluded from win rate. Counted once per "
+        "note": "Win = reached TP1+ before stop. A trade still running that has "
+                "already banked TP1 counts at its locked-in floor (stop at breakeven, "
+                "so it can't become a loss) — excluding it would bias the figure down, "
+                "since losers resolve instantly while winners stay open chasing TP3. "
+                "Invalidated (trend flipped), expired and untagged open trades are "
+                "excluded. Counted once per "
                 "trade, not once per strategy that called it. avg_r = per-trade "
                 "expectancy under the scale-out-in-thirds model (TP1=+0.33R, TP2=+1R, "
                 "TP3=+2R, SL=-1R, trend-flip=0R).",
