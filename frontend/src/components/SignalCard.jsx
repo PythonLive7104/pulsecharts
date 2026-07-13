@@ -23,8 +23,17 @@ const OUTCOME = {
 export default function SignalCard({ s }) {
   const [open, setOpen] = useState(false);
   const buy = s.direction === "BUY";
-  const [outLabel, outClass] = OUTCOME[s.outcome] || OUTCOME.PENDING;
+  let [outLabel, outClass] = OUTCOME[s.outcome] || OUTCOME.PENDING;
   const fmt = (n) => formatPrice(n, s.asset_class, s.symbol);
+  // Targets already tagged. An open trade keeps running after TP1/TP2 (§19.2 —
+  // it resolves only at TP3 or the breakeven stop), so "Active" alone hides the
+  // fact that the user's partial is due and their stop should be at entry.
+  const reached = s.best_tp || 0;
+  const running = s.outcome === "PENDING" && reached > 0;
+  if (running) {
+    outLabel = `Running · TP${reached} ✓`;
+    outClass = "running";
+  }
   // Confluence: how many distinct strategies agree on this call (>= 2 is the
   // headline reliability signal). Falls back to the single generating strategy.
   const agree = s.confluence_services?.length ? s.confluence_services : [s.strategy];
@@ -59,17 +68,29 @@ export default function SignalCard({ s }) {
 
       <div className="levels">
         <div className="level"><span>Entry</span><b>{fmt(s.entry_price)}</b></div>
-        <div className="level sl"><span>Stop</span><b>{fmt(s.stop_loss)}</b></div>
-        <div className="level tp"><span>TP1</span><b>{fmt(s.tp1)}</b></div>
-        <div className="level tp"><span>TP2</span><b>{fmt(s.tp2)}</b></div>
-        <div className="level tp"><span>TP3</span><b>{fmt(s.tp3)}</b></div>
-        {s.tp4 != null && <div className="level tp"><span>TP4</span><b>{fmt(s.tp4)}</b></div>}
+        <div className="level sl">
+          <span>Stop</span>
+          <b>{running ? `${fmt(s.entry_price)} (BE)` : fmt(s.stop_loss)}</b>
+        </div>
+        {[s.tp1, s.tp2, s.tp3, s.tp4].map((tp, i) => tp == null ? null : (
+          <div key={i} className={`level tp${reached >= i + 1 ? " hit" : ""}`}>
+            <span>TP{i + 1}{reached >= i + 1 ? " ✓" : ""}</span>
+            <b>{fmt(tp)}</b>
+          </div>
+        ))}
       </div>
 
-      <p className="scaleout-note">
-        💡 Suggested: take partial profit at TP1, move your stop to entry (break-even),
-        then let the rest run toward TP3.
-      </p>
+      {running ? (
+        <p className="scaleout-note running">
+          🎯 TP{reached} tagged — partial{reached > 1 ? "s" : ""} banked, stop moved to entry
+          (break-even). Trade still open; runner targets TP3 {fmt(s.tp3)}.
+        </p>
+      ) : (
+        <p className="scaleout-note">
+          💡 Suggested: take partial profit at TP1, move your stop to entry (break-even),
+          then let the rest run toward TP3.
+        </p>
+      )}
 
       <div className="rr-line">
         Risk <b className="risk">{dollars(s.risk_pct)}</b> → make{" "}

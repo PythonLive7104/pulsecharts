@@ -14,6 +14,7 @@ import logging
 import requests
 from celery import shared_task
 from django.conf import settings
+from django.db.models import F
 from django.utils import timezone
 
 from apps.market_data.feeds import get_candles, get_candles_since
@@ -390,11 +391,19 @@ def run_evaluation(limit: int | None = None) -> dict:
             updated = Signal.objects.filter(
                 id=sig.id, outcome=Signal.Outcome.PENDING
             ).update(
-                outcome=label, resolved_at=now,
+                outcome=label, resolved_at=now, best_tp=res["best_tp"],
                 mfe_pct=res["mfe_pct"], mae_pct=res["mae_pct"],
             )
             resolved += updated  # 0 if it was already closed elsewhere
         else:
+            # Still running. Record how far it has got anyway: a trade that has
+            # banked TP1/TP2 and is still chasing TP3 is NOT terminal, but the user
+            # was told to take a partial and move their stop to entry the moment TP1
+            # tagged — so that has to be visible (and pushable) now, not at closure.
+            Signal.objects.filter(id=sig.id, outcome=Signal.Outcome.PENDING).update(
+                best_tp=res["best_tp"],
+                mfe_pct=res["mfe_pct"], mae_pct=res["mae_pct"],
+            )
             still += 1
 
     summary = {"resolved": resolved, "still_pending": still}
@@ -563,6 +572,92 @@ def format_closure_for_telegram(s: Signal) -> str:
     return "\n".join(lines)
 
 
+def format_progress_for_telegram(s: Signal, tp: int) -> str:
+    """'Target tagged' message for a trade that is still OPEN.
+
+    The entry card tells the user to take a partial at TP1 and move their stop to
+    entry — advice that is only actionable at the moment the target is tagged. Under
+    "let winners run" (§19.2) the trade stays open until TP3 or the breakeven stop,
+    so without this the user would first hear about TP1 at closure, hours late.
+    """
+    import html
+
+    side = "BUY" if s.direction == Signal.Direction.BUY else "SELL"
+    p = _fmt_price
+    level = {1: s.tp1, 2: s.tp2, 3: s.tp3, 4: s.tp4}.get(tp)
+
+    lines = [
+        f"🎯 <b>Target hit — {html.escape(s.symbol.ticker)} {side}</b> · {html.escape(s.timeframe)}",
+        f"✅ <b>TP{tp}</b> tagged at <b>{p(level)}</b>.  <i>{html.escape(s.service.name)}</i>",
+        "",
+        f"Entry: <b>{p(s.entry_price)}</b>",
+    ]
+    if tp == 1:
+        lines += [
+            "",
+            "💡 Take your partial at TP1 and move your stop to entry (breakeven).",
+            f"Trade stays open — runner targets TP2 {p(s.tp2)} · TP3 {p(s.tp3)}.",
+        ]
+    elif tp == 2:
+        lines += [
+            "",
+            "💡 Bank the second partial. Stop stays at entry.",
+            f"Trade stays open — runner targets TP3 {p(s.tp3)}.",
+        ]
+    else:
+        # The final target IS terminal, so the closure message covers it. Kept for
+        # completeness in case the ladder ever grows past TP3.
+        lines += ["", "💡 Final target reached."]
+    lines.append("<i>Informational only. Not financial advice.</i>")
+    return "\n".join(lines)
+
+
+def run_telegram_progress_updates() -> dict:
+    """Push 'TP tagged' notices for trades that are still OPEN.
+
+    Fires whenever the evaluator has recorded a higher ``Signal.best_tp`` than we've
+    already told this user about (``TelegramDelivery.tp_notified``). Only for still-
+    PENDING signals: once a trade resolves, ``run_telegram_close_updates`` is the one
+    that speaks, so a trade never gets both a "TP2 tagged" and a "hit TP2" message
+    for the same event.
+
+    Sends one message per newly reached target (TP1 then TP2), not just the highest,
+    so a trade that races through both in one evaluator pass still explains itself.
+    """
+    from apps.accounts import telegram
+
+    if not telegram.is_configured():
+        return {"progressed": 0}
+
+    pending = (
+        TelegramDelivery.objects.filter(
+            closure_notified=False,
+            signal__outcome=Signal.Outcome.PENDING,
+            signal__best_tp__gt=F("tp_notified"),
+        )
+        .select_related("signal", "signal__symbol", "signal__service", "user")
+    )
+
+    sent = 0
+    for d in pending:
+        chat = d.user.telegram_chat_id
+        if not chat or not d.user.telegram_active:
+            continue  # unlinked or delivery off — closure path will retire it
+        best = d.signal.best_tp
+        reached = d.tp_notified
+        for tp in range(d.tp_notified + 1, best + 1):
+            if not telegram.send_message(chat, format_progress_for_telegram(d.signal, tp)):
+                break  # network failure — retry the rest next tick
+            reached = tp
+            sent += 1
+        if reached > d.tp_notified:
+            TelegramDelivery.objects.filter(id=d.id).update(tp_notified=reached)
+
+    if sent:
+        logger.info("telegram progress updates: sent=%d", sent)
+    return {"progressed": sent}
+
+
 def run_telegram_close_updates() -> dict:
     """Tell users when a signal they were sent has resolved (TP/SL/invalidated).
 
@@ -637,8 +732,10 @@ def run_telegram_push() -> dict:
         return {"skipped": "telegram not configured"}
 
     # First, tell users about any trades that closed (so "close old" lands before
-    # the replacement "new signal" below).
+    # the replacement "new signal" below), then about open trades that tagged a
+    # target — that's the "take your partial now" notice, and it's time-sensitive.
     closed = run_telegram_close_updates().get("closed", 0)
+    progressed = run_telegram_progress_updates().get("progressed", 0)
 
     # Weekend window (Fri 21:00 → Sun 21:00 UTC, i.e. forex closed): suppress ALL
     # NEW signal pushes. Users asked for this — thin weekend liquidity produces poor
@@ -733,8 +830,10 @@ def run_telegram_push() -> dict:
                 delivered_trades.add(key)
                 sent += 1
 
-    summary = {"sent": sent, "closed": closed}
-    logger.info("telegram push: sent=%(sent)d closed=%(closed)d", summary)
+    summary = {"sent": sent, "closed": closed, "progressed": progressed}
+    logger.info(
+        "telegram push: sent=%(sent)d closed=%(closed)d progressed=%(progressed)d", summary
+    )
     return summary
 
 

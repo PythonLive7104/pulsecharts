@@ -132,6 +132,13 @@ class Signal(models.Model):
     resolved_at = models.DateTimeField(null=True, blank=True)
     mfe_pct = models.FloatField(null=True, blank=True)  # max favorable excursion %
     mae_pct = models.FloatField(null=True, blank=True)  # max adverse excursion %
+    # Highest take-profit reached SO FAR (0 = none yet). Tracked on every evaluator
+    # pass, including while the trade is still PENDING: under "let winners run"
+    # (§19.2) a call that banks TP1/TP2 stays open until it reaches TP3 or comes back
+    # to the breakeven stop, so `outcome` alone can't tell a user their partial is
+    # due. This is what drives the "TP1 tagged — take your partial" push and the live
+    # progress on the card.
+    best_tp = models.PositiveSmallIntegerField(default=0)
 
     created_at = models.DateTimeField(auto_now_add=True)
 
@@ -194,6 +201,10 @@ class TelegramDelivery(models.Model):
     # Set once we've pushed the "trade update" (TP/SL/invalidated) for this signal,
     # so the closure notice is sent at most once.
     closure_notified = models.BooleanField(default=False)
+    # Highest TP we've already pushed a "target tagged" notice for. Progress pushes
+    # fire while the trade is still open (Signal.best_tp > tp_notified), so the user
+    # hears "take your partial" when it's actionable rather than only at closure.
+    tp_notified = models.PositiveSmallIntegerField(default=0)
 
     class Meta:
         constraints = [

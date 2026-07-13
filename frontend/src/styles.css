@@ -1016,6 +1016,9 @@ a.brand:hover { text-decoration: none; }
 .level b { font-size: 13px; }
 .level.sl b { color: var(--red); }
 .level.tp b { color: var(--green); }
+/* Target already tagged on a still-open trade — the partial is due. */
+.level.tp.hit { background: color-mix(in srgb, var(--green) 12%, var(--bg)); }
+.level.tp.hit span { color: var(--green); font-weight: 600; }
 
 .scaleout-note {
   margin: 10px 0 0;
@@ -1026,6 +1029,12 @@ a.brand:hover { text-decoration: none; }
   background: var(--bg);
   border: 1px solid var(--border);
   border-radius: 8px;
+}
+/* Live "your partial is due" state — needs to read as action, not as boilerplate. */
+.scaleout-note.running {
+  color: var(--green);
+  border-color: var(--green);
+  background: color-mix(in srgb, var(--green) 8%, var(--bg));
 }
 .rr-line { font-size: 14px; color: var(--text); }
 .rr-line .risk { color: var(--red); }
@@ -1061,6 +1070,8 @@ a.brand:hover { text-decoration: none; }
 /* Signal outcome badge */
 .outcome-badge { font-size: 11px; font-weight: 600; padding: 2px 7px; border-radius: 6px; border: 1px solid var(--border); }
 .outcome-badge.pending { color: var(--muted); }
+/* Open, but already banked a target — visually a win-in-progress, not a plain "Active". */
+.outcome-badge.running { color: var(--green); border-color: var(--green); }
 .outcome-badge.win { color: var(--green); border-color: var(--green); }
 .outcome-badge.loss { color: var(--red); border-color: var(--red); }
 .outcome-badge.expired { color: var(--muted); opacity: 0.7; }
