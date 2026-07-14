@@ -61,6 +61,11 @@ class EntitlementsView(APIView):
             # surfaces, which the API refuses for these users.
             "plan_never_expires": has_perpetual_access(user),
             **entitlements_for(plan["indicator_tiers"]),
+            # Operator flag, not a plan feature. Gates internal-only surfaces (the
+            # realized-accuracy analysis panel), so the client can skip fetching what
+            # it would be refused anyway. Never grants anything on its own — the API
+            # re-checks is_staff server-side.
+            "is_staff": user.is_staff,
             "signal_weekly_quota": plan["signal_weekly_quota"],  # Section 13.3 (-1 = unlimited)
             "strategies_allowed": plan["strategies"],
             "watchlist_limit": plan["watchlist_limit"],

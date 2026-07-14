@@ -520,16 +520,31 @@ class SignalAccuracyView(APIView):
     a headline reads as "how did MY signals do", so it must answer that question.)
 
     Staff can pass ?scope=all for the product-wide figure across every user's signals.
-    That is a wider, more honest sample for tuning — it is NOT a way to keep a poor
-    number away from users. Section 18 commits to reporting realized accuracy honestly
-    even when it is unflattering, and users trading real money off these cards are
-    exactly who the number is for.
+    STAFF-ONLY. This is an internal analysis surface — it exists so the operator can
+    study which strategies are actually working and tune them. Users are NOT left in the
+    dark by this: every trade they were sent stays fully visible to them in Trade updates
+    and Past results (direction, entry, stop, targets, and the win/loss/flat outcome of
+    each). What's staff-gated is only the AGGREGATE — nothing about an individual trade
+    is hidden, and no outcome is withheld or restated.
+
+    The line that must not be crossed: this panel being private is fine; pairing it with
+    accuracy or performance CLAIMS in marketing is not. Section 13.7 is explicit — do not
+    advertise a hit rate that isn't backed by exactly this kind of measured, disclosed
+    evidence. Keep the number private if you like; do not make claims about it.
+
+    Staff can pass ?scope=all for the product-wide figure across every user's signals —
+    a wider sample for tuning than any single account provides.
     """
 
     def get(self, request):
         user = request.user
 
-        if request.query_params.get("scope") == "all" and user.is_staff:
+        if not user.is_staff:
+            return Response(
+                {"detail": "Not available."}, status=status.HTTP_403_FORBIDDEN
+            )
+
+        if request.query_params.get("scope") == "all":
             base = Signal.objects.filter(
                 service__owner__isnull=True,
                 direction__in=[Signal.Direction.BUY, Signal.Direction.SELL],
