@@ -288,7 +288,11 @@ SIGNAL_MIN_CONFIDENCE = env.int("SIGNAL_MIN_CONFIDENCE", default=65)
 #   2+ = require genuine confluence (fewer, higher-conviction signals)
 # Applies to the in-app feed and Telegram delivery only — it reads already-stored
 # signals and never changes generation, so it's fully reversible via this setting.
-SIGNAL_CONFLUENCE_MIN = env.int("SIGNAL_CONFLUENCE_MIN", default=1)
+# A plan's strategy follow cap MUST be >= this (checked at startup — see
+# apps/signals/apps.py). Confluence counts agreement only among the strategies a user
+# FOLLOWS, so a cap below the floor makes the threshold unreachable and that tier gets
+# ZERO signals, silently.
+SIGNAL_CONFLUENCE_MIN = env.int("SIGNAL_CONFLUENCE_MIN", default=3)
 
 # Rule-based pre-gate: skip the (paid) LLM call when a strategy's basic
 # conditions clearly aren't present (apps/signals/pregate.py). Big cost saver.

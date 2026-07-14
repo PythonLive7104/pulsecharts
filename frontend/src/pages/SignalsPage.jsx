@@ -115,7 +115,7 @@ export default function SignalsPage() {
       else await api.followService(svc.id);
       await load();
     } catch (e) {
-      // e.g. free-tier 403 "Your plan lets you follow 2 strategies. Upgrade…"
+      // e.g. free-tier 403 "Your plan lets you follow 4 strategies. Upgrade…"
       setFollowError(e.message);
     }
   }

@@ -46,3 +46,37 @@ class SignalsConfig(AppConfig):
         fib_max = getattr(settings, "SIGNAL_FIB_PULLBACK_MAX", None)
         if fib_max is not None:
             pregate.FIB_PULLBACK_MAX = float(fib_max)
+
+        self._check_confluence_vs_plan_caps(settings)
+
+    @staticmethod
+    def _check_confluence_vs_plan_caps(settings):
+        """A plan's follow cap must be >= SIGNAL_CONFLUENCE_MIN, or that tier goes dark.
+
+        Confluence counts agreement only among the strategies a user FOLLOWS (the feed
+        filters candidates by followed_ids before collapse). If a plan can't follow
+        enough strategies to reach the threshold, it is ARITHMETICALLY impossible for
+        enough to agree — every setup is dropped and those users get zero signals, with
+        no error and nothing in the UI to explain it. Free's cap was 2 when a 3-strategy
+        floor was proposed; it would have silently killed the entire free tier.
+
+        Fail at startup instead of in production.
+        """
+        from django.core.exceptions import ImproperlyConfigured
+
+        from apps.accounts.plans import PLANS
+
+        floor = int(getattr(settings, "SIGNAL_CONFLUENCE_MIN", 1) or 1)
+        bad = {
+            key: p["strategies"]
+            for key, p in PLANS.items()
+            if p.get("strategies", 0) < floor
+        }
+        if bad:
+            raise ImproperlyConfigured(
+                f"SIGNAL_CONFLUENCE_MIN={floor} exceeds the strategy follow cap of "
+                f"{bad} — those users could never get enough strategies to agree and "
+                f"would receive NO signals at all. Raise 'strategies' (and "
+                f"'default_strategies') for those plans in apps/accounts/plans.py, or "
+                f"lower SIGNAL_CONFLUENCE_MIN."
+            )

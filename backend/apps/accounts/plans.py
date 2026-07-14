@@ -2,7 +2,7 @@
 
 Single source of truth for what each plan unlocks. Three tiers:
 
-  - free     — live charts + a small taste of the signal feed (2 strategies)
+  - free     — live charts + a small taste of the signal feed (4 strategies)
   - starter  — core premium indicators + a real signal feed
   - pro      — everything, unlimited signals
 
@@ -33,19 +33,28 @@ PLANS: dict[str, dict] = {
         "price_usd": 0,
         "period": "",
         "tagline": "Live crypto charts and a taste of signals.",
-        "strategies": 2,            # strategies a user can follow
+        # MUST be >= settings.SIGNAL_CONFLUENCE_MIN. Confluence counts agreement only
+        # among the strategies a user FOLLOWS (the feed filters candidates by
+        # followed_ids before collapse), so a follow cap below the threshold makes it
+        # arithmetically impossible for enough strategies to agree — the tier gets
+        # ZERO signals, silently. Sits one ABOVE the floor so a free user has some
+        # slack (any 3 of their 4 may agree) rather than needing unanimity.
+        "strategies": 4,            # strategies a user can follow
         "signal_weekly_quota": 20,  # signals/week in the feed (-1 = unlimited)
         "watchlist_limit": 20,
         "layout_limit": 1,
         "default_watchlist": 20,    # symbols pre-loaded at signup (onboarding)
-        "default_strategies": 2,    # strategies followed by default
+        # Must also be >= the confluence floor: the cap only sets what a user MAY
+        # follow, this sets what they actually DO follow out of the box. A free user
+        # left below the floor would see nothing at all.
+        "default_strategies": 4,    # strategies followed by default
         "custom_strategies_per_month": 0,  # Pro-only feature
         "indicator_tiers": [FREE],
         "features": [
             "Live candlestick charts, all timeframes",
             "SMA, EMA & Volume overlays",
             "Starter watchlist of 20 coins, ready to go",
-            "2 signal strategies followed for you",
+            "4 signal strategies followed for you",
             "Up to 20 signals/week",
         ],
     },
@@ -55,19 +64,22 @@ PLANS: dict[str, dict] = {
         "price_usd": 9,
         "period": "mo",
         "tagline": "Core indicators and a real signal feed.",
-        "strategies": 4,
+        # Kept clear of Free's cap: the ladder is slack-above-the-confluence-floor
+        # (Free: 3-of-4, Starter: 3-of-6, Pro: 3-of-7+), so more strategies followed
+        # means more setups clear the threshold.
+        "strategies": 6,
         "signal_weekly_quota": 400,
         "watchlist_limit": 40,
         "layout_limit": 10,
         "default_watchlist": 40,    # symbols pre-loaded at signup (onboarding)
-        "default_strategies": 4,    # strategies followed by default
+        "default_strategies": 6,    # strategies followed by default
         "custom_strategies_per_month": 0,  # Pro-only feature
         "indicator_tiers": [FREE, STARTER],
         "features": [
             "Everything in Free",
             "RSI, MACD, Bollinger Bands & VWAP",
             "Watchlist of 40 coins, set up for you",
-            "4 signal strategies followed by default",
+            "6 signal strategies followed by default",
             "Up to 400 signals/week",
             "Telegram signal alerts",
             "Save up to 10 chart layouts",
