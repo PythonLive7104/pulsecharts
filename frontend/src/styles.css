@@ -1066,7 +1066,11 @@ a.brand:hover { text-decoration: none; }
 .reason-body p { margin: 6px 0; }
 .invalidation { color: var(--muted); }
 
-.signal-foot { display: flex; justify-content: space-between; margin-top: 12px; font-size: 13px; color: var(--text); }
+.signal-foot { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; margin-top: 12px; font-size: 13px; color: var(--text); }
+/* The strategy list wraps; the timestamp must not — it was being broken mid-value
+   and pulled into the middle of the strategy names. */
+.sig-strategies { min-width: 0; }
+.sig-time { flex: 0 0 auto; white-space: nowrap; font-size: 12px; font-variant-numeric: tabular-nums; }
 .signal-disclaimer { margin-top: 8px; font-size: 11px; color: var(--muted); }
 
 @media (max-width: 800px) {

@@ -8,6 +8,7 @@ import ThemeToggle from "../components/ThemeToggle";
 import SignalCard from "../components/SignalCard";
 import StrategyBuilder from "../components/StrategyBuilder";
 import WeekendNotice from "../components/WeekendNotice";
+import { timeAgo, fullTime } from "../lib/time";
 import Logo from "../components/Logo";
 
 export default function SignalsPage() {
@@ -412,7 +413,9 @@ export default function SignalsPage() {
                 <div key={`${s.id}-${at}`} className={`tu-row ${cls}`}>
                   <span className="tu-sym">{s.symbol} {s.direction} · {s.timeframe}</span>
                   <span className="tu-msg">{msg}</span>
-                  <span className="tu-time muted">{new Date(at).toLocaleString()}</span>
+                  <time className="tu-time muted" dateTime={at} title={fullTime(at)}>
+                    {timeAgo(at)}
+                  </time>
                 </div>
               ))}
             </div>

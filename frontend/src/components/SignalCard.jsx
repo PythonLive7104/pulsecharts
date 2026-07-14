@@ -3,6 +3,7 @@
 // reasoning, and the not-financial-advice disclaimer.
 import { useState } from "react";
 import { formatPrice } from "../lib/price";
+import { timeAgo, fullTime } from "../lib/time";
 
 // Illustrative position size for the $ figures. Derived from the signal's
 // scale-invariant risk/reward percentages so the display is always consistent —
@@ -113,8 +114,12 @@ export default function SignalCard({ s }) {
       )}
 
       <div className="signal-foot">
-        <span>{nAgree >= 2 ? agree.join(" + ") : s.strategy}</span>
-        <span className="muted">{new Date(s.generated_at).toLocaleString()}</span>
+        <span className="sig-strategies">{nAgree >= 2 ? agree.join(" + ") : s.strategy}</span>
+        {/* Freshness is what the reader actually wants here; the exact timestamp is a
+            hover away for anyone lining the signal up against a chart. */}
+        <time className="sig-time muted" dateTime={s.generated_at} title={fullTime(s.generated_at)}>
+          {timeAgo(s.generated_at)}
+        </time>
       </div>
       <div className="signal-disclaimer">Informational only. Not financial advice.</div>
     </div>
