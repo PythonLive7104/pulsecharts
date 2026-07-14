@@ -9,6 +9,7 @@ import SupportChat from "../components/SupportChat";
 import { useStore } from "../store/useStore";
 import { api } from "../api";
 import { LIFETIME_FALLBACK, PLAN_FALLBACK, isLifetime } from "../lib/plans";
+import LifetimePrice from "../components/LifetimePrice";
 
 // Lazy so three.js + R3F load in their own chunk only on the landing page,
 // keeping the trading app bundle lean.
@@ -326,9 +327,7 @@ export default function LandingPage() {
             <div className="plan-card featured plan-card-lifetime">
               <span className="plan-badge">Pay once, own it</span>
               <h3>{lifetime.label}</h3>
-              <p className="plan-price">
-                ${lifetime.price_usd}<span>&nbsp;once</span>
-              </p>
+              <LifetimePrice plan={lifetime} />
               {breakEvenMonths && (
                 <p className="plan-lifetime-compare muted">
                   Pays for itself in ~{breakEvenMonths} months at ${monthlyPro}/mo — then it's yours free.

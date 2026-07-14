@@ -7,6 +7,7 @@ import { useStore } from "../store/useStore";
 import ThemeToggle from "../components/ThemeToggle";
 import SignalCard from "../components/SignalCard";
 import StrategyBuilder from "../components/StrategyBuilder";
+import WeekendNotice from "../components/WeekendNotice";
 import Logo from "../components/Logo";
 
 export default function SignalsPage() {
@@ -384,6 +385,8 @@ export default function SignalsPage() {
             onCreated={async () => { setShowBuilder(false); await load(); }}
           />
         )}
+
+        <WeekendNotice pause={feed?.pause} />
 
         <section className="feed">
           <div className="feed-head">

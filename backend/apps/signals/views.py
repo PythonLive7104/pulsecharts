@@ -19,6 +19,7 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from apps.accounts.plans import PRO, is_paid, plan_key
+from apps.market_data.forex import market_open as forex_market_open
 from apps.watchlists.models import WatchlistItem, watchlist_limit_for
 
 from . import confluence
@@ -61,6 +62,18 @@ FEED_PAGE_SIZE = 20
 # Below this many resolved trades, the accuracy figure is reported as provisional
 # rather than as a track record — a dozen trades is noise, not a win rate.
 MIN_ACCURACY_SAMPLE = 20
+
+
+def _next_market_open():
+    """When the scan resumes: the next Sunday 21:00 UTC (see forex.market_open)."""
+    now = timezone.now()
+    days_ahead = (6 - now.weekday()) % 7  # 6 = Sunday
+    resume = (now + timedelta(days=days_ahead)).replace(
+        hour=21, minute=0, second=0, microsecond=0
+    )
+    if resume <= now:  # already past Sunday 21:00 — next week's open
+        resume += timedelta(days=7)
+    return resume
 
 
 def _followed_service_ids(user):
@@ -278,6 +291,17 @@ class SignalFeedView(APIView):
         limit = _int_param("limit", FEED_PAGE_SIZE, 1, 100)
         offset = _int_param("offset", 0, 0, 10_000)
 
+        # Weekend pause. Derived from the SAME window the scan uses (forex.market_open:
+        # closed Fri 21:00 → Sun 21:00 UTC) and the SAME setting, so the banner can
+        # never claim signals are paused when the engine is still generating them.
+        # Forex always pauses (its market is shut); crypto only if the flag is set.
+        market_open = forex_market_open()
+        pause = {
+            "paused": not market_open,
+            "crypto_paused": not market_open and settings.SIGNAL_SKIP_CRYPTO_WEEKEND,
+            "resumes_at": _next_market_open().isoformat(),
+        }
+
         # A plan with no signal access (quota 0) gets a locked upgrade card. No
         # current plan is 0 — Free gets a real 20/week feed — so this is a guard for
         # any future no-access tier, not the Free path.
@@ -440,6 +464,7 @@ class SignalFeedView(APIView):
                     "offset": offset,
                     "limit": limit,
                     "has_more": offset + len(active) < active_total,
+                    "pause": pause,
                     "resolved": [],
                     "disclaimer": "Informational only. Not financial advice.",
                 }
@@ -478,6 +503,7 @@ class SignalFeedView(APIView):
                 "offset": offset,
                 "limit": limit,
                 "has_more": offset + len(active) < active_total,
+                "pause": pause,
                 "resolved": SignalSerializer(resolved, many=True).data,
                 "disclaimer": "Informational only. Not financial advice.",
             }

@@ -29,7 +29,8 @@ export function planNeverExpires(entitlements) {
 // Mirrors LIFETIME_PLAN in backend apps/accounts/plans.py. A purchase option, not
 // a tier — buying it grants Pro with no expiry.
 export const LIFETIME_FALLBACK = {
-  key: "lifetime", label: "Pro Lifetime", price_usd: 89, period: "once",
+  key: "lifetime", label: "Pro Lifetime", price_usd: 67,
+  original_price_usd: 89, discount_pct: 25, period: "once",
   tagline: "Every Pro feature, forever. One payment, no renewals.",
   features: [
     "Everything in Pro, for life",

@@ -5,6 +5,7 @@ import { useEffect, useState } from "react";
 import { useStore } from "../../store/useStore";
 import { api } from "../../api";
 import { LIFETIME_FALLBACK, PLAN_FALLBACK, isLifetime, planNeverExpires } from "../../lib/plans";
+import LifetimePrice from "../../components/LifetimePrice";
 
 export default function BillingPage() {
   const entitlements = useStore((s) => s.entitlements);
@@ -245,7 +246,7 @@ export default function BillingPage() {
               <div className="plan-card featured plan-card-lifetime">
                 <span className="plan-badge">Pay once, own it</span>
                 <h3>{lifetime.label}</h3>
-                <p className="plan-price">${lifetime.price_usd}<span>&nbsp;once</span></p>
+                <LifetimePrice plan={lifetime} />
                 {lifetime.tagline && <p className="plan-tagline muted">{lifetime.tagline}</p>}
                 <ul>{lifetime.features.map((f) => <li key={f}>✓ {f}</li>)}</ul>
                 <button

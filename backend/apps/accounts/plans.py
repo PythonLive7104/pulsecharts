@@ -115,7 +115,13 @@ LIFETIME = "lifetime"
 LIFETIME_PLAN: dict = {
     "key": LIFETIME,
     "label": "Pro Lifetime",
-    "price_usd": 89,
+    "price_usd": 67,
+    # What it was before the discount, and the resulting saving. Kept as DATA rather
+    # than hardcoded in the UI so the strike-through price and the "25% off" badge can
+    # never drift from what checkout actually charges — the charge reads price_usd
+    # (purchase_price_usd), and the badge is computed from these two.
+    "original_price_usd": 89,
+    "discount_pct": 25,  # round(1 - 67/89) = 24.7% -> advertised as 25%
     "period": "once",
     "grants_tier": PRO,
     "tagline": "Every Pro feature, forever. One payment, no renewals.",
