@@ -17,8 +17,9 @@ SUGGESTED_QUESTIONS = [
     "Do you support forex?",
     "Is it free?",
     "What's included in premium?",
+    "Is there a lifetime deal?",
     "Do you offer trading signals?",
-    "Can I build my own strategy?",
+    "Why no signals on weekends?",
 ]
 
 # Each entry: keywords (any-match, scored) -> answer.
@@ -50,9 +51,9 @@ KNOWLEDGE = [
         "answer": (
             "Yes — the free tier is genuinely free, no card required. It includes "
             "live crypto & forex charts, every timeframe, unlimited symbol "
-            "switching, the SMA/EMA/Volume indicators, a 20-coin watchlist, and a "
-            "taste of trading signals (up to 20/week). Starter and Pro add the "
-            "advanced indicators, more signals, and Telegram alerts."
+            "switching, the SMA/EMA/Volume indicators, a 20-coin watchlist, 4 signal "
+            "strategies, and a taste of trading signals (up to 20/week). Starter and "
+            "Pro add the advanced indicators, more signals, and Telegram alerts."
         ),
     },
     {
@@ -60,11 +61,12 @@ KNOWLEDGE = [
         "keywords": ["premium", "paid", "pro", "starter", "upgrade", "subscription", "plan", "plans", "what's included", "benefits"],
         "answer": (
             "There are two paid tiers. Starter ($9) adds RSI, MACD, Bollinger "
-            "Bands and VWAP, up to 400 signals/week, Telegram alerts, and 10 saved "
-            "layouts. Pro ($19) unlocks every indicator (Stochastic, ATR, Fibonacci, "
-            "Ichimoku Cloud), unlimited signals, build-your-own-strategy with "
-            "AI, and a 150-coin watchlist. Each is a one-time payment for 30 days of "
-            "access — upgrade any time from your dashboard."
+            "Bands and VWAP, up to 400 signals/week, Telegram alerts, 6 signal "
+            "strategies, and 10 saved layouts. Pro ($19) unlocks every indicator "
+            "(Stochastic, ATR, Fibonacci, Ichimoku Cloud), unlimited signals, "
+            "build-your-own-strategy with AI, and a 150-coin watchlist. Each is a "
+            "one-time payment for 30 days of access. Prefer to pay once? There's also "
+            "a Pro Lifetime option — ask me about the lifetime deal."
         ),
     },
     {
@@ -73,8 +75,28 @@ KNOWLEDGE = [
         "answer": (
             "Three plans: Free ($0, no card required), Starter ($9) and Pro ($19). "
             "Starter and Pro are one-time payments that unlock 30 days of access — "
-            "there's no auto-renewal and no card kept on file. It's priced well below "
-            "TradingView's indicator tiers as the affordable crypto & forex alternative."
+            "no auto-renewal, no card kept on file. There's also a one-off Pro "
+            "Lifetime for $67 (25% off the usual $89) that never expires. It's priced "
+            "well below TradingView's indicator tiers as the affordable crypto & "
+            "forex alternative."
+        ),
+    },
+    {
+        # Prices here are kept in step with apps/accounts/plans.py (LIFETIME_PLAN).
+        # If that price changes, update this answer too — the chat is prose, not
+        # wired to the plan dict.
+        "id": "lifetime",
+        "keywords": [
+            "lifetime", "life time", "pay once", "one time", "one-time", "forever",
+            "lifetime deal", "lifetime plan", "buy once", "own it", "never expires",
+        ],
+        "answer": (
+            "Yes! Pro Lifetime is a single payment of $67 — that's 25% off the usual "
+            "$89 — and it never expires. You get every Pro feature for life: all "
+            "indicators, unlimited signals on crypto & forex, Telegram alerts, "
+            "build-your-own-AI-strategy, a 150-coin watchlist and 50 saved layouts, "
+            "with nothing to renew. Grab it from the pricing section or your billing "
+            "page while the discount lasts."
         ),
     },
     {
@@ -115,13 +137,32 @@ KNOWLEDGE = [
     },
     {
         "id": "signals",
-        "keywords": ["signal", "signals", "buy sell", "trade signal", "alerts", "strategy", "strategies", "confidence"],
+        "keywords": ["signal", "signals", "buy sell", "trade signal", "alerts", "strategy", "strategies", "confidence", "take profit", "stop loss", "tp1", "tp2", "tp3"],
         "answer": (
             "Algorithmic strategies scan tracked crypto AND forex pairs and surface "
-            "buy/sell setups with entry, stop-loss, take-profit targets, and a "
-            "confidence score. Free gets a taste (up to 20/week), Starter up to "
-            "400/week, and Pro unlimited — with Telegram alerts on the paid tiers. "
-            "They're informational only, not financial advice."
+            "buy/sell setups with an entry, a stop-loss, three take-profit targets "
+            "(TP1/TP2/TP3) and a conviction score. A setup only surfaces when several "
+            "strategies agree on it. The idea is to bank a partial at each target and "
+            "move your stop to break-even after TP1; you also get an update if a "
+            "trade's trend flips and the setup is invalidated. Free gets a taste (up "
+            "to 20/week), Starter up to 400/week, and Pro unlimited — with Telegram "
+            "alerts on the paid tiers. They're informational only, not financial advice."
+        ),
+    },
+    {
+        "id": "weekend",
+        "keywords": [
+            "weekend", "weekends", "saturday", "sunday", "no signals", "no new signals",
+            "signals stopped", "not getting signals", "market closed", "why no signal",
+        ],
+        "answer": (
+            "The engine pauses NEW signals over the weekend (from Friday evening to "
+            "Sunday evening UTC), for crypto and forex alike. Weekend sessions are "
+            "thin and choppy — they produce fakeouts that trip stops — so we sit them "
+            "out rather than send low-quality setups. Your open trades are still "
+            "tracked the whole time: TP hits, stop-losses and trend-invalidations "
+            "keep updating in-app and on Telegram. Fresh signals resume when the "
+            "market reopens Sunday evening."
         ),
     },
     {
