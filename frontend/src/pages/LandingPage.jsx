@@ -50,6 +50,7 @@ export default function LandingPage() {
   const isAuthed = useStore((s) => s.isAuthed);
   const entitlements = useStore((s) => s.entitlements);
   const loadEntitlements = useStore((s) => s.loadEntitlements);
+  const logout = useStore((s) => s.logout);
   const [plans, setPlans] = useState(PLAN_FALLBACK);
   const [lifetime, setLifetime] = useState(LIFETIME_FALLBACK);
   // "monthly" | "lifetime" — which billing period the pricing grid shows.
@@ -398,9 +399,19 @@ export default function LandingPage() {
           </div>
           <div className="footer-col">
             <h4>Account</h4>
-            <Link to="/login">Sign in</Link>
-            <Link to="/signup">Create account</Link>
-            <Link to="/forgot-password">Reset password</Link>
+            {isAuthed ? (
+              <>
+                <Link to="/app">Dashboard</Link>
+                <Link to="/account/billing">Plan &amp; billing</Link>
+                <button type="button" className="footer-linkbtn" onClick={logout}>Sign out</button>
+              </>
+            ) : (
+              <>
+                <Link to="/login">Sign in</Link>
+                <Link to="/signup">Create account</Link>
+                <Link to="/forgot-password">Reset password</Link>
+              </>
+            )}
           </div>
         </div>
         <div className="footer-bottom muted">

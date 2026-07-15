@@ -368,6 +368,20 @@ a.brand:hover { text-decoration: none; }
 .footer-col { display: flex; flex-direction: column; gap: 8px; }
 .footer-col h4 { margin: 0 0 4px; font-size: 14px; color: var(--text-strong); }
 .footer-col a { color: var(--muted); font-size: 14px; }
+/* "Sign out" is a button (it triggers an action, not navigation) but must sit in the
+   link column looking identical to its siblings. */
+.footer-linkbtn {
+  background: none;
+  border: none;
+  padding: 0;
+  margin: 0;
+  text-align: left;
+  color: var(--muted);
+  font: inherit;
+  font-size: 14px;
+  cursor: pointer;
+}
+.footer-linkbtn:hover { color: var(--text); }
 .footer-bottom { padding-top: 20px; border-top: 1px solid var(--border); font-size: 13px; }
 
 /* ========== Auth pages ========== */
