@@ -218,35 +218,24 @@ export default function SignalsPage() {
     SL: "🛑 Stopped out", INVALID: "⚠️ Invalidated — trend flipped",
     EXPIRED: "⌛ Expired",
   };
-  // Trade updates = every event Telegram would have pushed you, in one list: trades
-  // that CLOSED (feed.resolved — delivered-only server-side) *and* still-open trades
-  // that TAGGED a target (feed.signals with best_tp > 0). Leaving the second kind out
-  // was why a trade could bank TP1/TP2 on Telegram while the dashboard showed nothing:
-  // an open trade never resolves, so it never entered a resolved-only list.
-  const RECENT = 48 * 3600 * 1000;
-  const fresh = (t) => t && Date.now() - new Date(t).getTime() < RECENT;
-
-  // Open trades that have tagged a target. `best_tp_at` is only stamped when a target
-  // NEWLY tags, so trades that banked one before that field existed have none — fall
-  // back to entry time (an honest lower bound) so they still appear.
-  const progressUpdates = (feed?.signals || [])
-    .map((s) => ({ ...s, best_tp_at: s.best_tp_at || s.generated_at }))
-    .filter((s) => s.best_tp > 0)
-    .map((s) => ({ s, at: s.best_tp_at, cls: "win",
-      msg: `🎯 TP${s.best_tp} tagged · running${s.best_tp > 1 ? "" : " · stop to breakeven"}` }));
-
-  const closureUpdates = (feed?.resolved || [])
-    .filter((s) => fresh(s.resolved_at))
-    .map((s) => ({ s, at: s.resolved_at, msg: CLOSURE_MSG[s.outcome] || s.outcome, cls:
-      ["TP1", "TP2", "TP3", "TP4"].includes(s.outcome) ? "win" : s.outcome === "SL" ? "loss" : "neutral" }));
-
-  // One chronological event log, newest first. Progress and closures are NOT
-  // segregated — pinning all running trades above all closures made a 21h-old "TP
-  // tagged" sit above a 2h-old closure, which reads as broken. The freshness of the
-  // event is what orders it; the row's colour/message still says what kind it is.
-  const recentClosures = [...progressUpdates, ...closureUpdates]
-    .sort((a, b) => new Date(b.at) - new Date(a.at))
-    .slice(0, 8);
+  // Trade updates now come READY from the server (feed.trade_updates): one
+  // chronological event log — closures AND still-open trades that tagged a target —
+  // built from the user's deliveries, NOT from the paginated `signals` cards. Deriving
+  // it from the cards was the bug: once the feed paginated to 20, a running trade past
+  // the first page (e.g. VIRTUAL after TP1) lost its row even though Telegram sent it.
+  const recentClosures = (feed?.trade_updates || []).map((u) => {
+    const win = ["TP1", "TP2", "TP3", "TP4"].includes(u.outcome);
+    if (u.kind === "progress") {
+      return {
+        u, at: u.at, cls: "win",
+        msg: `🎯 TP${u.best_tp} tagged · running${u.best_tp > 1 ? "" : " · stop to breakeven"}`,
+      };
+    }
+    return {
+      u, at: u.at, msg: CLOSURE_MSG[u.outcome] || u.outcome,
+      cls: win ? "win" : u.outcome === "SL" ? "loss" : "neutral",
+    };
+  });
 
   // Telegram delivery panel — shown to ALL users. Premium users can connect;
   // everyone else sees an upgrade prompt. Rendered in both the locked and feed
@@ -409,9 +398,9 @@ export default function SignalsPage() {
           {recentClosures.length > 0 && (
             <div className="trade-updates">
               <h3>Trade updates</h3>
-              {recentClosures.map(({ s, at, msg, cls }) => (
-                <div key={`${s.id}-${at}`} className={`tu-row ${cls}`}>
-                  <span className="tu-sym">{s.symbol} {s.direction} · {s.timeframe}</span>
+              {recentClosures.map(({ u, at, msg, cls }) => (
+                <div key={`${u.symbol}-${u.timeframe}-${u.direction}-${at}`} className={`tu-row ${cls}`}>
+                  <span className="tu-sym">{u.symbol} {u.direction} · {u.timeframe}</span>
                   <span className="tu-msg">{msg}</span>
                   <time className="tu-time muted" dateTime={at} title={fullTime(at)}>
                     {timeAgo(at)}

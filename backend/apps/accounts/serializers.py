@@ -1,7 +1,35 @@
 from django.contrib.auth import get_user_model
 from rest_framework import serializers
+from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
 
 User = get_user_model()
+
+
+class VerifiedTokenObtainPairSerializer(TokenObtainPairSerializer):
+    """Login serializer that refuses tokens to unverified accounts.
+
+    The gate lives HERE (at token issuance) rather than as a UI redirect: an
+    unverified user never receives an access token, so there is no partial-access
+    surface to protect. Credentials are checked first (via super().validate) so this
+    never reveals whether an email exists — only a *correct* login on an unverified
+    account gets the verification message; a wrong password still just fails auth.
+
+    The distinctive `code` lets the frontend show a "resend verification" affordance
+    instead of a generic error.
+    """
+
+    def validate(self, attrs):
+        data = super().validate(attrs)  # raises on bad credentials before we get here
+        if not self.user.email_verified:
+            raise serializers.ValidationError(
+                {
+                    "detail": "Please verify your email address before signing in. "
+                              "Check your inbox for the verification link.",
+                    "code": "email_not_verified",
+                    "email": self.user.email,
+                }
+            )
+        return data
 
 
 class RegisterSerializer(serializers.ModelSerializer):
@@ -43,6 +71,17 @@ class RegisterSerializer(serializers.ModelSerializer):
         except Exception:
             logging.getLogger("accounts").exception(
                 "Default provisioning failed for new user %s", user.pk
+            )
+        # Send the email-verification link. New users are unverified (model default)
+        # and can't obtain a token until they click it. Never let a send failure break
+        # signup — the account still exists and the user can hit "resend".
+        try:
+            from .verification import send_verification
+
+            send_verification(user)
+        except Exception:
+            logging.getLogger("accounts").exception(
+                "Verification email failed for new user %s", user.pk
             )
         return user
 

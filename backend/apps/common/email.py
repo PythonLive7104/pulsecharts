@@ -108,6 +108,35 @@ def _button(label: str, url: str) -> str:
 
 # --- Specific emails -------------------------------------------------------
 
+def send_verification_email(*, to: str, verify_link: str) -> bool:
+    """Email-address confirmation for a new signup, with the tokenized verify link."""
+    body = f"""
+      <p style="margin:0 0 16px;color:#334155;font-size:15px;line-height:1.6;">
+        Welcome to PulseCharts! 👋 Confirm your email address to activate your
+        account and start charting. This link expires shortly for your security.
+      </p>
+      <p style="margin:0 0 24px;">{_button("Verify my email", verify_link)}</p>
+      <p style="margin:0 0 8px;color:#64748b;font-size:13px;line-height:1.6;">
+        If the button doesn't work, paste this link into your browser:<br>
+        <a href="{verify_link}" style="color:#2563eb;word-break:break-all;">{verify_link}</a>
+      </p>
+      <p style="margin:16px 0 0;color:#94a3b8;font-size:13px;">
+        Didn't create a PulseCharts account? You can safely ignore this email.
+      </p>
+    """
+    text = (
+        "Welcome to PulseCharts! Confirm your email to activate your account "
+        "(this link expires shortly):\n"
+        f"{verify_link}\n\nDidn't sign up? Ignore this email."
+    )
+    return send_email(
+        to=to,
+        subject="Verify your PulseCharts email",
+        html=_wrap("Verify your email", body),
+        text=text,
+    )
+
+
 def send_password_reset_email(*, to: str, reset_link: str) -> bool:
     """Password-reset email with the tokenized reset link."""
     body = f"""

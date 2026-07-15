@@ -64,6 +64,91 @@ FEED_PAGE_SIZE = 20
 MIN_ACCURACY_SAMPLE = 20
 
 
+# How far back the Trade-updates event log reaches.
+TRADE_UPDATES_WINDOW = timedelta(hours=48)
+# Cap on Trade-updates rows returned. Generous — this is the event log, not the feed.
+TRADE_UPDATES_LIMIT = 15
+
+
+def _trade_updates(delivered_ids, now):
+    """The Trade-updates event log: everything that happened to trades the user was
+    delivered, newest first — closures AND still-open trades that tagged a target.
+
+    Built SERVER-SIDE from deliveries, NOT derived from the paginated `signals` cards.
+    That derivation was the bug: once the feed paginated to 20 cards, a running trade
+    past the first page (e.g. VIRTUAL after it tagged TP1) lost its update row, even
+    though Telegram had pushed it. This list is independent of the feed page.
+
+    One row per TRADE (symbol, tf, direction, entry): strategies that called the same
+    setup share those and resolve together, so they collapse to one event. A closure
+    is terminal truth, so if a trade has both a resolved and a still-pending row, the
+    closure wins.
+    """
+    def key(s):
+        return (s.symbol_id, s.timeframe, s.direction, s.entry_price)
+
+    items = {}
+
+    # Closures first (terminal): TP / SL / invalidation / expiry within the window.
+    closed = (
+        Signal.objects.filter(
+            id__in=delivered_ids,
+            direction__in=[Signal.Direction.BUY, Signal.Direction.SELL],
+            resolved_at__gte=now - TRADE_UPDATES_WINDOW,
+        )
+        .exclude(outcome=Signal.Outcome.PENDING)
+        .select_related("symbol", "service")
+        .order_by("-resolved_at")
+    )
+    for s in closed:
+        k = key(s)
+        if k not in items:  # newest resolution per trade wins (queryset is ordered)
+            items[k] = {
+                "kind": "closed",
+                "symbol": s.symbol.ticker,
+                "direction": s.direction,
+                "timeframe": s.timeframe,
+                "outcome": s.outcome,
+                "best_tp": s.best_tp,
+                "strategy": s.service.name,
+                "at": s.resolved_at.isoformat(),
+            }
+
+    # Still-open trades that have banked a target: the "take your partial" events.
+    # Only surface if not already closed. best_tp_at is stamped when a target newly
+    # tags; fall back to entry time for rows that tagged before that field existed.
+    progressing = (
+        Signal.objects.filter(
+            id__in=delivered_ids,
+            outcome=Signal.Outcome.PENDING,
+            best_tp__gte=1,
+            direction__in=[Signal.Direction.BUY, Signal.Direction.SELL],
+        )
+        .select_related("symbol", "service")
+    )
+    for s in progressing:
+        k = key(s)
+        prev = items.get(k)
+        if prev and prev["kind"] == "closed":
+            continue  # a closure already speaks for this trade
+        at = s.best_tp_at or s.generated_at
+        # Keep the furthest-progressed row per trade (then the most recent tag).
+        if prev is None or s.best_tp > prev["best_tp"]:
+            items[k] = {
+                "kind": "progress",
+                "symbol": s.symbol.ticker,
+                "direction": s.direction,
+                "timeframe": s.timeframe,
+                "outcome": s.outcome,
+                "best_tp": s.best_tp,
+                "strategy": s.service.name,
+                "at": at.isoformat(),
+            }
+
+    rows = sorted(items.values(), key=lambda r: r["at"], reverse=True)
+    return rows[:TRADE_UPDATES_LIMIT]
+
+
 def _next_market_open():
     """When the scan resumes: the next Sunday 21:00 UTC (see forex.market_open)."""
     now = timezone.now()
@@ -474,6 +559,7 @@ class SignalFeedView(APIView):
         delivered_ids = SignalDelivery.objects.filter(user=user).values_list(
             "signal_id", flat=True
         )
+        trade_updates = _trade_updates(delivered_ids, now)
         resolved_pool = (
             Signal.objects.filter(
                 id__in=delivered_ids,
@@ -504,6 +590,7 @@ class SignalFeedView(APIView):
                 "limit": limit,
                 "has_more": offset + len(active) < active_total,
                 "pause": pause,
+                "trade_updates": trade_updates,
                 "resolved": SignalSerializer(resolved, many=True).data,
                 "disclaimer": "Informational only. Not financial advice.",
             }

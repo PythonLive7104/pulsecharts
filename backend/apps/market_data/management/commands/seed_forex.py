@@ -1,4 +1,4 @@
-"""Seed the 7 major forex pairs (Yahoo Finance tickers).
+"""Seed the forex pairs + gold (Yahoo Finance tickers): 21 FX pairs and XAU/USD.
 
     python manage.py seed_forex
 

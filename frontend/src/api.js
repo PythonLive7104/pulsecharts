@@ -59,12 +59,14 @@ async function request(path, { method = "GET", body, auth = true } = {}) {
 
   if (!res.ok) {
     let detail = res.statusText;
+    let parsed = null;
     try {
       const body = await res.json();
+      parsed = body;
       // DRF errors come in several shapes: {detail}, ["msg"], {field: ["msg"]}.
       if (typeof body === "string") detail = body;
       else if (Array.isArray(body)) detail = body.join(" ");
-      else if (body.detail) detail = body.detail;
+      else if (body.detail) detail = Array.isArray(body.detail) ? body.detail.join(" ") : body.detail;
       else {
         const first = Object.values(body)[0];
         detail = Array.isArray(first) ? first.join(" ") : String(first ?? detail);
@@ -74,6 +76,7 @@ async function request(path, { method = "GET", body, auth = true } = {}) {
     }
     const err = new Error(detail);
     err.status = res.status;
+    err.data = parsed;  // full error body, so callers can read custom fields (e.g. code)
     throw err;
   }
   return res.status === 204 ? null : res.json();
@@ -92,6 +95,10 @@ export const api = {
       auth: false,
       body: { email, password, ...(referralCode ? { referral_code: referralCode } : {}) },
     }),
+  verifyEmail: (uid, token) =>
+    request("/auth/verify-email/", { method: "POST", auth: false, body: { uid, token } }),
+  resendVerification: (email) =>
+    request("/auth/verify-email/resend/", { method: "POST", auth: false, body: { email } }),
   requestPasswordReset: (email) =>
     request("/auth/password-reset/", { method: "POST", auth: false, body: { email } }),
   confirmPasswordReset: (uid, token, password) =>

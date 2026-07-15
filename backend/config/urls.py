@@ -6,14 +6,14 @@ wired in config/routing.py, not here.
 
 from django.contrib import admin
 from django.urls import include, path
-from rest_framework_simplejwt.views import (
-    TokenObtainPairView,
-    TokenRefreshView,
-)
+from rest_framework_simplejwt.views import TokenRefreshView
+
+from apps.accounts.verification import VerifiedTokenObtainPairView
 
 api_patterns = [
-    # auth (JWT for the React SPA)
-    path("auth/token/", TokenObtainPairView.as_view(), name="token_obtain_pair"),
+    # auth (JWT for the React SPA). Login refuses unverified accounts — see
+    # apps/accounts/serializers.VerifiedTokenObtainPairSerializer.
+    path("auth/token/", VerifiedTokenObtainPairView.as_view(), name="token_obtain_pair"),
     path("auth/token/refresh/", TokenRefreshView.as_view(), name="token_refresh"),
     # domain apps
     path("", include("apps.accounts.urls")),

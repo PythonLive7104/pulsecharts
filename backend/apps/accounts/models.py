@@ -58,6 +58,14 @@ class User(AbstractUser):
     plan_expiry = models.DateTimeField(null=True, blank=True)
     dodo_customer_id = models.CharField(max_length=128, blank=True, default="")
 
+    # Email verification. New signups start unverified and cannot obtain an auth
+    # token until they click the emailed link (see CustomTokenObtainPairSerializer).
+    # Existing users at rollout are backfilled to True (migration 0012) — they were
+    # already using the product, so re-verifying them would lock them out. Staff-
+    # created / superuser accounts are also treated as verified.
+    email_verified = models.BooleanField(default=False)
+    email_verified_at = models.DateTimeField(null=True, blank=True)
+
     # Telegram signal delivery: chat_id is set once the user links via the bot's
     # /start deep link; link_token is the one-time payload in that deep link, and
     # link_token_at is when it was issued (the token expires after a short TTL so

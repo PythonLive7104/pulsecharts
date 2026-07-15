@@ -486,6 +486,29 @@ a.brand:hover { text-decoration: none; }
 }
 .password-toggle:hover { color: var(--accent); }
 .auth-hint { font-size: 12px; color: var(--muted); margin: -4px 0 0; }
+
+/* Email verification: post-signup "check inbox", login resend nudge, verify page. */
+.verify-sent { display: flex; flex-direction: column; gap: 14px; }
+.verify-sent p { margin: 0; font-size: 14px; line-height: 1.6; color: var(--text); }
+.verify-notice {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 14px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--bg);
+  font-size: 14px;
+}
+.verify-notice p { margin: 0; line-height: 1.6; }
+.verify-email-input {
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg);
+  color: var(--text);
+  font-size: 14px;
+}
 .label-optional { color: var(--muted); font-weight: 400; font-size: 12px; }
 
 @media (max-width: 720px) {

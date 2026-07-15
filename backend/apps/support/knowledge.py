@@ -119,12 +119,15 @@ KNOWLEDGE = [
     },
     {
         "id": "forex",
-        "keywords": ["forex", "fx", "currency", "currencies", "eur", "usd", "gbp", "jpy", "eurusd", "euro", "dollar", "pound", "yen", "pairs", "chf", "aud", "cad", "nzd"],
+        "keywords": ["forex", "fx", "currency", "currencies", "eur", "usd", "gbp", "jpy", "eurusd", "euro", "dollar", "pound", "yen", "pairs", "how many", "chf", "aud", "cad", "nzd", "gold", "xau", "metal"],
         "answer": (
-            "Yes — forex is now live! 🎉 We support the major pairs: EUR/USD, "
-            "GBP/USD, USD/JPY, USD/CHF, AUD/USD, USD/CAD and NZD/USD. Use the "
-            "Crypto/Forex toggle above the chart to switch markets. The same "
-            "indicators and trading signals work on forex too."
+            "Forex is live 🎉 — 21 pairs plus gold (XAU/USD). The free tier includes "
+            "11 pairs: the 7 majors (EUR/USD, GBP/USD, USD/JPY, USD/CHF, AUD/USD, "
+            "USD/CAD, NZD/USD) and the popular crosses (EUR/GBP, EUR/JPY, GBP/JPY, "
+            "AUD/JPY). Pro unlocks the full set — 10 more crosses (EUR/CHF, EUR/AUD, "
+            "EUR/CAD, GBP/CHF, GBP/AUD, CAD/JPY, CHF/JPY, NZD/JPY, AUD/NZD, AUD/CAD) "
+            "plus gold. Flip between crypto and forex with the toggle above the chart; "
+            "the same indicators and signals work on both."
         ),
     },
     {

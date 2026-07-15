@@ -108,8 +108,10 @@ export const useStore = create((set, get) => ({
     await get().loadEntitlements();
   },
   async register(email, password, referralCode) {
+    // No auto-login: new accounts are unverified and the token endpoint refuses
+    // them until they click the emailed link. The signup page shows a
+    // "check your inbox" screen on success instead of entering the app.
     await api.register(email, password, referralCode);
-    await get().login(email, password);
   },
   logout() {
     clearTokens();

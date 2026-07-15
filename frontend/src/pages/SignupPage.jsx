@@ -1,14 +1,13 @@
 import { useState } from "react";
-import { Link, useNavigate, useLocation } from "react-router-dom";
+import { Link, useLocation } from "react-router-dom";
 import { useStore } from "../store/useStore";
+import { api } from "../api";
 import AuthCard from "../components/AuthCard";
 import PasswordInput from "../components/PasswordInput";
 
 export default function SignupPage() {
   const register = useStore((s) => s.register);
-  const navigate = useNavigate();
   const location = useLocation();
-  const dest = location.state?.from || "/app";
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [confirm, setConfirm] = useState("");
@@ -18,6 +17,11 @@ export default function SignupPage() {
   );
   const [error, setError] = useState(null);
   const [busy, setBusy] = useState(false);
+  // Set once signup succeeds — the account exists but is unverified, so instead of
+  // entering the app we show a "check your inbox" screen (no token is issued until
+  // the emailed link is clicked).
+  const [submitted, setSubmitted] = useState(false);
+  const [resendMsg, setResendMsg] = useState(null);
 
   async function submit(e) {
     e.preventDefault();
@@ -32,13 +36,48 @@ export default function SignupPage() {
     setBusy(true);
     setError(null);
     try {
-      await register(email, password, referral.trim()); // registers then logs in
-      navigate(dest, { replace: true });
+      await register(email, password, referral.trim());
+      setSubmitted(true);
     } catch (err) {
       setError(err.message);
     } finally {
       setBusy(false);
     }
+  }
+
+  async function resend() {
+    setResendMsg(null);
+    try {
+      await api.resendVerification(email);
+      setResendMsg("Sent — check your inbox again (and your spam folder).");
+    } catch {
+      setResendMsg("Couldn't resend just now. Please try again shortly.");
+    }
+  }
+
+  if (submitted) {
+    return (
+      <AuthCard
+        title="Check your inbox ✉️"
+        subtitle="One quick step to activate your account"
+        footer={<span>Already verified? <Link to="/login">Sign in</Link></span>}
+      >
+        <div className="verify-sent">
+          <p>
+            We sent a verification link to <strong>{email}</strong>. Click it to
+            activate your account, then sign in.
+          </p>
+          <p className="muted">
+            The link expires shortly. Didn't get it? Check your spam folder, or
+            resend it below.
+          </p>
+          <button type="button" className="btn-ghost btn-block" onClick={resend}>
+            Resend verification email
+          </button>
+          {resendMsg && <p className="auth-hint">{resendMsg}</p>}
+        </div>
+      </AuthCard>
+    );
   }
 
   return (

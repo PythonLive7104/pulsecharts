@@ -34,7 +34,7 @@ const FAQS = [
   },
   {
     q: "Do you support forex, or only crypto?",
-    a: "Both. We chart the perps and spot pairs listed on Hyperliquid, plus the major forex pairs (EUR/USD, GBP/USD, USD/JPY, USD/CHF, AUD/USD, USD/CAD, NZD/USD). Switch between crypto and forex with one toggle — the same indicators and trading signals work across both.",
+    a: "Both. We chart the perps and spot pairs listed on Hyperliquid, plus 21 forex pairs and gold (XAU/USD). The free tier covers 11 pairs — the 7 majors and popular crosses — and Pro unlocks the full set plus gold. Switch between crypto and forex with one toggle; the same indicators and trading signals work across both.",
   },
   {
     q: "Can I build my own trading strategy?",
