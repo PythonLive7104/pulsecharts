@@ -112,6 +112,13 @@ class Signal(models.Model):
     reasoning = models.TextField(blank=True, default="")
     invalidation = models.TextField(blank=True, default="")
 
+    # Does the DAILY 200 EMA support this signal's direction? True when price is on
+    # the trend-supporting side of the daily 200 EMA at generation time (above it for
+    # a BUY, below it for a SELL). A higher-timeframe confirmation shown on the card.
+    # Nullable: unknown for legacy rows, and for symbols without enough daily history
+    # to compute a 200 EMA (new listings) or when the daily fetch failed.
+    daily_ema200_aligned = models.BooleanField(null=True, blank=True)
+
     # --- outcome tracking (Section 13.7, 18, 20.5) ---
     class Outcome(models.TextChoices):
         PENDING = "PENDING", "Pending"

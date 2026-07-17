@@ -99,6 +99,20 @@ export default function SignalCard({ s }) {
         <span className="rr-note"> · per ${TRADE_SIZE} traded (illustrative)</span>
       </div>
 
+      {/* Daily 200 EMA higher-timeframe confirmation. Null (unknown/insufficient
+          history) simply hides the line rather than showing a misleading No. */}
+      {s.daily_ema200_aligned != null && (
+        <div
+          className={`daily-ema ${s.daily_ema200_aligned ? "aligned" : "against"}`}
+          title="Whether the daily 200 EMA trend supports this signal's direction (price above it for a BUY, below for a SELL)."
+        >
+          Daily 200 EMA: <b>{s.daily_ema200_aligned ? "Yes ✓" : "No ✗"}</b>
+          <span className="daily-ema-note">
+            {s.daily_ema200_aligned ? " with the higher-timeframe trend" : " against the higher-timeframe trend"}
+          </span>
+        </div>
+      )}
+
       {s.reasoning && (
         <div className="reasoning">
           <button className="reason-toggle" onClick={() => setOpen((o) => !o)}>

@@ -1092,6 +1092,10 @@ a.brand:hover { text-decoration: none; }
   border-color: var(--green);
   background: color-mix(in srgb, var(--green) 8%, var(--bg));
 }
+.daily-ema { margin-top: 8px; font-size: 13px; color: var(--text); }
+.daily-ema.aligned b { color: var(--green); }
+.daily-ema.against b { color: #d9822b; }
+.daily-ema-note { color: var(--muted); font-size: 12px; }
 .rr-line { font-size: 14px; color: var(--text); }
 .rr-line .risk { color: var(--red); }
 .rr-line .reward { color: var(--green); }

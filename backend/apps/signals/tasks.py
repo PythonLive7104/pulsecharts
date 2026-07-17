@@ -299,9 +299,21 @@ def run_scan(symbol_limit: int | None = None, use_pregate: bool | None = None) -
                             outcome=Signal.Outcome.INVALIDATED, resolved_at=now
                         )
                         invalidated += n
+                    # Daily 200-EMA confirmation: is price on the trend-supporting
+                    # side of the daily 200 EMA for this direction? Reuses the cached
+                    # HTF lookup (one daily fetch per symbol per scan). None when the
+                    # daily candles couldn't be fetched or the symbol lacks 200 days
+                    # of history — the card then simply omits the line.
+                    daily_dir = _htf_direction(sym, "1d", htf_cache)
+                    daily_aligned = (
+                        daily_dir == sig["direction"]
+                        if daily_dir in ("BUY", "SELL")
+                        else None
+                    )
                     Signal.objects.create(
                         symbol=sym, service=svc, timeframe=tf,
-                        generated_at=timezone.now(), **sig,
+                        generated_at=timezone.now(),
+                        daily_ema200_aligned=daily_aligned, **sig,
                     )
                     open_dirs[pair] = sig["direction"]
                     created += 1
@@ -585,6 +597,10 @@ def format_signal_for_telegram(s: Signal) -> str:
         f"Stop:  <b>{p(s.stop_loss)}</b>",
         tp_line,
     ]
+    # Daily 200-EMA higher-timeframe confirmation. Omitted when unknown (null).
+    if s.daily_ema200_aligned is not None:
+        mark = "Yes ✅" if s.daily_ema200_aligned else "No ⚠️"
+        lines.append(f"Daily 200 EMA: <b>{mark}</b>")
     if s.reasoning:
         lines += ["", html.escape(s.reasoning)]
     lines += [
