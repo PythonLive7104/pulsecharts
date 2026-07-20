@@ -133,6 +133,11 @@ class Command(BaseCommand):
         parser.add_argument("--no-ema200", action="store_true",
                             help="Drop the 200-EMA trend filter from every strategy trigger "
                                  "(direction rests on the fast EMAs; pair with --fib).")
+        parser.add_argument("--structure", action="store_true",
+                            help="Enable the market-structure trend filter (non-breakout "
+                                 "signals need HH+HL for BUY / LH+LL for SELL). Additive to "
+                                 "the EMA gates; combine with --no-ema200 to test structure "
+                                 "standing in for the 200 EMA.")
 
     def handle(self, *args, **opts):
         from apps.signals import pregate
@@ -154,6 +159,10 @@ class Command(BaseCommand):
             pregate.EMA200_TREND_FILTER = False
             self.stdout.write(self.style.WARNING(
                 "200-EMA trend filter OFF (direction from fast EMAs; Fib zone confirms)."))
+        if opts.get("structure"):
+            pregate.STRUCTURE_TREND_FILTER = True
+            self.stdout.write(self.style.WARNING(
+                "Market-structure filter ON (BUY needs HH+HL, SELL needs LH+LL)."))
         timeframes = (
             [t.strip() for t in opts["timeframes"].split(",") if t.strip()]
             if opts["timeframes"] else list(settings.SIGNAL_TIMEFRAMES)

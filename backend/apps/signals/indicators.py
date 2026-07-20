@@ -239,6 +239,57 @@ def _swing_leg(candles: list[dict], lookback=60, span=2):
     return leg_high, leg_low, ph_idx > pl_idx
 
 
+def _pivots(candles: list[dict], lookback=120, span=2):
+    """All fractal pivot highs/lows in the window, oldest→newest, as (index, price).
+
+    Same fractal test as `_swings` (a bar whose high/low is the extreme of the
+    `span` bars on each side), but collects the FULL sequence rather than just the
+    nearest one — market-structure classification needs consecutive pivots to
+    compare, not a single extreme.
+    """
+    window = candles[-lookback:]
+    n = len(window)
+    highs = [c["high"] for c in window]
+    lows = [c["low"] for c in window]
+    pivot_highs, pivot_lows = [], []
+    for i in range(span, n - span):
+        if all(highs[i] >= highs[j] for j in range(i - span, i + span + 1) if j != i):
+            pivot_highs.append((i, highs[i]))
+        if all(lows[i] <= lows[j] for j in range(i - span, i + span + 1) if j != i):
+            pivot_lows.append((i, lows[i]))
+    return pivot_highs, pivot_lows
+
+
+def _market_structure(candles: list[dict], lookback=120, span=2):
+    """Swing-structure trend read from the last two confirmed pivots on each side.
+
+    Classic price-structure definition of trend, independent of any moving average:
+      - "up"   : Higher High AND Higher Low  (last pivot high > prior, last pivot low > prior)
+      - "down" : Lower High  AND Lower Low
+      - None   : mixed (HH+LL expansion / LH+HL contraction) or too few pivots — an
+                 ambiguous/ranging structure, deliberately no trend call.
+
+    Returns (structure, last_high, prev_high, last_low, prev_low). The pivot prices
+    are handy for the card's reasoning/invalidation text. Needs >= 2 pivots of each
+    type; returns (None, ...) otherwise. Note the newest fractal only confirms `span`
+    bars after it forms, so structure lags slightly — acceptable on 1h/4h/1d.
+    """
+    pivot_highs, pivot_lows = _pivots(candles, lookback, span)
+    if len(pivot_highs) < 2 or len(pivot_lows) < 2:
+        return None, None, None, None, None
+    last_high, prev_high = pivot_highs[-1][1], pivot_highs[-2][1]
+    last_low, prev_low = pivot_lows[-1][1], pivot_lows[-2][1]
+    higher_high, higher_low = last_high > prev_high, last_low > prev_low
+    lower_high, lower_low = last_high < prev_high, last_low < prev_low
+    if higher_high and higher_low:
+        structure = "up"
+    elif lower_high and lower_low:
+        structure = "down"
+    else:
+        structure = None
+    return structure, last_high, prev_high, last_low, prev_low
+
+
 def _fib_retrace(candles: list[dict], close: float):
     """Current retracement of the most recent impulse leg as (fraction, direction).
 
@@ -277,6 +328,8 @@ def compute_indicators(candles: list[dict]) -> dict:
     bb_u, bb_m, bb_l = _bollinger(closes)
     stoch_k, stoch_d = _stochastic(candles)
     swing_high, swing_low = _swings(candles)
+    structure, struct_last_high, struct_prev_high, struct_last_low, struct_prev_low = \
+        _market_structure(candles)
     fib_retrace, fib_leg_dir = _fib_retrace(candles, last["close"])
     day = last["time"] // 86400
     day_candles = [c for c in candles if c["time"] // 86400 == day]
@@ -305,6 +358,11 @@ def compute_indicators(candles: list[dict]) -> dict:
         "vwap": _vwap_session(candles),
         "swing_high": swing_high,
         "swing_low": swing_low,
+        "structure": structure,               # "up" (HH+HL) | "down" (LH+LL) | None
+        "struct_last_high": struct_last_high,
+        "struct_prev_high": struct_prev_high,
+        "struct_last_low": struct_last_low,
+        "struct_prev_low": struct_prev_low,
         "fib_retrace": fib_retrace,
         "fib_leg_dir": fib_leg_dir,
     }

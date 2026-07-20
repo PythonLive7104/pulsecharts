@@ -30,6 +30,32 @@ ADX_TREND_MIN = 25    # ADX above this = a trend with enough strength to trade
 EMA200_TREND_FILTER = True
 
 
+# Market-structure trend filter (swing structure, MA-independent). When True, no
+# non-breakout signal may fire unless the swing structure agrees with its direction:
+# BUY needs an "up" structure (Higher High + Higher Low), SELL needs "down" (Lower
+# High + Lower Low). A mixed/ranging structure (None) blocks the trade. This is an
+# additive AND-gate on top of whatever EMA config is active — it does NOT replace the
+# EMA gates, so the 200-EMA / structure trade-off can be measured head-to-head.
+# Default False so nothing changes live until a backtest justifies it. Live value set
+# from settings.SIGNAL_STRUCTURE_TREND_FILTER at startup (SignalsConfig.ready);
+# backtest flips it with --structure.
+STRUCTURE_TREND_FILTER = False
+
+
+def _structure_aligned(ind: dict, direction: str) -> bool:
+    """Whether the swing structure agrees with `direction`. Always True when the
+    structure filter is disabled. When enabled, a missing/ambiguous structure (None)
+    fails closed — no confirmed HH/HL (or LH/LL) means no trade."""
+    if not STRUCTURE_TREND_FILTER:
+        return True
+    structure = ind.get("structure")
+    if direction == "BUY":
+        return structure == "up"
+    if direction == "SELL":
+        return structure == "down"
+    return False
+
+
 def _side_of_ema200(close, ema200, buy) -> bool:
     """Whether price is on the trend-correct side of the 200 EMA for `buy`. Always
     True when the 200-EMA trend filter is disabled, so strategies fall back to their
@@ -486,6 +512,17 @@ def passes_rsi_gate(strategy_slug: str, indicators: dict, direction: str) -> boo
     return not is_rsi_extreme(indicators, direction)
 
 
+def passes_structure_gate(strategy_slug: str, indicators: dict, direction: str) -> bool:
+    """Whether `direction` is allowed given the swing structure. Breakout strategies
+    are exempt (like every other trend filter here): a breakout legitimately fires as
+    a new high/low is being made, before a second confirmed pivot exists to compare —
+    gating it on prior structure defeats its purpose. Every trend/momentum strategy
+    must have the structure behind it. No-op when the filter is disabled."""
+    if strategy_slug in EMA_STACK_EXEMPT:
+        return True
+    return _structure_aligned(indicators, direction)
+
+
 def passes_fib_gate(strategy_slug: str, indicators: dict, direction: str) -> bool:
     """Whether `direction` is allowed given the Fib-pullback requirement — only enter
     after a retracement into the zone, never chasing an extended move. Applies to
@@ -511,6 +548,8 @@ def candidate_direction(strategy_slug: str, indicators: dict) -> str | None:
     if direction and not passes_overext_gate(strategy_slug, indicators, direction):
         return None
     if direction and not passes_rsi_gate(strategy_slug, indicators, direction):
+        return None
+    if direction and not passes_structure_gate(strategy_slug, indicators, direction):
         return None
     if direction and not passes_fib_gate(strategy_slug, indicators, direction):
         return None

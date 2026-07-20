@@ -343,6 +343,16 @@ SIGNAL_EMA_GATE = env("SIGNAL_EMA_GATE", default="stack50")
 # than just chasing the fast EMAs. Backtest with `backtest --no-ema200 --fib`.
 SIGNAL_EMA200_TREND_FILTER = env.bool("SIGNAL_EMA200_TREND_FILTER", default=True)
 
+# Market-structure trend filter (apps/signals/pregate.py). When True, non-breakout
+# strategies additionally require the swing structure to agree with the trade: BUY
+# needs Higher High + Higher Low ("up"), SELL needs Lower High + Lower Low ("down"),
+# a mixed/ranging structure blocks it. MA-independent and ADDITIVE to the EMA gates
+# (does not replace them), so the 200-EMA vs structure trade-off can be measured
+# head-to-head. Default False — no live change until a backtest justifies it. Backtest
+# with `backtest --structure` (optionally `--no-ema200 --structure` to test structure
+# standing in for the 200 EMA).
+SIGNAL_STRUCTURE_TREND_FILTER = env.bool("SIGNAL_STRUCTURE_TREND_FILTER", default=False)
+
 # Thesis-invalidation exit: close an open trend call flat (INVALIDATED, 0R) as soon as
 # its entry condition breaks — ANY break in the EMA ordering that justified the trade
 # (BUY needs 9 > 21 > 200; a cross of 9 under 21, or 21 under 200, kills it) — instead

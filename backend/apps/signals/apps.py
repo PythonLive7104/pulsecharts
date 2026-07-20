@@ -24,6 +24,13 @@ class SignalsConfig(AppConfig):
         if ema200 is not None:
             pregate.EMA200_TREND_FILTER = bool(ema200)
 
+        # Market-structure trend filter: when True, non-breakout strategies also
+        # require the swing structure (HH+HL for BUY / LH+LL for SELL) to agree.
+        # Additive to the EMA gates; default off until backtested.
+        structure = getattr(settings, "SIGNAL_STRUCTURE_TREND_FILTER", None)
+        if structure is not None:
+            pregate.STRUCTURE_TREND_FILTER = bool(structure)
+
         # Overextension guard (A): apply the env-configured ATR stretch limit to the
         # module the engine and backtest read, so it's tunable without a deploy.
         mult = getattr(settings, "SIGNAL_OVEREXT_ATR_MULT", None)
