@@ -485,6 +485,19 @@ new signals — so historical rows and the serializer stay valid.)
 
 Where `risk distance = abs(entry_price - stop_loss)`.
 
+**Trade management — 50/25/25 scale-out** (the model behind `avg_r` in stats.py and
+`exp(scale)` in the backtest): bank **½ at TP1**, **¼ at TP2**, **¼ at TP3**, and move
+the stop to breakeven once TP1 tags — so any tranche whose target isn't reached closes
+flat, never a post-TP1 loss. Realized R per outcome: TP1 = +0.5R, TP2 = +1.0R,
+TP3 = +1.75R, SL = −1R, trend-flip invalidation = 0R. This *front-loads* to TP1 (where
+~half of winning trades top out in backtest) instead of the old even-thirds split — a
+head-to-head over the resolved trades (`backtest` "Exit-model comparison") put even
+thirds LAST (+0.11R) and 50/25/25 ~+0.02R ahead, while keeping a real runner to TP3
+(so it doesn't overfit a low-runner regime the way "all off at TP1" / "½·½" would).
+Changing this model means updating BOTH `apps/signals/stats.py` SCALEOUT_R (the
+user-facing accuracy figure) AND `management/commands/backtest.py` SCALEOUT_R, plus the
+card copy in `SignalCard.jsx` / `SignalsPage.jsx`.
+
 **Dollar figures**
 Computed assuming a fixed $100 notional position regardless of
 what the user actually trades — makes the card scannable across coins

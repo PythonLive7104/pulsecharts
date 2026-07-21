@@ -29,20 +29,22 @@ from .models import Signal
 
 TP_OUTCOMES = {"TP1", "TP2", "TP3", "TP4"}
 
-# Realized R per outcome under the live scale-out-in-thirds model (§19.2): bank 1/3
-# at each target, stop trails to breakeven after TP1, so the unfilled remainder
-# closes flat. TP1 = (1×1R + 2×0)/3, TP2 = (1+2+0)/3, TP3 = (1+2+3)/3. A stop hit
-# before any TP loses the full 1R; a trend-flip invalidation closes flat at 0.
-SCALEOUT_R = {"TP1": 1 / 3, "TP2": 1.0, "TP3": 2.0, "TP4": 3.0, "SL": -1.0, "INVALID": 0.0}
+# Realized R per outcome under the live 50/25/25 scale-out model (§19.2): bank ½ at
+# TP1, ¼ at TP2, ¼ at TP3, stop trails to breakeven after TP1 so any unfilled tranche
+# closes flat. TP1 = ½×1R, TP2 = ½×1R + ¼×2R, TP3 = ½×1R + ¼×2R + ¼×3R. Front-loading
+# to TP1 (where ~half of winners top out) beats the old even-thirds split by ~0.02R in
+# backtest without abandoning the runner. A stop hit before any TP loses the full 1R;
+# a trend-flip invalidation closes flat at 0.
+SCALEOUT_R = {"TP1": 0.5, "TP2": 1.0, "TP3": 1.75, "TP4": 3.0, "SL": -1.0, "INVALID": 0.0}
 
 
 def _effective_outcome(outcome: str, best_tp: int) -> str:
     """Outcome for stats purposes, counting still-open trades that already banked a
     target.
 
-    A PENDING trade that has tagged TP1+ is NOT undecided: a third is banked and the
+    A PENDING trade that has tagged TP1+ is NOT undecided: a partial is banked and the
     stop is at breakeven (§19.2), so its floor is exactly the R of the TP it reached
-    (TP1 → 1/3 R: one third at 1R, the rest flat) and it can no longer become a loss.
+    (TP1 → 0.5R: half at 1R, the rest flat) and it can no longer become a loss.
     Excluding it while counting every stop-out biases the whole figure downward,
     because losers resolve immediately and winners stay open for hours chasing TP3 —
     the sample would hold nearly all the losses and only the finished wins.
@@ -155,13 +157,13 @@ def accuracy_stats(base=None) -> dict:
         "overall": _summarize(overall_counts, overall_running),
         "strategies": strategies,
         "note": "Win = reached TP1+ before stop. A still-running trade that already "
-                "banked TP1 counts at its locked-in floor — a third is secured and the "
+                "banked TP1 counts at its locked-in floor — half is secured and the "
                 "stop is at breakeven, so it can't become a loss. Open trades that "
                 "haven't tagged a target yet are undecided and are NOT counted (they're "
                 "shown separately, so the win rate isn't just the open winners). "
                 "Invalidated (trend flipped) and expired trades close flat and are "
                 "excluded from the win rate. Counted once per "
                 "trade, not once per strategy that called it. avg_r = per-trade "
-                "expectancy under the scale-out-in-thirds model (TP1=+0.33R, TP2=+1R, "
-                "TP3=+2R, SL=-1R, trend-flip=0R).",
+                "expectancy under the 50/25/25 scale-out model (TP1=+0.5R, TP2=+1R, "
+                "TP3=+1.75R, SL=-1R, trend-flip=0R).",
     }

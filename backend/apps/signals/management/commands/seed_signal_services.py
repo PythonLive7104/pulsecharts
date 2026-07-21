@@ -80,6 +80,8 @@ SERVICES = [
         "name": "Trend Pullback",
         "slug": "trend-pullback",
         "strategy_type": "trend",
+        "is_active": False,  # disabled 2026-07-21: net loser in backtest (48% win, -0.09R scale) —
+                             # the weakest voter dragging the confluence feed. Reversible.
         "description": "Buy the dip / sell the rally inside an established EMA 200 trend.",
         "strategy_focus": (
             "Trend-continuation pullback entry: in an uptrend (price above EMA 200, EMA 9 "

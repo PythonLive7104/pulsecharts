@@ -88,8 +88,8 @@ export default function SignalCard({ s }) {
         </p>
       ) : (
         <p className="scaleout-note">
-          💡 Suggested: take partial profit at TP1, move your stop to entry (break-even),
-          then let the rest run toward TP3.
+          💡 Suggested: take half off at TP1 and move your stop to entry (break-even),
+          bank a quarter at TP2, then let the final quarter run toward TP3.
         </p>
       )}
 

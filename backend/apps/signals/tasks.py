@@ -66,6 +66,40 @@ def _htf_direction(sym, htf: str, cache: dict) -> str | None:
     return direction
 
 
+def _htf_structure(sym, htf: str, cache: dict) -> str | None:
+    """Swing structure ('up' | 'down' | None) on the higher timeframe's last closed
+    candle, or 'ERR' if candles couldn't be fetched / there isn't enough history.
+    Cached per (symbol, htf) for the scan. Independent of the 200-EMA path — this is
+    pure price structure (HH+HL vs LH+LL), computed by compute_indicators."""
+    key = (sym.id, htf)
+    if key in cache:
+        return cache[key]
+    result: str | None = "ERR"
+    try:
+        candles = get_candles(sym, htf, limit=300)
+        if len(candles) >= MIN_CANDLES:
+            result = compute_indicators(candles).get("structure")  # 'up' | 'down' | None
+    except (requests.RequestException, ValueError):
+        result = "ERR"
+    cache[key] = result
+    return result
+
+
+def _htf_structure_ok(sym, tf: str, direction: str, cache: dict) -> bool:
+    """True if the next-higher timeframe's swing structure confirms `direction`.
+    Fails OPEN on a fetch error (a transient hiccup must not silence the feed);
+    fails CLOSED on a choppy/ambiguous HTF structure — confluence requires a clear
+    higher-timeframe trend, not merely the absence of a counter-trend."""
+    htf = _HTF_MAP.get(tf)
+    if not htf:
+        return True  # no higher frame configured — nothing to confirm against
+    struct = _htf_structure(sym, htf, cache)
+    if struct == "ERR":
+        return True
+    want = "up" if direction == "BUY" else "down" if direction == "SELL" else None
+    return struct == want
+
+
 def _regime_ok(sym, tf: str, direction: str, indicators: dict, htf_cache: dict,
                strategy_slug: str | None = None) -> bool:
     """True if the market is trending (ADX), not chopping (EMA separation), and the
@@ -204,9 +238,12 @@ def run_scan(symbol_limit: int | None = None, use_pregate: bool | None = None) -
             ] = s["last"]
 
     created = scanned = deduped = cooled = invalidated = regime_skipped = 0
+    htf_struct_skipped = 0
     stats = {"gated": 0, "llm_calls": 0, "in_tokens": 0, "out_tokens": 0}
     regime_on = settings.SIGNAL_REGIME_FILTER_ENABLED
+    htf_structure_on = settings.SIGNAL_HTF_STRUCTURE_ENABLED
     htf_cache: dict[tuple[int, str], str | None] = {}  # (symbol_id, htf) -> trend bias
+    htf_struct_cache: dict[tuple[int, str], str | None] = {}  # (symbol_id, htf) -> structure
     forex_is_open = forex_market_open()  # evaluated once per scan; also our
     # "is it the weekend window" signal (Fri 21:00 → Sun 21:00 UTC).
     for sym in symbols:
@@ -266,6 +303,17 @@ def run_scan(symbol_limit: int | None = None, use_pregate: bool | None = None) -
                     and not _regime_ok(sym, tf, cand, indicators, htf_cache, svc.slug)
                 ):
                     regime_skipped += 1
+                    continue
+                # Higher-timeframe structure confluence: require the next-higher
+                # timeframe's swing structure (HH+HL / LH+LL) to agree before spending
+                # on generation. Breakout and custom strategies are exempt (breakouts
+                # fire before structure confirms; custom strategies own their logic).
+                if (
+                    htf_structure_on and cand is not None and not svc.is_custom
+                    and svc.slug not in EMA_STACK_EXEMPT
+                    and not _htf_structure_ok(sym, tf, cand, htf_struct_cache)
+                ):
+                    htf_struct_skipped += 1
                     continue
                 scanned += 1
                 try:
@@ -330,6 +378,7 @@ def run_scan(symbol_limit: int | None = None, use_pregate: bool | None = None) -
         "cooled": cooled,                 # skipped: same-direction re-entry within cooldown (free)
         "invalidated": invalidated,       # stale opposite calls closed on a trend flip
         "regime_skipped": regime_skipped,  # skipped: ranging market / HTF disagreement (free)
+        "htf_struct_skipped": htf_struct_skipped,  # skipped: HTF swing structure disagreed (free)
         "gated": stats["gated"],          # skipped before any LLM call (free)
         "llm_calls": stats["llm_calls"],  # actual paid OpenAI calls
         "tokens_in": stats["in_tokens"],
@@ -338,7 +387,8 @@ def run_scan(symbol_limit: int | None = None, use_pregate: bool | None = None) -
     }
     logger.info(
         "signal scan: created=%(created)d scanned=%(scanned)d deduped=%(deduped)d "
-        "cooled=%(cooled)d invalidated=%(invalidated)d regime_skipped=%(regime_skipped)d gated=%(gated)d "
+        "cooled=%(cooled)d invalidated=%(invalidated)d regime_skipped=%(regime_skipped)d "
+        "htf_struct_skipped=%(htf_struct_skipped)d gated=%(gated)d "
         "llm_calls=%(llm_calls)d tokens=%(tokens_in)d/%(tokens_out)d est_cost=$%(est_cost_usd).5f",
         summary,
     )
@@ -374,8 +424,8 @@ def _invalidate_trend_breaks(sym, tf, ind, now) -> int:
       breakout strategies (EMA_STACK_EXEMPT) never required the stack to enter, so
       neither may be closed by a condition they were never gated on.
     - Only calls that have NOT banked a target (best_tp=0). A runner that already
-      tagged TP1 has its stop at breakeven and a third secured — it cannot lose, so
-      there is nothing to rescue, and closing it flat would ERASE the banked +0.33R.
+      tagged TP1 has its stop at breakeven and half secured — it cannot lose, so
+      there is nothing to rescue, and closing it flat would ERASE the banked +0.5R.
     """
     ema9, ema21, ema200 = ind.get("ema9"), ind.get("ema21"), ind.get("ema200")
     if ema9 is None or ema21 is None or ema200 is None:

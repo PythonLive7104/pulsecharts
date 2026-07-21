@@ -353,6 +353,17 @@ SIGNAL_EMA200_TREND_FILTER = env.bool("SIGNAL_EMA200_TREND_FILTER", default=True
 # standing in for the 200 EMA).
 SIGNAL_STRUCTURE_TREND_FILTER = env.bool("SIGNAL_STRUCTURE_TREND_FILTER", default=False)
 
+# Higher-timeframe structure confluence (apps/signals/tasks.py). When True, a signal
+# on timeframe T is only kept if the NEXT-higher timeframe's swing structure (per the
+# _HTF_MAP: 1h→4h, 4h→1d, …) agrees with its direction — BUY needs an "up" HTF
+# structure (HH+HL), SELL needs "down". A choppy/ambiguous HTF structure blocks the
+# trade; a transient HTF fetch error fails open (doesn't silence the feed). Breakout
+# strategies (EMA_STACK_EXEMPT) and custom strategies are exempt. Independent of the
+# 200-EMA HTF regime check (which is dead when SIGNAL_EMA200_TREND_FILTER is off).
+# Default False — no live change until a backtest justifies it. Backtest with
+# `backtest --htf-structure`.
+SIGNAL_HTF_STRUCTURE_ENABLED = env.bool("SIGNAL_HTF_STRUCTURE_ENABLED", default=False)
+
 # Thesis-invalidation exit: close an open trend call flat (INVALIDATED, 0R) as soon as
 # its entry condition breaks — ANY break in the EMA ordering that justified the trade
 # (BUY needs 9 > 21 > 200; a cross of 9 under 21, or 21 under 200, kills it) — instead

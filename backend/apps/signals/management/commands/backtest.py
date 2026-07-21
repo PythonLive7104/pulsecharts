@@ -28,17 +28,53 @@ from apps.market_data.feeds import get_candles
 from apps.market_data.models import Symbol
 from apps.signals.engine import generate_judgment
 from apps.signals.evaluate import walk
-from apps.signals.indicators import compute_indicators
+from apps.signals.indicators import compute_indicators, _market_structure
 from apps.signals.levels import TP_MULTIPLES, compute_levels
 from apps.signals.models import SignalService
-from apps.signals.pregate import candidate_direction, passes_pregate
+from apps.signals.pregate import EMA_STACK_EXEMPT, candidate_direction, passes_pregate
+from apps.signals.tasks import _HTF_MAP
 
 MIN_CANDLES = 210  # enough history for the 200 EMA / swing windows (matches tasks.py)
 
 
-# Realized R per best-TP under the live scale-out-in-thirds model (§19.2): bank 1/3
-# at each target, stop trails to breakeven after TP1 so the remainder closes flat.
-SCALEOUT_R = {1: 1 / 3, 2: 1.0, 3: 2.0, 4: 3.0}
+# Realized R per best-TP under the live 50/25/25 scale-out model (§19.2): bank ½ at
+# TP1, ¼ at TP2, ¼ at TP3, stop to breakeven after TP1 so any unfilled tranche closes
+# flat. TP1 = ½×1R, TP2 = ½×1R + ¼×2R, TP3 = ½×1R + ¼×2R + ¼×3R. (See EXIT_MODELS
+# below for the head-to-head that chose this over even thirds.)
+SCALEOUT_R = {1: 0.5, 2: 1.0, 3: 1.75, 4: 3.0}
+
+
+# Candidate trade-management schemes to compare head-to-head, each as the fraction of
+# the position banked at (TP1, TP2, TP3). All assume the house rule "stop → breakeven
+# after TP1", so any un-banked remainder that doesn't reach its target closes at 0R
+# (never a post-TP1 loss). Expectancy is therefore exactly derivable from the winners-
+# by-best-TP distribution — no per-trade replay needed. Used only for reporting; the
+# live/stored geometry is unchanged.
+EXIT_MODELS = [
+    ("all off @TP1               ", (1.0, 0.0, 0.0)),
+    ("even thirds  (old model)   ", (1 / 3, 1 / 3, 1 / 3)),
+    ("½ TP1 · ¼ TP2 · ¼ TP3 (live)", (0.5, 0.25, 0.25)),
+    ("½ TP1 · ½ TP2              ", (0.5, 0.5, 0.0)),
+    ("⅔ TP1 · ⅓ TP2              ", (2 / 3, 1 / 3, 0.0)),
+]
+
+
+def _exit_expectancy(total, fractions):
+    """Per-trade R for a management scheme (fractions banked at TP1/TP2/TP3), computed
+    from the aggregate winners-by-best-TP distribution + losses. Breakeven-after-TP1
+    means an un-banked tranche contributes its TP multiple only if that TP was reached,
+    else 0; every loss is a full -1R."""
+    n = total["trades"]
+    if not n:
+        return 0.0
+    f1, f2, f3 = fractions
+    d = total["tp_dist"]
+    r = 0.0
+    r += d[1] * (f1 * 1)                        # topped at TP1: only the TP1 tranche pays
+    r += d[2] * (f1 * 1 + f2 * 2)               # reached TP2: TP1 + TP2 tranches
+    r += d[3] * (f1 * 1 + f2 * 2 + f3 * 3)      # reached TP3: all three
+    r -= total["losses"] * 1.0
+    return r / n
 
 
 def _blank(name):
@@ -56,7 +92,7 @@ def _record(bucket, res):
         bucket["wins"] += 1
         bucket["tp_dist"][best_tp] += 1
         bucket["r_tp1"] += 1.0                       # conservative: exit all at TP1 (+1R)
-        bucket["r_scale"] += SCALEOUT_R[best_tp]     # realized: scale out in thirds
+        bucket["r_scale"] += SCALEOUT_R[best_tp]     # realized: 50/25/25 scale-out
         bucket["r_best"] += TP_MULTIPLES[best_tp]    # optimistic: exit all at best target
     else:
         bucket["losses"] += 1
@@ -138,6 +174,14 @@ class Command(BaseCommand):
                                  "signals need HH+HL for BUY / LH+LL for SELL). Additive to "
                                  "the EMA gates; combine with --no-ema200 to test structure "
                                  "standing in for the 200 EMA.")
+        parser.add_argument("--htf-structure", action="store_true",
+                            help="Require the next-higher timeframe's swing structure (per "
+                                 "_HTF_MAP: 1h→4h, 4h→1d) to agree with the signal. "
+                                 "Point-in-time aligned; breakout strategies exempt.")
+        parser.add_argument("--overext", type=float, default=None,
+                            help="Override the overextension guard (ATR stretch beyond EMA21 "
+                                 "that blocks a chase entry). 0 disables; live default is 2.0. "
+                                 "Sweep to tune, e.g. --overext 1.5.")
 
     def handle(self, *args, **opts):
         from apps.signals import pregate
@@ -163,6 +207,15 @@ class Command(BaseCommand):
             pregate.STRUCTURE_TREND_FILTER = True
             self.stdout.write(self.style.WARNING(
                 "Market-structure filter ON (BUY needs HH+HL, SELL needs LH+LL)."))
+        if opts.get("overext") is not None:
+            pregate.OVEREXT_ATR_MULT = opts["overext"]
+            self.stdout.write(self.style.WARNING(
+                f"Overextension guard override: {opts['overext']}×ATR beyond EMA21 "
+                f"({'disabled' if opts['overext'] <= 0 else 'blocks chases'})."))
+        htf_structure_on = bool(opts.get("htf_structure"))
+        if htf_structure_on:
+            self.stdout.write(self.style.WARNING(
+                "HTF structure confluence ON (higher timeframe must agree; breakouts exempt)."))
         timeframes = (
             [t.strip() for t in opts["timeframes"].split(",") if t.strip()]
             if opts["timeframes"] else list(settings.SIGNAL_TIMEFRAMES)
@@ -208,7 +261,8 @@ class Command(BaseCommand):
                     continue
                 if len(candles) < MIN_CANDLES + 5:
                     continue
-                self._run_series(sym.ticker, tf, candles, services, rb, llm, budget, sym.asset_class)
+                self._run_series(sym, tf, candles, services, rb, llm, budget,
+                                 sym.asset_class, htf_structure_on, opts["candles"])
                 series += 1
                 self.stdout.write(f"  · {sym.ticker} {tf}", ending="\r")
             if llm_on and budget["left"] <= 0:
@@ -220,10 +274,40 @@ class Command(BaseCommand):
         else:
             self._report(rb, series)
 
-    def _run_series(self, ticker, tf, candles, services, rb, llm, budget, asset_class="crypto"):
+    def _htf_timeline(self, sym, tf, htf_limit):
+        """Sorted [(usable_from_time, structure), …] for the timeframe above `tf`.
+
+        Entry j carries the swing structure computed from higher-timeframe bars 0..j
+        (bar j closed), tagged with bar j+1's open time — the moment that structure
+        becomes usable without lookahead. Returns None when there's no higher frame,
+        the fetch fails, or there aren't enough bars to form structure.
+        """
+        htf = _HTF_MAP.get(tf)
+        if not htf:
+            return None
+        try:
+            hc = get_candles(sym, htf, limit=max(htf_limit, 300))
+        except (requests.RequestException, ValueError):
+            return None
+        if len(hc) < 20:  # need a couple of pivots each side to classify anything
+            return None
+        return [(hc[j + 1]["time"], _market_structure(hc[: j + 1])[0])
+                for j in range(len(hc) - 1)]
+
+    def _run_series(self, sym, tf, candles, services, rb, llm, budget,
+                    asset_class="crypto", htf_structure_on=False, htf_limit=500):
+        ticker = sym.ticker
         n = len(candles)
         threshold = settings.SIGNAL_MIN_CONFIDENCE
         free_at = {svc.slug: MIN_CANDLES for svc in services}
+
+        # Point-in-time HTF structure timeline: for each higher-timeframe bar, the
+        # swing structure known *once it has closed*, tagged with the time it becomes
+        # usable (the next HTF bar's open). At each signal bar we advance a pointer to
+        # the latest entry usable by then — no lookahead. None entry = choppy HTF
+        # (blocks); before the first entry = no data yet (fails open).
+        htf_timeline = self._htf_timeline(sym, tf, htf_limit) if htf_structure_on else None
+        hp = -1  # pointer into htf_timeline; -1 = nothing usable yet
 
         for i in range(MIN_CANDLES, n - 1):
             if llm is not None and budget["left"] <= 0:
@@ -235,12 +319,26 @@ class Command(BaseCommand):
                 continue
             future = candles[i + 1:]
 
+            htf_struct_now = None  # 'up' | 'down' | None (choppy) | 'SKIP' (no data)
+            if htf_timeline is not None:
+                t = candles[i]["time"]
+                while hp + 1 < len(htf_timeline) and htf_timeline[hp + 1][0] <= t:
+                    hp += 1
+                htf_struct_now = htf_timeline[hp][1] if hp >= 0 else "SKIP"
+
             for svc in services:
                 if i < free_at[svc.slug] or not passes_pregate(svc.slug, snap):
                     continue
                 direction = candidate_direction(svc.slug, snap)
                 if direction not in ("BUY", "SELL"):
                     continue
+
+                # HTF structure confluence (breakouts exempt, mirroring the live gate).
+                if (htf_timeline is not None and htf_struct_now != "SKIP"
+                        and svc.slug not in EMA_STACK_EXEMPT):
+                    want = "up" if direction == "BUY" else "down"
+                    if htf_struct_now != want:  # opposite trend or choppy (None) → skip
+                        continue
 
                 res = _outcome(direction, snap, future, asset_class)
                 if res is None:
@@ -308,7 +406,19 @@ class Command(BaseCommand):
         total = _totals(stats)
         self.stdout.write(self.style.SUCCESS("\n" + self._line(total).strip()))
         self.stdout.write(f"  winners by best TP: {_tp_breakdown(total)}")
+        self._exit_model_report(total)
         self.stdout.write(self.style.WARNING(self._footer()))
+
+    def _exit_model_report(self, total):
+        """Compare trade-management schemes on the SAME resolved trades — how much of
+        the per-trade edge each exit rule actually banks. Reframes the exp(TP1) vs
+        exp(scale) gap as a management choice, not a fixed cost."""
+        if not total["trades"]:
+            return
+        self.stdout.write(self.style.MIGRATE_HEADING("\n  Exit-model comparison (same trades):"))
+        ranked = sorted(EXIT_MODELS, key=lambda m: -_exit_expectancy(total, m[1]))
+        for label, fr in ranked:
+            self.stdout.write(f"    {label}  exp={_exit_expectancy(total, fr):+.3f}R")
 
     def _report_compare(self, rb, llm, budget):
         rb_t, llm_t = _totals(rb), _totals(llm)
@@ -354,9 +464,9 @@ class Command(BaseCommand):
         base = (
             "\nReading this honestly:\n"
             "  • Win % = reached TP1 before the stop. exp(TP1) = exit all at TP1 (caps\n"
-            "    winners at +1R, conservative). exp(scale) = the LIVE model: scale out\n"
-            "    in thirds, stop to breakeven after TP1 (what to actually expect).\n"
-            "    exp(best) = exit all at the furthest target hit (hindsight, optimistic).\n"
+            "    winners at +1R, conservative). exp(scale) = the LIVE model: 50/25/25\n"
+            "    scale-out (½ TP1, ¼ TP2, ¼ TP3), stop to breakeven after TP1 (what to\n"
+            "    actually expect). exp(best) = exit all at the furthest TP (hindsight).\n"
             "  • Small historical sample, currently-listed coins only (survivorship),\n"
             "    one market regime. Directional, not proof — don't claim accuracy (§13.7)."
         )

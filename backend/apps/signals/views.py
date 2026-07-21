@@ -646,7 +646,7 @@ class SignalAccuracyView(APIView):
             "signal_id", flat=True
         )
         # Closed trades PLUS still-running trades that have already banked a target. A
-        # TP1-tagged runner has a third secured at 1R with the stop at breakeven, so it
+        # TP1-tagged runner has half secured at 1R with the stop at breakeven, so it
         # can no longer become a loss — its win/loss classification is settled even
         # though its final R isn't. It's counted at its locked floor (stats.
         # _effective_outcome), never at its potential.

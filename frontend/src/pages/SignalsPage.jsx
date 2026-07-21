@@ -207,9 +207,9 @@ export default function SignalsPage() {
 
   // Recent trade updates (closures) — shown in-app to everyone, so free/starter
   // who don't use Telegram still see when a trade hit TP/SL or the trend flipped.
-  // Scale-out model (§19.2): a partial is banked at each target and the stop trails
-  // to breakeven after TP1, so a TP1/TP2 close means the runner came back to
-  // breakeven with the earlier third(s) already secured; TP3 is a full run.
+  // Scale-out model (§19.2): 50/25/25 — half banked at TP1, a quarter at TP2, a
+  // quarter at TP3, stop to breakeven after TP1, so a TP1/TP2 close means the runner
+  // came back to breakeven with the earlier partial(s) already secured; TP3 is a full run.
   const CLOSURE_MSG = {
     TP1: "✅ TP1 banked · runner to breakeven",
     TP2: "✅ TP1 & TP2 banked · runner to breakeven",

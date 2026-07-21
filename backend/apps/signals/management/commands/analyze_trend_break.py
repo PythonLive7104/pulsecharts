@@ -112,11 +112,11 @@ class Command(BaseCommand):
         self.stdout.write(f"  unchanged {unchanged:4d}")
         self.stdout.write(f"  skipped   {skipped:4d}  (not enough candle history)")
 
-        net = saved * 1.0 - lost_win * (1 / 3)  # -1R avoided vs +0.33R forfeited
+        net = saved * 1.0 - lost_win * 0.5  # -1R avoided vs +0.5R forfeited (½ banked at TP1)
         self.stdout.write("")
         self.stdout.write(
             f"  net R impact: {net:+.2f}R over the window "
-            f"(+1R per rescued stop-out, -0.33R per forfeited TP1)"
+            f"(+1R per rescued stop-out, -0.5R per forfeited TP1)"
         )
         if net > 0:
             self.stdout.write(self.style.SUCCESS("  → the exit pays. Keep SIGNAL_EXIT_ON_TREND_BREAK=True."))
