@@ -25,8 +25,12 @@ if [ -d .git ]; then
 fi
 
 # 2. Build images and (re)create containers ---------------------------------
+# --remove-orphans matters: deleting a service from docker-compose.yml does NOT stop
+# its running container. When `beat` was folded into the worker (-B), a lingering beat
+# container would mean TWO schedulers — every task firing twice (duplicate signals,
+# duplicate Telegram pushes, duplicate auto-trades), with nothing obviously broken.
 say "$c_info" "▶ Building images and starting the stack…"
-docker compose up -d --build
+docker compose up -d --build --remove-orphans
 
 # 3. Wait for the backend to be ready (DB reachable) ------------------------
 say "$c_info" "▶ Waiting for the backend…"

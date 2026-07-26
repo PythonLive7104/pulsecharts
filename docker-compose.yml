@@ -4,7 +4,8 @@
 #
 # Postgres and Redis run as containers here, so the database lives ON THIS HOST,
 # next to the app — no external DB, no cross-region latency. Only the frontend
-# (nginx) is exposed (port 80); the backend image runs in four roles.
+# (nginx) is exposed (port 80); the backend image runs in three roles (web, worker
+# — which carries beat embedded via -B — and relay).
 #
 # Before first deploy, in backend/.env set:
 #   DJANGO_DEBUG=False
@@ -118,27 +119,17 @@ services:
         condition: service_healthy
       web:
         condition: service_started
-    # concurrency=1: the default forks one child per CPU, and the workload is a scan
-    # every 15 min — parallelism buys nothing here but costs a whole Python process.
-    # max-tasks-per-child recycles it periodically so slow allocation creep can't
-    # accumulate over days.
-    command: celery -A config worker -l info --concurrency=1 --max-tasks-per-child=100
-
-  # Celery beat: schedules the recurring scan / eval / purge / telegram tasks.
-  beat:
-    build: ./backend
-    restart: unless-stopped
-    logging: *default-logging
-    env_file: ./backend/.env
-    environment: *backend-env
-    depends_on:
-      db:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
-      web:
-        condition: service_started
-    command: celery -A config beat -l info
+    # -B embeds Celery BEAT in this worker instead of running it as a second container:
+    # beat is only a clock, but a separate container costs a whole Django process
+    # (~85 MB) this host can't spare. Celery calls embedded beat unsuitable for
+    # production because only ONE beat may run and it dies with its worker — both moot
+    # with exactly one worker, which is the shape of this deployment. If a second
+    # worker is ever added, beat MUST be split back into its own service or every
+    # scheduled task fires twice.
+    # concurrency=1 is explicit rather than CPU-derived (this host has 1 vCPU, so it
+    # was already the default); max-tasks-per-child recycles the child periodically so
+    # slow allocation creep can't accumulate over days.
+    command: celery -A config worker -B -l info --concurrency=1 --max-tasks-per-child=100
 
   # Hyperliquid relay: single upstream WS connection -> Channels groups.
   relay:
