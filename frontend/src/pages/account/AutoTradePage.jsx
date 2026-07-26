@@ -42,7 +42,7 @@ export default function AutoTradePage() {
       <h1>Auto-Trade</h1>
       <p className="muted">
         Automatically place trades on your own Bybit account from the signals you follow —
-        entry, stop-loss and take-profit targets. Each trade commits a <b>fixed margin</b>
+        entry, stop-loss and take-profit targets. Each trade commits a <b>fixed margin</b>{" "}
         you set (default 1 USDT), not a percentage of your balance; leverage is chosen
         automatically so liquidation stays beyond the stop. Your total exposure is roughly
         that margin × your max open positions.
@@ -101,6 +101,13 @@ function ConnectionCard({ broker, onChange }) {
     e.preventDefault();
     setErr(null); setMsg(null); setTest(null);
     if (!apiKey || !apiSecret) return setErr("Enter both your API key and secret.");
+    // Browsers have been seen autofilling the saved site login into these fields; an
+    // email is never a Bybit key, so catch it here rather than storing a dud credential
+    // the user only discovers when a trade fails to place.
+    if (apiKey.includes("@") || apiSecret.includes("@")) {
+      return setErr("That looks like an email address, not a Bybit API key — your browser " +
+                    "may have autofilled it. Paste the key and secret from Bybit's API page.");
+    }
     setBusy(true);
     try {
       await api.saveBroker({ api_key: apiKey, api_secret: apiSecret, testnet });
@@ -178,7 +185,7 @@ function ConnectionCard({ broker, onChange }) {
       ) : (
         <>
           <p className="muted">
-            Create an API key in Bybit (API Management) with <b>Contract — Orders &amp; Positions</b>
+            Create an API key in Bybit (API Management) with <b>Contract — Orders &amp; Positions</b>{" "}
             permission and <b>no withdrawal</b> rights. Keys are encrypted at rest and never shown again.
           </p>
           <KeyForm {...{ apiKey, setApiKey, apiSecret, setApiSecret, testnet, setTestnet, save, busy }} />
@@ -193,11 +200,19 @@ function ConnectionCard({ broker, onChange }) {
 function KeyForm({ apiKey, setApiKey, apiSecret, setApiSecret, testnet, setTestnet, save, busy }) {
   return (
     <form onSubmit={save} className="auth-form">
+      {/* autoComplete="new-password" (not "off", which Chrome ignores) + non-login-ish
+          names stop the password manager treating text+password as a sign-in form and
+          autofilling the user's site email/password into the key fields. */}
       <label>API key
-        <input value={apiKey} onChange={(e) => setApiKey(e.target.value)} autoComplete="off" placeholder="Bybit API key" />
+        <input name="bybit-key" value={apiKey} onChange={(e) => setApiKey(e.target.value)}
+               autoComplete="new-password" data-lpignore="true" data-form-type="other"
+               spellCheck={false} placeholder="Bybit API key" />
       </label>
       <label>API secret
-        <input type="password" value={apiSecret} onChange={(e) => setApiSecret(e.target.value)} autoComplete="off" placeholder="Bybit API secret" />
+        <input type="password" name="bybit-secret" value={apiSecret}
+               onChange={(e) => setApiSecret(e.target.value)}
+               autoComplete="new-password" data-lpignore="true" data-form-type="other"
+               spellCheck={false} placeholder="Bybit API secret" />
       </label>
       <label className="at-checkbox">
         <input type="checkbox" checked={testnet} onChange={(e) => setTestnet(e.target.checked)} />
