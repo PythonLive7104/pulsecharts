@@ -26,11 +26,31 @@ x-backend-env: &backend-env
   REDIS_URL: redis://redis:6379/0
   DATABASE_URL: postgresql://${POSTGRES_USER:-pulsecharts}:${POSTGRES_PASSWORD:-pulsecharts}@db:5432/${POSTGRES_DB:-pulsecharts}
 
+# Container logs are unbounded by default — on a small host they quietly fill the
+# disk until Postgres can't write. Cap every service at 30 MB of history.
+x-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
+
 services:
   # PostgreSQL — data persists in the db-data volume across restarts/redeploys.
   db:
     image: postgres:16-alpine
     restart: unless-stopped
+    logging: *default-logging
+    # Sized for a small (<2 GB) host. Postgres' defaults assume it owns the machine;
+    # here it shares with 7 other containers, so trim the big allocations and tell the
+    # planner the truth about how much OS cache it can expect. effective_cache_size is
+    # a hint only — it allocates nothing.
+    command: >
+      postgres
+      -c max_connections=50
+      -c shared_buffers=96MB
+      -c effective_cache_size=384MB
+      -c work_mem=4MB
+      -c maintenance_work_mem=32MB
     environment:
       POSTGRES_DB: ${POSTGRES_DB:-pulsecharts}
       POSTGRES_USER: ${POSTGRES_USER:-pulsecharts}
@@ -50,6 +70,15 @@ services:
   redis:
     image: redis:7-alpine
     restart: unless-stopped
+    logging: *default-logging
+    # Hard ceiling so a runaway Channels backlog can't OOM the host. volatile-lru (not
+    # allkeys-lru) evicts ONLY keys carrying a TTL — Channels messages expire, group
+    # memberships are refreshed, so this sheds backlog without silently dropping a
+    # subscription and breaking a browser's live chart.
+    # --save "" disables RDB snapshots: everything here is ephemeral (Channels groups +
+    # the Celery queue, which beat refills within a minute), and a BGSAVE forks the
+    # process — a transient RSS doubling this host can't absorb.
+    command: redis-server --maxmemory 192mb --maxmemory-policy volatile-lru --save ""
     volumes:
       - redis-data:/data
     healthcheck:
@@ -62,6 +91,7 @@ services:
   web:
     build: ./backend
     restart: unless-stopped
+    logging: *default-logging
     env_file: ./backend/.env
     environment: *backend-env
     depends_on:
@@ -78,6 +108,7 @@ services:
   worker:
     build: ./backend
     restart: unless-stopped
+    logging: *default-logging
     env_file: ./backend/.env
     environment: *backend-env
     depends_on:
@@ -87,12 +118,17 @@ services:
         condition: service_healthy
       web:
         condition: service_started
-    command: celery -A config worker -l info
+    # concurrency=1: the default forks one child per CPU, and the workload is a scan
+    # every 15 min — parallelism buys nothing here but costs a whole Python process.
+    # max-tasks-per-child recycles it periodically so slow allocation creep can't
+    # accumulate over days.
+    command: celery -A config worker -l info --concurrency=1 --max-tasks-per-child=100
 
   # Celery beat: schedules the recurring scan / eval / purge / telegram tasks.
   beat:
     build: ./backend
     restart: unless-stopped
+    logging: *default-logging
     env_file: ./backend/.env
     environment: *backend-env
     depends_on:
@@ -108,6 +144,7 @@ services:
   relay:
     build: ./backend
     restart: unless-stopped
+    logging: *default-logging
     env_file: ./backend/.env
     environment: *backend-env
     depends_on:
@@ -124,6 +161,7 @@ services:
   frontend:
     build: ./frontend
     restart: unless-stopped
+    logging: *default-logging
     depends_on:
       web:
         condition: service_started
@@ -134,6 +172,7 @@ services:
   caddy:
     image: caddy:2-alpine
     restart: unless-stopped
+    logging: *default-logging
     depends_on:
       frontend:
         condition: service_started
