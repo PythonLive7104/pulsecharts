@@ -277,6 +277,12 @@ AUTO_TRADE_MAX_SIGNAL_AGE_SEC = env.int("AUTO_TRADE_MAX_SIGNAL_AGE_SEC", default
 # limit rungs, trailing the stop to breakeven after TP1 fills. When a position is too
 # small to split into placeable rungs, it falls back to a single full-position TP.
 AUTO_TRADE_SCALEOUT = env.bool("AUTO_TRADE_SCALEOUT", default=True)
+# Force the broker account into ISOLATED margin before placing. Sizing assumes it:
+# plan_order's liquidation estimate is the isolated formula, and only isolated caps a
+# trade's loss at its own margin (under cross the whole balance backs the position).
+# A trade is REJECTED rather than placed if the switch can't be made. Set False to
+# leave the account's margin mode alone (losses then bounded only by the stop order).
+AUTO_TRADE_ISOLATED_MARGIN = env.bool("AUTO_TRADE_ISOLATED_MARGIN", default=True)
 # The single take-profit level used ONLY in the fallback (scale-out off or position
 # too small to ladder): tp1 | tp2 | tp3.
 AUTO_TRADE_TP_LEVEL = env("AUTO_TRADE_TP_LEVEL", default="tp2")

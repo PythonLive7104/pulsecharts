@@ -139,6 +139,23 @@ def _record(user, sig, bybit_symbol, status, *, reason="", plan=None,
         return None  # already acted on this (user, signal) — dedup won the race
 
 
+def _ensure_isolated(client: BybitClient) -> None:
+    """Put the account in isolated margin, reading first so the write is skipped when
+    it's already right.
+
+    The read matters for more than politeness: Bybit refuses a mode switch while any
+    position or order is open, so once the first trade is live an unconditional write
+    would fail every subsequent placement. Reading first means the switch happens once
+    (flat account) and later trades short-circuit on 'already isolated'. Memoised per
+    client so a batch of signals for one user costs a single extra request.
+    """
+    if getattr(client, "_isolated_ok", False):
+        return
+    if client.get_margin_mode() != BybitClient.ISOLATED:
+        client.set_margin_mode(BybitClient.ISOLATED)
+    client._isolated_ok = True
+
+
 def _place_one(client: BybitClient, cred: BrokerCredential, sig: Signal,
                bybit_symbol: str, now) -> str:
     """Size, place, and record a single trade. Returns a short status string used
@@ -190,6 +207,19 @@ def _place_one(client: BybitClient, cred: BrokerCredential, sig: Signal,
     ladder = any(t > 0 for t in tranches)
     entry_tp = None if ladder else _tp_for(sig)  # single-TP path brackets on the entry
     display_tp = sig.tp1 if ladder else entry_tp  # what we record for the card/history
+
+    # Isolated margin is what makes the sizing safe: plan_order's liquidation estimate
+    # assumes isolated ((1/L) - mmr), and only under isolated is the loss actually
+    # capped at this trade's margin. Under cross, one bad fill can draw on the whole
+    # balance. So enforce it BEFORE placing, and refuse the trade if we can't — placing
+    # anyway would mean trading a risk model the account doesn't implement.
+    if settings.AUTO_TRADE_ISOLATED_MARGIN:
+        try:
+            _ensure_isolated(client)
+        except BybitError as exc:
+            _record(user, sig, bybit_symbol, TradeExecution.Status.REJECTED,
+                    reason=f"margin mode: {exc}"[:200])
+            return "rejected"
 
     try:
         client.set_leverage(bybit_symbol, plan.leverage)

@@ -172,10 +172,20 @@ function ConnectionCard({ broker, onChange }) {
             </button>
           </div>
           {test?.ok && (
-            <p className="success">
-              Connection OK — {test.testnet ? "Testnet" : "Mainnet"} USDT equity:{" "}
-              <b>{Number(test.usdt_equity).toLocaleString()} USDT</b>
-            </p>
+            <>
+              <p className="success">
+                Connection OK — {test.testnet ? "Testnet" : "Mainnet"} USDT equity:{" "}
+                <b>{Number(test.usdt_equity).toLocaleString()} USDT</b>
+              </p>
+              {/* Cross margin means a losing trade can draw on the whole balance, not
+                  just its own margin — worth showing before the first trade, not after. */}
+              <p className={test.isolated ? "muted" : "error"}>
+                {test.isolated
+                  ? "Margin mode: Isolated — each trade's loss is capped at its own margin."
+                  : "Margin mode: Cross — losses are NOT capped per trade. Auto-trade will " +
+                    "switch this account to Isolated before placing its first order."}
+              </p>
+            </>
           )}
           <details className="at-rekey">
             <summary>Replace API keys</summary>

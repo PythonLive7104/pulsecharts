@@ -75,13 +75,20 @@ class BrokerTestView(APIView):
         try:
             client = BybitClient(cred.api_key, cred.api_secret, testnet=cred.testnet)
             equity = client.get_wallet_equity_usdt()
+            # Surfaced so the user can SEE whether losses are capped per-trade, rather
+            # than discovering the account was on cross margin after a bad fill.
+            margin_mode = client.get_margin_mode()
         except crypto.BrokerCryptoError as exc:
             return Response({"ok": False, "detail": str(exc)},
                             status=status.HTTP_503_SERVICE_UNAVAILABLE)
         except BybitError as exc:
             return Response({"ok": False, "detail": str(exc)},
                             status=status.HTTP_400_BAD_REQUEST)
-        return Response({"ok": True, "testnet": cred.testnet, "usdt_equity": equity})
+        return Response({
+            "ok": True, "testnet": cred.testnet, "usdt_equity": equity,
+            "margin_mode": margin_mode,
+            "isolated": margin_mode == BybitClient.ISOLATED,
+        })
 
 
 class TradeExecutionListView(generics.ListAPIView):

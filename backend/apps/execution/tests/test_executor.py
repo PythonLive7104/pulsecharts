@@ -13,7 +13,7 @@ from django.test import TestCase, override_settings
 from django.utils import timezone
 
 from apps.execution import crypto
-from apps.execution.bybit import Instrument
+from apps.execution.bybit import BybitError, Instrument
 from apps.execution.models import BrokerCredential, TradeExecution
 from apps.market_data.models import Symbol
 from apps.signals.models import Signal, SignalService, UserSignalSubscription
@@ -34,9 +34,25 @@ class FakeBybit:
     cancels = []      # cancel_order calls
     positions = []    # what get_positions returns
     min_order_qty = 0.001
+    margin_mode = "REGULAR_MARGIN"   # accounts start on cross, like a real new account
+    margin_sets = []                 # modes passed to set_margin_mode
+    refuse_margin_switch = False     # simulate Bybit refusing (open positions/orders)
+
+    # Mirror the real client's constants so executor comparisons work unchanged.
+    ISOLATED = "ISOLATED_MARGIN"
+    CROSS = "REGULAR_MARGIN"
 
     def __init__(self, *a, **k):
         pass
+
+    def get_margin_mode(self):
+        return FakeBybit.margin_mode
+
+    def set_margin_mode(self, mode):
+        if FakeBybit.refuse_margin_switch:
+            raise BybitError("bybit refused margin mode: open positions exist")
+        FakeBybit.margin_sets.append(mode)
+        FakeBybit.margin_mode = mode
 
     def get_instrument(self, symbol):
         return Instrument(symbol=symbol, min_order_qty=FakeBybit.min_order_qty,
@@ -87,6 +103,9 @@ class ExecutorTests(TestCase):
         FakeBybit.cancels = []
         FakeBybit.positions = []
         FakeBybit.min_order_qty = 0.001
+        FakeBybit.margin_mode = "REGULAR_MARGIN"
+        FakeBybit.margin_sets = []
+        FakeBybit.refuse_margin_switch = False
         self.user = User.objects.create_user("t@example.com", "pw",
                                               plan_tier="pro",
                                               plan_expiry=timezone.now() + timedelta(days=30))
@@ -231,6 +250,58 @@ class ExecutorTests(TestCase):
         self.assertEqual(result["placed"], 1)
         self.assertEqual(TradeExecution.objects.filter(
             user=self.user, status=TradeExecution.Status.OPEN).count(), 1)
+
+    # --- isolated margin enforcement ---------------------------------------
+    def test_switches_account_to_isolated_before_placing(self):
+        # A fresh account sits on cross margin; the trade must not go out until the
+        # account is isolated, since sizing's liquidation estimate assumes it.
+        self._make_signal()
+        result = self._run()
+        self.assertEqual(result["placed"], 1)
+        self.assertEqual(FakeBybit.margin_sets, ["ISOLATED_MARGIN"])
+        self.assertEqual(FakeBybit.margin_mode, "ISOLATED_MARGIN")
+
+    def test_no_margin_write_when_already_isolated(self):
+        # Bybit refuses a mode switch while a position is open, so an unconditional
+        # write would break every trade after the first. Read first, write only if needed.
+        FakeBybit.margin_mode = "ISOLATED_MARGIN"
+        self._make_signal()
+        self._run()
+        self.assertEqual(FakeBybit.margin_sets, [])
+        self.assertEqual(len(FakeBybit.placed), 1)
+
+    def test_trade_rejected_when_isolated_switch_refused(self):
+        # If the account can't be isolated, placing anyway would trade a risk model the
+        # account doesn't implement — losses uncapped. Refuse the trade instead.
+        FakeBybit.refuse_margin_switch = True
+        self._make_signal()
+        result = self._run()
+        self.assertEqual(result.get("placed", 0), 0)
+        self.assertEqual(FakeBybit.placed, [])
+        ex = TradeExecution.objects.get(user=self.user)
+        self.assertEqual(ex.status, TradeExecution.Status.REJECTED)
+        self.assertIn("margin mode", ex.reason)
+
+    @override_settings(AUTO_TRADE_ISOLATED_MARGIN=False)
+    def test_margin_mode_untouched_when_enforcement_off(self):
+        # Opt-out leaves the account exactly as the user configured it.
+        self._make_signal()
+        result = self._run()
+        self.assertEqual(result["placed"], 1)
+        self.assertEqual(FakeBybit.margin_sets, [])
+        self.assertEqual(FakeBybit.margin_mode, "REGULAR_MARGIN")
+
+    def test_isolated_checked_once_across_a_batch(self):
+        # Two symbols in one run share a client; the mode read/write shouldn't repeat
+        # per signal.
+        eth = Symbol.objects.create(ticker="ETH-USD", hl_coin="ETH",
+                                    asset_class=Symbol.AssetClass.CRYPTO)
+        WatchlistItem.objects.create(user=self.user, symbol=eth, sort_order=1)
+        self._make_signal()
+        self._make_signal(symbol=eth)
+        result = self._run()
+        self.assertEqual(result["placed"], 2)
+        self.assertEqual(FakeBybit.margin_sets, ["ISOLATED_MARGIN"])
 
     # --- reconcile ---------------------------------------------------------
     def _open_execution(self, **over):

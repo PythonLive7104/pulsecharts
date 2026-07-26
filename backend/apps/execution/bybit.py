@@ -154,6 +154,42 @@ class BybitClient:
                 return float(coin.get("equity") or coin.get("walletBalance") or 0)
         return float(rows[0].get("totalEquity") or 0)
 
+    ISOLATED = "ISOLATED_MARGIN"
+    CROSS = "REGULAR_MARGIN"
+
+    def get_margin_mode(self) -> str:
+        """Account-level margin mode: ISOLATED_MARGIN | REGULAR_MARGIN (cross) |
+        PORTFOLIO_MARGIN.
+
+        On a Unified account this is an ACCOUNT setting, not per-symbol — Bybit's
+        per-symbol /v5/position/switch-isolated doesn't apply to UTA. Which is why
+        the executor reads it before trusting sizing.py's liquidation estimate: that
+        estimate uses the isolated formula ((1/L) - mmr), which only describes reality
+        when the account is actually isolated. Under cross, the whole balance backs
+        the position and a trade can lose far more than its margin.
+        """
+        info = self._request("GET", "/v5/account/info", {}, signed=True)
+        return info.get("marginMode") or ""
+
+    def set_margin_mode(self, mode: str) -> None:
+        """Switch the account's margin mode. Idempotent — re-setting the current mode
+        returns success, so there's no 'not modified' code to swallow.
+
+        Bybit can REFUSE the switch while still returning retCode 0, reporting why in
+        a ``reasons`` array (e.g. open positions or orders exist). Treat a non-empty
+        ``reasons`` as a failure, otherwise a refused switch would look like a success
+        and we'd place a trade believing losses are capped when they aren't.
+        """
+        result = self._request(
+            "POST", "/v5/account/set-margin-mode", {"setMarginMode": mode}, signed=True,
+        )
+        reasons = (result or {}).get("reasons") or []
+        if reasons:
+            detail = "; ".join(
+                r.get("reasonMsg") or r.get("reasonCode") or str(r) for r in reasons
+            )
+            raise BybitError(f"bybit refused margin mode {mode}: {detail}")
+
     def set_leverage(self, symbol: str, leverage: int) -> None:
         """Set both buy & sell leverage for a symbol. Bybit returns retCode 110043
         ('leverage not modified') when it's already at this value — a no-op, not an
