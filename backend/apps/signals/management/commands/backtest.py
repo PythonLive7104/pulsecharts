@@ -182,6 +182,11 @@ class Command(BaseCommand):
                             help="Override the overextension guard (ATR stretch beyond EMA21 "
                                  "that blocks a chase entry). 0 disables; live default is 2.0. "
                                  "Sweep to tune, e.g. --overext 1.5.")
+        parser.add_argument("--adx-min", type=float, default=None,
+                            help="Apply an ADX floor (proxy for the live regime filter's ADX "
+                                 "gate, which the backtest otherwise SKIPS). Only setups with "
+                                 "ADX >= this are traded — sweep to compare, e.g. 30 vs 25. "
+                                 "NOTE: ADX-only; live also has the EMA-separation chop filter.")
 
     def handle(self, *args, **opts):
         from apps.signals import pregate
@@ -262,7 +267,8 @@ class Command(BaseCommand):
                 if len(candles) < MIN_CANDLES + 5:
                     continue
                 self._run_series(sym, tf, candles, services, rb, llm, budget,
-                                 sym.asset_class, htf_structure_on, opts["candles"])
+                                 sym.asset_class, htf_structure_on, opts["candles"],
+                                 opts.get("adx_min"))
                 series += 1
                 self.stdout.write(f"  · {sym.ticker} {tf}", ending="\r")
             if llm_on and budget["left"] <= 0:
@@ -295,7 +301,8 @@ class Command(BaseCommand):
                 for j in range(len(hc) - 1)]
 
     def _run_series(self, sym, tf, candles, services, rb, llm, budget,
-                    asset_class="crypto", htf_structure_on=False, htf_limit=500):
+                    asset_class="crypto", htf_structure_on=False, htf_limit=500,
+                    adx_min=None):
         ticker = sym.ticker
         n = len(candles)
         threshold = settings.SIGNAL_MIN_CONFIDENCE
@@ -317,6 +324,13 @@ class Command(BaseCommand):
                 continue
             if snap.get("swing_high") is None or snap.get("swing_low") is None:
                 continue
+            # ADX floor — proxy for the live regime filter's ADX gate (which the
+            # backtest otherwise skips). ADX is symbol/timeframe-level, so gate the
+            # whole bar, matching how _regime_ok reads one ADX per (symbol, tf).
+            if adx_min is not None:
+                adx = snap.get("adx")
+                if adx is None or adx < adx_min:
+                    continue
             future = candles[i + 1:]
 
             htf_struct_now = None  # 'up' | 'down' | None (choppy) | 'SKIP' (no data)

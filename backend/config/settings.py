@@ -55,6 +55,7 @@ LOCAL_APPS = [
     "apps.chart_layouts",
     "apps.signals",  # v2 — trading signals (Section 13, 19, 20)
     "apps.alerts",   # v2 — price alerts (Section 12)
+    "apps.execution",  # v2 — Bybit auto-trade executor (OFF unless AUTO_TRADE_ENABLED)
 ]
 
 INSTALLED_APPS = DJANGO_APPS + THIRD_PARTY_APPS + LOCAL_APPS
@@ -249,6 +250,39 @@ if not TELEGRAM_WEBHOOK_SECRET and TELEGRAM_BOT_TOKEN:
     TELEGRAM_WEBHOOK_SECRET = hashlib.sha256(TELEGRAM_BOT_TOKEN.encode()).hexdigest()[:32]
 # How often the push task scans for new signals to send (seconds).
 TELEGRAM_PUSH_INTERVAL = env.float("TELEGRAM_PUSH_INTERVAL", default=120.0)
+
+# --- Auto-trade / broker execution (v2, apps.execution) -------------------
+# Places real Bybit orders from delivered signals. OFF by default: keep it off
+# until signal accuracy is validated and the legal/disclaimer review (Section
+# 13.7) is done — this moves real money. The tasks self-gate on this flag, so the
+# beat entries below are inert while it's false.
+AUTO_TRADE_ENABLED = env.bool("AUTO_TRADE_ENABLED", default=False)
+# Fernet key encrypting broker API secrets at rest (apps.execution.crypto).
+# Generate: python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
+BROKER_ENCRYPTION_KEY = env("BROKER_ENCRYPTION_KEY", default="")
+# Position sizing is FIXED-MARGIN, not a % of account balance: each trade commits a
+# fixed USDT margin (this default; a user's BrokerCredential.margin_per_trade_usd
+# overrides it), and leverage is auto-picked to clear the exchange minimum while
+# keeping liquidation beyond the stop (apps.execution.sizing). So the capital a single
+# trade risks is this margin, and total capital at risk ≈ margin × max_open_positions.
+AUTO_TRADE_DEFAULT_MARGIN_USD = env.float("AUTO_TRADE_DEFAULT_MARGIN_USD", default=1.0)
+# Per-user risk-envelope defaults (a user's BrokerCredential can override these).
+AUTO_TRADE_MAX_OPEN_POSITIONS = env.int("AUTO_TRADE_MAX_OPEN_POSITIONS", default=5)
+AUTO_TRADE_MAX_DAILY_TRADES = env.int("AUTO_TRADE_MAX_DAILY_TRADES", default=10)
+# Reject a trade if live price has drifted more than this % past the signal's entry.
+AUTO_TRADE_MAX_SLIPPAGE_PCT = env.float("AUTO_TRADE_MAX_SLIPPAGE_PCT", default=0.5)
+# Don't act on a signal older than this many seconds (stale setup).
+AUTO_TRADE_MAX_SIGNAL_AGE_SEC = env.int("AUTO_TRADE_MAX_SIGNAL_AGE_SEC", default=600)
+# Scale out a trade across TP1/TP2/TP3 (the 50/25/25 ladder of §19.2) as reduce-only
+# limit rungs, trailing the stop to breakeven after TP1 fills. When a position is too
+# small to split into placeable rungs, it falls back to a single full-position TP.
+AUTO_TRADE_SCALEOUT = env.bool("AUTO_TRADE_SCALEOUT", default=True)
+# The single take-profit level used ONLY in the fallback (scale-out off or position
+# too small to ladder): tp1 | tp2 | tp3.
+AUTO_TRADE_TP_LEVEL = env("AUTO_TRADE_TP_LEVEL", default="tp2")
+# How often the place / reconcile tasks run (seconds).
+AUTO_TRADE_PLACE_INTERVAL = env.float("AUTO_TRADE_PLACE_INTERVAL", default=120.0)
+AUTO_TRADE_RECONCILE_INTERVAL = env.float("AUTO_TRADE_RECONCILE_INTERVAL", default=60.0)
 
 # --- Admin / owner referral code ------------------------------------------
 # The special referral code that grants new signups a 30-day Starter plan (and
@@ -542,6 +576,16 @@ CELERY_BEAT_SCHEDULE = {
     "notify-expired-plans": {
         "task": "apps.accounts.tasks.notify_expired_plans",
         "schedule": env.float("EXPIRY_NOTICE_INTERVAL", default=3600.0),  # hourly
+    },
+    # Auto-trade executor (v2). Both self-gate on AUTO_TRADE_ENABLED, so these are
+    # inert no-ops until the feature is switched on.
+    "place-auto-trades": {
+        "task": "apps.execution.tasks.place_auto_trades",
+        "schedule": env.float("AUTO_TRADE_PLACE_INTERVAL", default=120.0),
+    },
+    "reconcile-positions": {
+        "task": "apps.execution.tasks.reconcile_positions",
+        "schedule": env.float("AUTO_TRADE_RECONCILE_INTERVAL", default=60.0),
     },
 }
 

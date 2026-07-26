@@ -30,6 +30,9 @@ export default function AccountLayout() {
           <NavLink to="/account/billing" className={({ isActive }) => (isActive ? "active" : "")}>
             Plan &amp; Billing
           </NavLink>
+          <NavLink to="/account/auto-trade" className={({ isActive }) => (isActive ? "active" : "")}>
+            Auto-Trade
+          </NavLink>
         </nav>
         <section className="account-content">
           <Outlet />

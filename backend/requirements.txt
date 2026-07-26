@@ -33,3 +33,7 @@ djangorestframework-simplejwt>=5.3
 # --- v2 Trading Signals (Section 13, 20) ---
 openai>=1.50
 celery>=5.4
+
+# --- v2 Auto-trade / broker execution (apps.execution) ---
+# Fernet encryption for broker API secrets at rest (BROKER_ENCRYPTION_KEY).
+cryptography>=42.0

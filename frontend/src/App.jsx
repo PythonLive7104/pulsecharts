@@ -10,6 +10,7 @@ import ProtectedRoute from "./components/ProtectedRoute";
 import AccountLayout from "./components/AccountLayout";
 import ProfilePage from "./pages/account/ProfilePage";
 import BillingPage from "./pages/account/BillingPage";
+import AutoTradePage from "./pages/account/AutoTradePage";
 import SignalsPage from "./pages/SignalsPage";
 import AlertsPage from "./pages/AlertsPage";
 import BillingSuccessPage from "./pages/BillingSuccessPage";
@@ -75,6 +76,7 @@ export default function App() {
         <Route index element={<Navigate to="profile" replace />} />
         <Route path="profile" element={<ProfilePage />} />
         <Route path="billing" element={<BillingPage />} />
+        <Route path="auto-trade" element={<AutoTradePage />} />
       </Route>
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>

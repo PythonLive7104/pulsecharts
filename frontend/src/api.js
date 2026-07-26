@@ -169,6 +169,13 @@ export const api = {
   telegramDisconnect: () => request("/me/telegram/disconnect/", { method: "POST" }),
   telegramReconnect: () => request("/me/telegram/reconnect/", { method: "POST" }),
 
+  // --- auto-trade / Bybit broker execution (v2, premium) ---
+  broker: () => request("/me/broker/"),
+  saveBroker: (payload) => request("/me/broker/", { method: "PUT", body: payload }),
+  disconnectBroker: () => request("/me/broker/", { method: "DELETE" }),
+  testBroker: () => request("/me/broker/test/", { method: "POST" }),
+  trades: () => request("/me/trades/"),
+
   // --- landing-page support chat (public, no LLM — curated knowledge base) ---
   supportSuggestions: () => request("/support/chat/", { auth: false }),
   supportChat: (message) =>
