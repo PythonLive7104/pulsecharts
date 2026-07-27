@@ -67,7 +67,23 @@ say "$c_info" "▶ Registering Telegram webhook…"
 docker compose exec -T web python manage.py set_telegram_webhook \
   || say "$c_warn" "  Telegram webhook not set (token unconfigured?) — continuing."
 
-# 6. Done -------------------------------------------------------------------
+# 6. Reclaim disk ------------------------------------------------------------
+# Every --build leaves the superseded image layers dangling and adds a build-cache
+# entry, and nothing here ever cleaned them up: on a 40GB VPS that is what eventually
+# fills the disk — mid-build, so the deploy fails with "no space left on device"
+# rather than anything pointing at the cause. Runs AFTER the stack is up so a prune
+# can never race the build. `image prune` only removes dangling (untagged) images,
+# never one a container is using. The cache is trimmed to 2GB, not emptied, so the
+# next rebuild still hits warm layers.
+# Flag note: buildx >= 0.17 renamed --keep-storage to --reserved-space (the old name
+# still works but warns on every deploy). Try the new one, fall back for older Docker.
+say "$c_info" "▶ Reclaiming disk (dangling images + build cache)…"
+docker image prune -f || say "$c_warn" "  image prune skipped."
+docker builder prune -f --reserved-space 2g 2>/dev/null \
+  || docker builder prune -f --keep-storage 2g \
+  || say "$c_warn" "  build-cache prune skipped."
+
+# 7. Done -------------------------------------------------------------------
 say "$c_ok" "✓ PulseCharts is up to date and running."
 docker compose ps
 say "$c_info" "First deploy only — create an admin login:"
