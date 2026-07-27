@@ -348,6 +348,23 @@ SIGNAL_REGIME_FILTER_ENABLED = env.bool("SIGNAL_REGIME_FILTER_ENABLED", default=
 # range trades). Raise toward 30 to be stricter; lower if volume drops too far.
 SIGNAL_ADX_MIN = env.float("SIGNAL_ADX_MIN", default=28.0)
 
+# Per-weekday override of SIGNAL_ADX_MIN (apps/signals/tasks._adx_min_now). Early in
+# the week the market ranges more, so the standard 25 trend line lets chop setups
+# through; Mon/Tue therefore demand a stronger trend than Wed–Fri. Keys are
+# datetime.weekday() (Mon=0 … Sun=6) evaluated in UTC (TIME_ZONE), which runs 1h
+# behind Lagos time — a scan at 00:30 Mon in Lagos still counts as Sunday here.
+# Set a day to 0 to fall back to SIGNAL_ADX_MIN. Sat/Sun default to the fallback
+# because both markets are normally skipped then (SIGNAL_SKIP_CRYPTO_WEEKEND).
+SIGNAL_ADX_MIN_BY_WEEKDAY = {
+    0: env.float("SIGNAL_ADX_MIN_MON", default=30.0),
+    1: env.float("SIGNAL_ADX_MIN_TUE", default=30.0),
+    2: env.float("SIGNAL_ADX_MIN_WED", default=25.0),
+    3: env.float("SIGNAL_ADX_MIN_THU", default=25.0),
+    4: env.float("SIGNAL_ADX_MIN_FRI", default=25.0),
+    5: env.float("SIGNAL_ADX_MIN_SAT", default=0.0),
+    6: env.float("SIGNAL_ADX_MIN_SUN", default=0.0),
+}
+
 # Chop filter (apps/signals/tasks._regime_ok): minimum EMA9–EMA21 separation as a
 # multiple of ATR. In a range the fast EMAs bunch/flatten; demanding a real gap
 # rejects those setups. 0 disables. 0.5 = moderately strict; raise for fewer range

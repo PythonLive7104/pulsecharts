@@ -100,13 +100,22 @@ def _htf_structure_ok(sym, tf: str, direction: str, cache: dict) -> bool:
     return struct == want
 
 
+def _adx_min_now() -> float:
+    """The ADX floor in force for today (UTC). Mon/Tue run stricter than Wed–Fri —
+    the early week ranges more, and the standard trend line lets that chop through.
+    Falls back to SIGNAL_ADX_MIN for any weekday left at 0. Read per call rather than
+    cached so a long-lived worker picks up the change when the day rolls over."""
+    by_day = getattr(settings, "SIGNAL_ADX_MIN_BY_WEEKDAY", None) or {}
+    return by_day.get(timezone.now().weekday()) or settings.SIGNAL_ADX_MIN
+
+
 def _regime_ok(sym, tf: str, direction: str, indicators: dict, htf_cache: dict,
                strategy_slug: str | None = None) -> bool:
     """True if the market is trending (ADX), not chopping (EMA separation), and the
     higher timeframe agrees with `direction`. Fails open on a higher-timeframe fetch
     error so a transient API hiccup doesn't silence the whole feed."""
     adx = indicators.get("adx")
-    if adx is None or adx < settings.SIGNAL_ADX_MIN:
+    if adx is None or adx < _adx_min_now():
         return False
     # Chop filter: in a range the fast EMAs bunch together / flatten. Require EMA9 &
     # EMA21 to be separated by at least SIGNAL_EMA_SEP_MIN_ATR × ATR — a flat/tangled
