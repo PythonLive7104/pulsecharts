@@ -288,9 +288,18 @@ class ReferralCode(models.Model):
         user.referred_by_code = self.code
         fields = ["referred_by_code"]
         if self.grants_signup_plan:
-            user.plan_tier = self.grant_tier
-            user.plan_expiry = timezone.now() + timedelta(days=self.grant_days)
-            fields += ["plan_tier", "plan_expiry"]
+            # Never shorten access the user somehow already has: a null expiry on a
+            # paid tier means "never expires", and a longer expiry outranks this
+            # grant. Normally a no-op at signup — this only guards the case where
+            # redeem() is applied to an account that already has a plan.
+            granted_until = timezone.now() + timedelta(days=self.grant_days)
+            paid_forever = user.plan_expiry is None and user.plan_tier != PlanTier.FREE
+            if not paid_forever and (
+                user.plan_expiry is None or user.plan_expiry < granted_until
+            ):
+                user.plan_tier = self.grant_tier
+                user.plan_expiry = granted_until
+                fields += ["plan_tier", "plan_expiry"]
         user.save(update_fields=fields)
 
         ReferralCode.objects.filter(pk=self.pk).update(used_count=F("used_count") + 1)

@@ -39,6 +39,7 @@ from apps.accounts.plans import (
     PURCHASE_OPTIONS,
     has_perpetual_access,
     is_lifetime_purchaser,
+    plan_key,
     plan_rank,
     tier_granted_by,
 )
@@ -307,7 +308,12 @@ class WebhookView(APIView):
         granted = tier_granted_by(plan)  # lifetime -> pro
         tier = PlanTier.PRO if granted == PRO else PlanTier.STARTER
         # A null renewal/expiry is what marks access as permanent.
-        renewal = None if lifetime else timezone.now() + timedelta(days=GRANT_DAYS)
+        # Paid time EXTENDS whatever paid time is left instead of replacing it —
+        # buying the next month on day 20 must not vaporise those 20 days. (Trial
+        # promo codes deliberately don't stack; money does.)
+        now = timezone.now()
+        base = user.plan_expiry if (user.plan_expiry and user.plan_expiry > now) else now
+        renewal = None if lifetime else base + timedelta(days=GRANT_DAYS)
 
         # Never demote someone whose access already never expires — a later
         # Starter/Pro payment must not hand a permanent account a 31-day expiry.
@@ -315,6 +321,11 @@ class WebhookView(APIView):
             renewal = None
             if plan_rank(user.plan_tier) > plan_rank(tier):
                 tier = user.plan_tier
+        # Same rule for a still-active TIMED plan: an active Pro user who buys Starter
+        # keeps Pro over the extended window instead of being dropped a tier by their
+        # own payment. plan_key() is expiry-aware, so a lapsed Pro doesn't count.
+        elif plan_rank(plan_key(user)) > plan_rank(tier):
+            tier = user.plan_tier
 
         Subscription.objects.update_or_create(
             user=user,

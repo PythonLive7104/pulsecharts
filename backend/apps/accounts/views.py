@@ -191,9 +191,14 @@ class RedeemPromoCodeView(APIView):
 
     Grants the plan the entered code maps to for a fixed window so invited users
     can trial premium: settings.ADMIN_PRO_CODE → Pro (ADMIN_PRO_DAYS), or
-    settings.ADMIN_STARTER_CODE → Starter (ADMIN_STARTER_DAYS). One redemption per
-    user per code value (tracked separately, so a user may redeem each once);
-    rotating a code opens a fresh window. Not tied to credits or the referral graph.
+    settings.ADMIN_STARTER_CODE → Starter (ADMIN_STARTER_DAYS).
+
+    ONE redemption per account, ever — not per code value. The trial is meant to be
+    a single taste of premium, so a user who has redeemed any access code is done:
+    they can't redeem the other tier's code, and rotating a code value no longer
+    re-opens the door for people who already used the old one. Which code was used
+    is still recorded (pro_/starter_promo_code_used) for support and auditing.
+    Not tied to credits or the referral graph.
     """
 
     def post(self, request):
@@ -230,10 +235,16 @@ class RedeemPromoCodeView(APIView):
         code, tier, days, field, label = match
 
         user = request.user
-        # One grant per code value — don't let the same code be re-redeemed to stack days.
-        if (getattr(user, field) or "").upper() == code.upper():
+        # One access code per account, full stop. Checking BOTH fields (not just the
+        # one this code writes) is what makes that true: the old per-field check let
+        # the same person redeem the Starter code and then the Pro code, and let
+        # anyone redeem again the moment a code value was rotated.
+        already = (user.pro_promo_code_used or "").strip() or (
+            user.starter_promo_code_used or ""
+        ).strip()
+        if already:
             return Response(
-                {"detail": "You've already redeemed this code."},
+                {"detail": "You've already redeemed an access code."},
                 status=status.HTTP_400_BAD_REQUEST,
             )
         # Never downgrade: a user on an active higher tier redeeming a lower-tier
@@ -252,10 +263,16 @@ class RedeemPromoCodeView(APIView):
             )
 
         now = timezone.now()
-        # Extend from the current expiry if still active, otherwise start fresh.
-        base = user.plan_expiry if (user.plan_expiry and user.plan_expiry > now) else now
+        # A trial grant gives exactly its own window, measured from today — it does
+        # NOT stack onto time the user already has. Stacking made a "30-day" code land
+        # 45 days out for anyone with time left, which reads as a bug to the redeemer
+        # and quietly hands out more than the code advertises. It still never
+        # SHORTENS a longer plan (max), so a user with 6 months left keeps them.
+        granted_until = now + timedelta(days=days)
         user.plan_tier = tier
-        user.plan_expiry = base + timedelta(days=days)
+        user.plan_expiry = (
+            max(user.plan_expiry, granted_until) if user.plan_expiry else granted_until
+        )
         setattr(user, field, code)
         user.save(update_fields=["plan_tier", "plan_expiry", field])
 

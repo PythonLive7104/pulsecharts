@@ -141,7 +141,9 @@ export default function BillingPage() {
           {neverExpires ? (
             <span className="muted">Never expires</span>
           ) : isPremium && expiry ? (
-            <span className="muted">Renews {new Date(expiry).toLocaleDateString()}</span>
+            /* "Renews" was wrong: billing is one-time payments with a timed grant —
+               nothing auto-renews, so this date is when access ENDS. */
+            <span className="muted">Access until {new Date(expiry).toLocaleDateString()}</span>
           ) : null}
         </div>
         <p className="muted">
@@ -161,6 +163,7 @@ export default function BillingPage() {
         <p className="muted">
           Got an invite code? Redeem it to unlock a <strong>premium plan</strong> and trial the
           premium features — including building your own AI strategies.
+          One code per account.
         </p>
         <div className="promo-redeem">
           <input
@@ -340,7 +343,9 @@ export default function BillingPage() {
                   Started {new Date(h.created_at).toLocaleDateString()}
                 </span>
                 <span className="muted bh-date">
-                  {h.renewal_date ? `Renews ${new Date(h.renewal_date).toLocaleDateString()}` : "—"}
+                  {h.renewal_date
+                    ? `Access until ${new Date(h.renewal_date).toLocaleDateString()}`
+                    : "—"}
                 </span>
               </div>
             ))}
