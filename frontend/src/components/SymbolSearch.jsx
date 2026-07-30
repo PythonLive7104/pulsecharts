@@ -5,12 +5,12 @@ import { useNavigate } from "react-router-dom";
 import { useStore } from "../store/useStore";
 import { planAllows } from "../lib/plans";
 
-const MAX_RESULTS = 50; // cap the rendered list for snappy filtering
-// Rows the watched block gets while there is anything left to add. Kept small enough
-// that the "Not added yet" section is reachable without a long scroll: an account
-// watching most of the roster (Pro seeds every symbol) would otherwise fill all
-// MAX_RESULTS rows with "✓ Added" and have nothing to ADD.
-const WATCHED_SLOTS = 8;
+// High enough to render the whole roster: every symbol of the selected asset class
+// is listed, in the app's curated order, watchlisted or not. Ordering deliberately
+// does NOT float watchlisted symbols to the top — reordering (or capping) the list
+// meant symbols moved or vanished as you added/removed them. The panel scrolls and
+// the ✓ Added chip marks membership, so nothing is hidden and nothing jumps.
+const MAX_RESULTS = 400;
 
 export default function SymbolSearch() {
   const symbols = useStore((s) => s.symbols);
@@ -31,13 +31,14 @@ export default function SymbolSearch() {
   const [query, setQuery] = useState("");
   const [highlight, setHighlight] = useState(0);
   const boxRef = useRef(null);
+  const listRef = useRef(null);
 
   const watchedTickers = useMemo(
     () => new Set(watchlist.map((it) => it.symbol.ticker)),
     [watchlist]
   );
 
-  const results = useMemo(() => {
+  const rows = useMemo(() => {
     const q = query.trim().toUpperCase();
     // Scope to the selected asset class (Crypto/Forex), then text-filter.
     const scoped = symbols.filter((s) => (s.asset_class || "crypto") === assetClass);
@@ -48,26 +49,10 @@ export default function SymbolSearch() {
             (s.display_name || "").toUpperCase().includes(q)
         )
       : scoped;
-    // Watchlisted symbols float to the top — the picker doubles as "the symbols I
-    // actually trade". But the watched block only gets the WHOLE list when there is
-    // nothing left to add; otherwise it yields slots so the not-yet-added symbols
-    // are always reachable (that's the whole point of the Add button).
-    const watched = list.filter((s) => watchedTickers.has(s.ticker));
-    const rest = list.filter((s) => !watchedTickers.has(s.ticker));
-    // Only when there is nothing to add does the watched block take the whole list.
-    const watchedSlots = rest.length > 0 ? WATCHED_SLOTS : MAX_RESULTS;
-    const shownWatched = watched.slice(0, watchedSlots);
-    const shownRest = rest.slice(0, Math.max(MAX_RESULTS - shownWatched.length, 0));
-    return {
-      rows: [...shownWatched, ...shownRest],
-      watchedShown: shownWatched.length,
-      watchedTotal: watched.length,
-      restTotal: rest.length,
-    };
-  }, [symbols, query, assetClass, watchedTickers]);
+    return list.slice(0, MAX_RESULTS);
+  }, [symbols, query, assetClass]);
 
-  const rows = results.rows;
-  const watchedCount = results.watchedShown;
+  const watchedShown = rows.filter((s) => watchedTickers.has(s.ticker)).length;
 
   // Close on outside click.
   useEffect(() => {
@@ -77,6 +62,22 @@ export default function SymbolSearch() {
     document.addEventListener("mousedown", onClick);
     return () => document.removeEventListener("mousedown", onClick);
   }, []);
+
+  // Keep the highlighted row in view — the list is long enough now that arrow-key
+  // navigation would otherwise walk off the bottom of the panel invisibly.
+  useEffect(() => {
+    if (!open) return;
+    const el = listRef.current?.querySelector(`[data-idx="${highlight}"]`);
+    el?.scrollIntoView({ block: "nearest" });
+  }, [highlight, open]);
+
+  function openList() {
+    setOpen(true);
+    clearWatchError();
+    // Start on the symbol currently charted, so a long list opens where you are.
+    const i = rows.findIndex((s) => s.ticker === activeSymbol);
+    setHighlight(i >= 0 ? i : 0);
+  }
 
   function choose(sym) {
     // `sym` may be a ticker string (keyboard path) or the symbol object.
@@ -96,7 +97,7 @@ export default function SymbolSearch() {
 
   // Add/Remove toggle: adds/removes without selecting the symbol or closing the
   // list, so a user can curate their whole watchlist in one pass.
-  function onStar(e, s) {
+  function onToggleWatch(e, s) {
     e.preventDefault();
     e.stopPropagation();
     toggleWatchlist(s.ticker);
@@ -104,7 +105,7 @@ export default function SymbolSearch() {
 
   function onKeyDown(e) {
     if (!open && (e.key === "ArrowDown" || e.key === "Enter")) {
-      setOpen(true);
+      openList();
       return;
     }
     if (e.key === "ArrowDown") {
@@ -131,11 +132,7 @@ export default function SymbolSearch() {
         className="symbol-search-input"
         value={open ? query : ""}
         placeholder={activeSymbol || "Search symbol…"}
-        onFocus={() => {
-          setOpen(true);
-          setHighlight(0);
-          clearWatchError();
-        }}
+        onFocus={openList}
         onChange={(e) => {
           setQuery(e.target.value);
           setOpen(true);
@@ -144,27 +141,22 @@ export default function SymbolSearch() {
         onKeyDown={onKeyDown}
       />
       {open && (
-        <ul className="symbol-results">
+        <ul className="symbol-results" ref={listRef}>
           {watchError && <li className="symbol-watch-error">{watchError}</li>}
           {rows.length === 0 && <li className="muted no-match">No matches</li>}
+          {rows.length > 0 && (
+            <li className="symbol-group">
+              {rows.length} {assetClass === "forex" ? "pairs" : "coins"} · {watchedShown} in
+              your watchlist
+            </li>
+          )}
           {rows.map((s, i) => {
             const locked = !planAllows(planKey, s.min_plan);
             const watched = watchedTickers.has(s.ticker);
-            // Header rows split the watchlisted block from everything else. The
-            // first says how much of the watchlist is shown, so a truncated block
-            // reads as "type to find the rest", not "that's all of it".
-            const header =
-              watchedCount > 0 && i === 0
-                ? results.watchedTotal > watchedCount
-                  ? `In your watchlist · ${watchedCount} of ${results.watchedTotal} — type to find others`
-                  : "In your watchlist"
-                : watchedCount > 0 && i === watchedCount
-                ? "Not added yet"
-                : null;
             return (
               <li key={s.id} className="symbol-result-wrap">
-                {header && <div className="symbol-group">{header}</div>}
                 <div
+                  data-idx={i}
                   className={`symbol-result ${i === highlight ? "highlight" : ""} ${
                     s.ticker === activeSymbol ? "current" : ""
                   } ${locked ? "locked" : ""} ${watched ? "watched" : ""}`}
@@ -188,7 +180,7 @@ export default function SymbolSearch() {
                       title={watched ? "Remove from watchlist" : "Add to watchlist"}
                       aria-label={watched ? "Remove from watchlist" : "Add to watchlist"}
                       aria-pressed={watched}
-                      onMouseDown={(e) => onStar(e, s)}
+                      onMouseDown={(e) => onToggleWatch(e, s)}
                       onClick={(e) => e.stopPropagation()}
                     >
                       {/* Watched rows read "✓ Added", and flip to "Remove" on hover
@@ -201,14 +193,6 @@ export default function SymbolSearch() {
               </li>
             );
           })}
-          {/* Nothing left to add is a state worth stating — otherwise a list of all
-              "✓ Added" rows looks like the picker is broken. */}
-          {rows.length > 0 && results.restTotal === 0 && (
-            <li className="symbol-foot muted">
-              Every {assetClass === "forex" ? "pair" : "coin"} we track is already in your
-              watchlist.
-            </li>
-          )}
         </ul>
       )}
     </div>
