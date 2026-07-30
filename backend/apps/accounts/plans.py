@@ -166,6 +166,12 @@ _ALIASES = {"premium": PRO}
 
 PAID_TIERS = {STARTER, PRO}
 
+# Every *stored* plan_tier value that means "paid", legacy aliases included. Use this
+# when filtering rows by tier (admin, reporting): PAID_TIERS alone misses the legacy
+# "premium" value, which plan_key() resolves to Pro — those users would be counted
+# as Free by a query that doesn't know about the alias.
+PAID_TIER_VALUES = frozenset(PAID_TIERS | {k for k, v in _ALIASES.items() if v in PAID_TIERS})
+
 # Tiers from least to most privileged. Used to compare a user's plan against a
 # minimum-plan requirement (e.g. a Pro-only symbol — apps.market_data).
 PLAN_ORDER = [FREE, STARTER, PRO]
