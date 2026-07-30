@@ -77,8 +77,8 @@ export default function SymbolSearch() {
     setOpen(false);
   }
 
-  // Star toggle: adds/removes without selecting the symbol or closing the list,
-  // so a user can curate their whole watchlist in one pass.
+  // Add/Remove toggle: adds/removes without selecting the symbol or closing the
+  // list, so a user can curate their whole watchlist in one pass.
   function onStar(e, s) {
     e.preventDefault();
     e.stopPropagation();
@@ -163,14 +163,17 @@ export default function SymbolSearch() {
                   {isAuthed && !locked && (
                     <button
                       type="button"
-                      className={`result-star ${watched ? "on" : ""}`}
+                      className={`result-add ${watched ? "on" : ""}`}
                       title={watched ? "Remove from watchlist" : "Add to watchlist"}
                       aria-label={watched ? "Remove from watchlist" : "Add to watchlist"}
                       aria-pressed={watched}
                       onMouseDown={(e) => onStar(e, s)}
                       onClick={(e) => e.stopPropagation()}
                     >
-                      {watched ? "★" : "☆"}
+                      {/* Watched rows read "✓ Added", and flip to "Remove" on hover
+                          so the click's effect is never a guess. */}
+                      <span className="add-label">{watched ? "✓ Added" : "+ Add"}</span>
+                      {watched && <span className="add-label-hover">Remove</span>}
                     </button>
                   )}
                 </div>

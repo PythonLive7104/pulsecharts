@@ -610,6 +610,9 @@ a.brand:hover { text-decoration: none; }
   right: 0;
   max-height: 320px;
   overflow-y: auto;
+  /* Wider than the input: the input is narrow, and at that width every display
+     name wrapped to two lines and squeezed the star toggle. */
+  min-width: min(340px, 88vw);  /* capped so it can't overflow a phone screen */
   background: var(--bg-elev);
   border: 1px solid var(--border);
   border-radius: 8px;
@@ -622,17 +625,26 @@ a.brand:hover { text-decoration: none; }
 .symbol-result {
   display: flex;
   justify-content: space-between;
-  align-items: baseline;
+  align-items: center;
   gap: 10px;
-  padding: 7px 9px;
+  padding: 5px 5px 5px 9px;  /* tighter on the right — the star button pads itself */
   border-radius: 6px;
   cursor: pointer;
 }
 .symbol-result.highlight { background: var(--accent); color: #fff; }
 .symbol-result.current .result-ticker::after { content: " ●"; color: var(--green); }
 .symbol-result.highlight .result-name { color: #fff; }
-.result-ticker { font-weight: 600; font-size: 13px; }
-.result-name { color: var(--muted); font-size: 12px; margin-right: auto; }
+.result-ticker { font-weight: 600; font-size: 13px; flex: 0 0 auto; white-space: nowrap; }
+/* One line per row, ellipsised — a wrapped name pushed the star out of reach. */
+.result-name {
+  color: var(--muted);
+  font-size: 12px;
+  margin-right: auto;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
 .symbol-result.locked { opacity: 0.9; }
 .result-lock {
   font-size: 10px;
@@ -658,20 +670,42 @@ a.brand:hover { text-decoration: none; }
   border-top: 1px solid var(--border);
   margin-top: 4px;
 }
-.result-star {
-  background: none;
-  border: 0;
-  padding: 0 2px;
-  font-size: 14px;
+/* A labelled button, not a glyph: "+ Add" states its action outright and gives a
+   comfortable (touch-sized) hit target next to the row. */
+.result-add {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  min-width: 62px;
+  height: 26px;
+  padding: 0 10px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--bg);
+  color: var(--text);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
   line-height: 1;
   cursor: pointer;
-  color: var(--muted);
-  opacity: 0.55;
+  transition: background 0.12s ease, border-color 0.12s ease, color 0.12s ease;
 }
-.result-star.on { color: #e0a106; opacity: 1; }
-.symbol-result:hover .result-star { opacity: 1; }
-.symbol-result.highlight .result-star { color: #fff; opacity: 1; }
-.symbol-result.highlight .result-star.on { color: #ffd66b; }
+.result-add:hover { border-color: var(--accent); color: var(--accent); }
+.result-add:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.result-add.on { color: var(--green); border-color: var(--green); }
+/* Swap the label on hover so a click on an added row is never a guess. */
+.result-add .add-label-hover { display: none; }
+.result-add.on:hover { color: var(--red); border-color: var(--red); }
+.result-add.on:hover .add-label { display: none; }
+.result-add.on:hover .add-label-hover { display: inline; }
+/* On the highlighted (keyboard/hover) row the chip sits on the accent fill. */
+.symbol-result.highlight .result-add {
+  background: rgba(255, 255, 255, 0.16);
+  border-color: rgba(255, 255, 255, 0.45);
+  color: #fff;
+}
+.symbol-result.highlight .result-add:hover { background: rgba(255, 255, 255, 0.3); color: #fff; }
 .symbol-watch-error { padding: 7px 9px; font-size: 12px; color: var(--red); }
 /* Crypto/Forex asset-class toggle in the symbol bar. */
 .asset-toggle {
