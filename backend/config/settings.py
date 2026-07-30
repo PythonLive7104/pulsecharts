@@ -524,6 +524,12 @@ SIGNAL_SKIP_CRYPTO_WEEKEND = env.bool("SIGNAL_SKIP_CRYPTO_WEEKEND", default=True
 # this is the per-user gap, so 7 = at most one reminder a week. 0 disables nudges.
 SIGNAL_UPGRADE_NUDGE_DAYS = env.int("SIGNAL_UPGRADE_NUDGE_DAYS", default=7)
 
+# How long a BRAND-NEW free account keeps signal access (its plan's
+# signal_trial_weekly_quota) before signals become paid-only. Measured from signup;
+# once per account, so a lapsed paid plan never re-enters it. 0 disables the trial
+# entirely (free accounts get no signals from day one).
+SIGNAL_FREE_TRIAL_DAYS = env.int("SIGNAL_FREE_TRIAL_DAYS", default=30)
+
 # Cap how many symbols a single scan evaluates. 0 = all active (the default).
 #
 # The cap existed to control LLM cost, but the engine now runs SIGNAL_ENGINE_MODE=rules

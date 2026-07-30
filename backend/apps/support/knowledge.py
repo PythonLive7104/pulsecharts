@@ -53,8 +53,10 @@ KNOWLEDGE = [
             "Yes — the free tier is genuinely free, no card required. It includes "
             "live crypto & forex charts, every timeframe, unlimited symbol "
             "switching, the SMA/EMA/Volume indicators and a 20-coin watchlist. "
-            "Trading signals are part of the paid plans: Starter and Pro add the "
-            "signal feed, the advanced indicators, and Telegram alerts."
+            "New accounts also get trading signals free for their first 30 days "
+            "(up to 20/week) so you can see the feed for yourself. After that, "
+            "signals continue on Starter and Pro, which also add the advanced "
+            "indicators and Telegram alerts."
         ),
     },
     {
@@ -152,9 +154,10 @@ KNOWLEDGE = [
             "score. A setup only surfaces when several "
             "strategies agree on it. The idea is to bank a partial at each target and "
             "move your stop to break-even after TP1; you also get an update if a "
-            "trade's trend flips and the setup is invalidated. Signals are paid-only: "
-            "Starter gets up to 400/week and Pro unlimited, both with Telegram "
-            "alerts. They're informational only, not financial advice."
+            "trade's trend flips and the setup is invalidated. New accounts get "
+            "signals free for 30 days (up to 20/week); after that Starter gets up "
+            "to 400/week and Pro unlimited, both with Telegram alerts. They're "
+            "informational only, not financial advice."
         ),
     },
     {

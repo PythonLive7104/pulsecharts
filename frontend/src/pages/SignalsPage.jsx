@@ -177,25 +177,36 @@ export default function SignalsPage() {
   // Free, which includes every lapsed Starter/Pro. Signals are paid-only.
   const locked = Boolean(feed?.locked);
 
-  // Upsell inside the feed is Starter-only now: Starter has a weekly cap worth
-  // upgrading past, Pro is unlimited, and Free never reaches this branch (it gets
-  // the locked card instead). The copy sharpens once the cap is used up.
+  // Days left in a new free account's signal trial (null once it's over / N/A).
+  // A free user only reaches the feed at all while this is running.
+  const trialDaysLeft = feed?.trial_days_left ?? entitlements?.signal_trial_days_left ?? null;
+  const onTrial = trialDaysLeft != null;
+
+  // Upsell inside the feed: Starter (capped, worth upgrading past) and free users
+  // still inside their trial (whose access is about to end). Pro is unlimited, so
+  // it never shows. The copy sharpens once the cap is used up.
   const planKey = entitlements?.plan_key;
-  const showUpsell = planKey === "starter";
+  const showUpsell = planKey === "starter" || onTrial;
   const usedThisWeek = feed?.delivered_this_week ?? 0;
   const atCap = quota != null && quota !== -1 && usedThisWeek >= quota;
   const upsell = showUpsell ? (
     <div className="upgrade-banner">
       <div className="ub-text">
         <strong>
-          {atCap
-            ? "You've reached this week's signal limit"
-            : `${entitlements?.plan_label || "Free"} plan · ${usedThisWeek} of ${quota} signals this week`}
+          {onTrial
+            ? `Free trial · ${trialDaysLeft} day${trialDaysLeft === 1 ? "" : "s"} of signals left`
+            : atCap
+              ? "You've reached this week's signal limit"
+              : `${entitlements?.plan_label || "Free"} plan · ${usedThisWeek} of ${quota} signals this week`}
         </strong>
-        <span className="muted">Upgrade to Pro for unlimited signals.</span>
+        <span className="muted">
+          {onTrial
+            ? `${usedThisWeek} of ${quota} this week. When the trial ends, signals stop unless you're on Starter or Pro.`
+            : "Upgrade to Pro for unlimited signals."}
+        </span>
       </div>
       <Link to="/account/billing" className="btn-primary">
-        Upgrade to Pro
+        {onTrial ? "Choose a plan" : "Upgrade to Pro"}
       </Link>
     </div>
   ) : null;
@@ -303,17 +314,18 @@ export default function SignalsPage() {
           <div className="signals-locked">
             <div className="lock-card">
               <div className="lock-icon">🔒</div>
-              <h1>Trading Signals</h1>
+              <h1>{feed?.trial_expired ? "Your free trial has ended" : "Trading Signals"}</h1>
               <p className="muted">
-                Buy/sell signals with entry, stop-loss and TP1–TP3 targets, a confidence
-                score and the reasoning behind each call are included on the
-                <strong> Starter</strong> and <strong>Pro</strong> plans.
+                {feed?.trial_expired
+                  ? "Your 30 days of free signals are up. New setups are still being found — you'll start seeing them again on a paid plan."
+                  : "Buy/sell signals with entry, stop-loss and TP1–TP3 targets, a confidence score and the reasoning behind each call are included on the Starter and Pro plans."}
               </p>
               {/* Named separately from the generic "Upgrade" so a lapsed user reads it
                   as "choose a plan", not "you already had this". */}
               <p className="muted lock-plans">
                 Choose Starter for the full signal feed, or Pro for unlimited signals,
-                every strategy and your own AI-built strategies.
+                every strategy and your own AI-built strategies. Got an access code from
+                us? Redeem it on the billing page.
               </p>
               <Link to="/account/billing" className="btn-primary btn-lg">
                 Choose Starter or Pro

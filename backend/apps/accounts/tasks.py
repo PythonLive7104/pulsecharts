@@ -87,11 +87,13 @@ def _format_expiry_notice() -> str:
     return "\n".join([
         "⌛ <b>Your plan has expired</b>",
         "",
-        "Your subscription has ended, so you'll no longer receive trading "
-        "signals here on Telegram.",
+        "Your plan has ended, so you'll no longer receive trading signals — "
+        "not here on Telegram, and not in the app.",
         "",
-        "Resubscribe to keep getting buy/sell signals delivered to your "
-        f"Telegram every day:\n👉 {subscribe_url}",
+        # Names the two plans explicitly: "resubscribe" alone doesn't tell someone
+        # coming off Starter that Pro is the other option.
+        "Upgrade to <b>Starter</b> or <b>Pro</b> to start receiving them again:"
+        f"\n👉 {subscribe_url}",
         "",
         "<i>Informational only. Not financial advice.</i>",
     ])

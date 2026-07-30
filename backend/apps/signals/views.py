@@ -34,6 +34,8 @@ from .models import (
 from .quota import (
     SIGNAL_QUOTA_WINDOW,
     custom_strategy_quota_for,
+    free_trial_days_left,
+    free_trial_expired,
     signal_quota_for,
     strategies_allowed_for,
 )
@@ -364,6 +366,10 @@ class SignalFeedView(APIView):
     def get(self, request):
         user = request.user
         quota = signal_quota_for(user)
+        # Days left in a new free account's signal trial (None once it's over or
+        # never applied). Surfaced so the UI can count the trial down instead of
+        # letting it end as an unexplained lockout.
+        trial_days_left = free_trial_days_left(user)
         now = timezone.now()
         week_cutoff = now - SIGNAL_QUOTA_WINDOW  # rolling 7-day quota window
 
@@ -387,13 +393,17 @@ class SignalFeedView(APIView):
             "resumes_at": _next_market_open().isoformat(),
         }
 
-        # No signal access (quota 0) → locked upgrade card instead of a feed. This is
-        # the Free path: signals are the paid product, and because plan_key is
-        # expiry-aware, every LAPSED Starter/Pro lands here the moment their plan ends.
+        # No signal access (quota 0) → locked upgrade card instead of a feed. Reached
+        # by a free account whose signup trial has run out, and — because plan_key is
+        # expiry-aware — by every LAPSED Starter/Pro the moment their plan ends.
         if quota == 0:
             return Response({
                 "locked": True,
                 "quota": 0,
+                # True once a new account has USED its free trial, so the card can say
+                # "your trial has ended" rather than "signals are premium" to someone
+                # who has been receiving them all month.
+                "trial_expired": free_trial_expired(user),
                 "delivered_this_week": 0,
                 "signals": [],
                 "disclaimer": "Trading signals are included on the Starter and Pro plans.",
@@ -583,6 +593,9 @@ class SignalFeedView(APIView):
         return Response(
             {
                 "quota": quota,
+                # Non-null only while a new free account is inside its signup trial —
+                # the UI counts it down so the cut-off isn't a surprise lockout.
+                "trial_days_left": trial_days_left,
                 "delivered_this_week": delivered_this_week,
                 "signals": SignalSerializer(active, many=True).data,
                 "signals_total": active_total,

@@ -45,6 +45,11 @@ PLANS: dict[str, dict] = {
         # the free tier (which includes every LAPSED paid plan — plan_key is
         # expiry-aware) previews the app, not the signals.
         "signal_weekly_quota": 0,   # signals/week in the feed (-1 = unlimited)
+        # ...except for the first SIGNAL_FREE_TRIAL_DAYS of a brand-new account, which
+        # gets this instead so a new signup can actually see what they'd be buying
+        # (quota.free_trial_days_left). Once per account: a lapsed paid user never
+        # falls back into it.
+        "signal_trial_weekly_quota": 20,
         "watchlist_limit": 20,
         "layout_limit": 1,
         "default_watchlist": 20,    # symbols pre-loaded at signup (onboarding)
@@ -58,7 +63,8 @@ PLANS: dict[str, dict] = {
             "Live candlestick charts, all timeframes",
             "SMA, EMA & Volume overlays",
             "Starter watchlist of 20 coins, ready to go",
-            "Trading signals on Starter & Pro",
+            "Trading signals free for your first 30 days",
+            "After that, signals continue on Starter & Pro",
         ],
     },
     STARTER: {

@@ -45,6 +45,7 @@ class EntitlementsView(APIView):
 
     def get(self, request):
         from apps.accounts.plans import has_perpetual_access, is_lifetime_purchaser, plan_for
+        from apps.signals.quota import free_trial_days_left, signal_quota_for
 
         user = request.user
         plan = plan_for(user)
@@ -66,7 +67,12 @@ class EntitlementsView(APIView):
             # it would be refused anyway. Never grants anything on its own — the API
             # re-checks is_staff server-side.
             "is_staff": user.is_staff,
-            "signal_weekly_quota": plan["signal_weekly_quota"],  # Section 13.3 (-1 = unlimited)
+            # signal_quota_for(), NOT plan["signal_weekly_quota"]: a new free account
+            # inside its signup trial has a live quota the raw plan value doesn't show,
+            # and the UI reads this to render "x of N signals this week".
+            "signal_weekly_quota": signal_quota_for(user),  # Section 13.3 (-1 = unlimited)
+            # Days left in that trial (null when it doesn't apply).
+            "signal_trial_days_left": free_trial_days_left(user),
             "strategies_allowed": plan["strategies"],
             "watchlist_limit": plan["watchlist_limit"],
             "layout_limit": plan["layout_limit"],
