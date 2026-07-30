@@ -212,14 +212,16 @@ a.brand:hover { text-decoration: none; }
 .features h2 { margin-bottom: 12px; }  /* tighter — a subtitle follows */
 /* Fixed 4-col (not auto-fit) so the two hero cards can span exactly half a row:
    heroes fill row 1, the eight standard cards land as two clean rows of four. */
-.feature-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 20px; }
-.feature.hero { grid-column: span 2; }
+.feature-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 20px; }
+/* NB: `feature-hero`, not `hero` — `.hero` is the landing hero SECTION (a 2-col
+   grid with negative margins), and a card carrying that class inherits all of it. */
+.feature.feature-hero { grid-column: span 2; }
 @media (max-width: 1000px) {
   .feature-grid { grid-template-columns: repeat(2, 1fr); }
 }
 @media (max-width: 620px) {
   .feature-grid { grid-template-columns: 1fr; }
-  .feature.hero { grid-column: auto; }
+  .feature.feature-hero { grid-column: auto; }
 }
 .feature h3 { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
 .feature-tag {
@@ -250,7 +252,7 @@ a.brand:hover { text-decoration: none; }
 }
 /* Hero = the two cards that differentiate the product. Accent framing does the
    "read this one first" work that a uniform 10-card grid can't. */
-.feature.hero {
+.feature.feature-hero {
   border-color: var(--accent);
   box-shadow: 0 6px 20px rgba(0, 0, 0, 0.06);
 }
@@ -266,7 +268,7 @@ a.brand:hover { text-decoration: none; }
   font-size: 24px;
   margin-bottom: 14px;
 }
-.feature.hero .feature-icon { border-color: var(--accent); }
+.feature-hero .feature-icon { border-color: var(--accent); }
 .feature h3 { margin: 0 0 8px; color: var(--text-strong); }
 .feature p { margin: 0; color: var(--muted); font-size: 14px; line-height: 1.55; }
 .feature-points {

@@ -203,7 +203,7 @@ export default function LandingPage() {
           {/* The two cards that actually differentiate the product get hero
               treatment: double width, accent framing, and their specifics as a
               scannable list instead of a paragraph nobody finishes. */}
-          <div className="feature hero">
+          <div className="feature feature-hero">
             <div className="feature-icon">🤖</div>
             <h3>Algorithmic trading signals <span className="feature-tag premium">Premium</span></h3>
             <p>An always-on engine scans the strategies you follow across <strong>both crypto and forex</strong>, and only surfaces the setups that clear its confidence bar — no firehose of noise.</p>
@@ -215,7 +215,7 @@ export default function LandingPage() {
             </ul>
             <p className="feature-note">Informational only, never financial advice.</p>
           </div>
-          <div className="feature hero">
+          <div className="feature feature-hero">
             <div className="feature-icon">🧠</div>
             <h3>Build your own strategy with AI <span className="feature-tag premium">Pro</span></h3>
             <p><strong>Describe a strategy in plain English</strong> — "buy when RSI drops below 30 and price is above the 200 EMA" — and the AI turns your words into a live strategy.</p>
