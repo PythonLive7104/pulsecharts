@@ -210,7 +210,17 @@ a.brand:hover { text-decoration: none; }
 .features { padding: 56px 0; }
 .features h2, .pricing h2 { margin-bottom: 36px; }
 .features h2 { margin-bottom: 12px; }  /* tighter — a subtitle follows */
-.feature-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 20px; }
+/* Fixed 4-col (not auto-fit) so the two hero cards can span exactly half a row:
+   heroes fill row 1, the eight standard cards land as two clean rows of four. */
+.feature-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 20px; }
+.feature.hero { grid-column: span 2; }
+@media (max-width: 1000px) {
+  .feature-grid { grid-template-columns: repeat(2, 1fr); }
+}
+@media (max-width: 620px) {
+  .feature-grid { grid-template-columns: 1fr; }
+  .feature.hero { grid-column: auto; }
+}
 .feature h3 { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
 .feature-tag {
   font-size: 11px;
@@ -230,10 +240,57 @@ a.brand:hover { text-decoration: none; }
   border-radius: 12px;
   padding: 28px 22px;
   text-align: left;
+  /* Matches the .step cards — the feature grid was the only static one. */
+  transition: transform 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease;
 }
-.feature-icon { font-size: 28px; margin-bottom: 12px; }
+.feature:hover {
+  transform: translateY(-3px);
+  border-color: var(--accent);
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.08);
+}
+/* Hero = the two cards that differentiate the product. Accent framing does the
+   "read this one first" work that a uniform 10-card grid can't. */
+.feature.hero {
+  border-color: var(--accent);
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.06);
+}
+.feature-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 46px;
+  height: 46px;
+  border-radius: 12px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  font-size: 24px;
+  margin-bottom: 14px;
+}
+.feature.hero .feature-icon { border-color: var(--accent); }
 .feature h3 { margin: 0 0 8px; color: var(--text-strong); }
 .feature p { margin: 0; color: var(--muted); font-size: 14px; line-height: 1.55; }
+.feature-points {
+  margin: 12px 0 0;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  gap: 7px;
+}
+.feature-points li {
+  position: relative;
+  padding-left: 22px;
+  color: var(--muted);
+  font-size: 14px;
+  line-height: 1.5;
+}
+.feature-points li::before {
+  content: "✓";
+  position: absolute;
+  left: 0;
+  color: var(--green);
+  font-weight: 700;
+}
+.feature p.feature-note { margin-top: 14px; font-size: 12px; opacity: 0.75; }
 
 .pricing { padding: 32px 0 72px; text-align: center; }
 .plan-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 20px; max-width: 1080px; margin: 0 auto; }
@@ -584,6 +641,36 @@ a.brand:hover { text-decoration: none; }
 }
 .symbol-result.highlight .result-lock { color: #fff; }
 .no-match { padding: 8px 9px; }
+/* Watchlist inside the symbol picker: watched symbols float to the top under a
+   group header, and every row has a star that adds/removes without leaving the list. */
+.symbol-result-wrap { list-style: none; }
+.symbol-group {
+  padding: 7px 9px 3px;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+.symbol-result-wrap + .symbol-result-wrap .symbol-group {
+  border-top: 1px solid var(--border);
+  margin-top: 4px;
+}
+.result-star {
+  background: none;
+  border: 0;
+  padding: 0 2px;
+  font-size: 14px;
+  line-height: 1;
+  cursor: pointer;
+  color: var(--muted);
+  opacity: 0.55;
+}
+.result-star.on { color: #e0a106; opacity: 1; }
+.symbol-result:hover .result-star { opacity: 1; }
+.symbol-result.highlight .result-star { color: #fff; opacity: 1; }
+.symbol-result.highlight .result-star.on { color: #ffd66b; }
+.symbol-watch-error { padding: 7px 9px; font-size: 12px; color: var(--red); }
 /* Crypto/Forex asset-class toggle in the symbol bar. */
 .asset-toggle {
   display: inline-flex;

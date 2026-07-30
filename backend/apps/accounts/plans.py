@@ -69,16 +69,16 @@ PLANS: dict[str, dict] = {
         # means more setups clear the threshold.
         "strategies": 6,
         "signal_weekly_quota": 400,
-        "watchlist_limit": 40,
+        "watchlist_limit": 80,
         "layout_limit": 10,
-        "default_watchlist": 40,    # symbols pre-loaded at signup (onboarding)
+        "default_watchlist": 80,    # symbols pre-loaded at signup (onboarding)
         "default_strategies": 6,    # strategies followed by default
         "custom_strategies_per_month": 0,  # Pro-only feature
         "indicator_tiers": [FREE, STARTER],
         "features": [
             "Everything in Free",
             "RSI, MACD, Bollinger Bands & VWAP",
-            "Watchlist of 40 coins, set up for you",
+            "Watchlist of 80 coins, set up for you",
             "6 signal strategies followed by default",
             "Up to 400 signals/week",
             "Telegram signal alerts",
@@ -98,9 +98,15 @@ PLANS: dict[str, dict] = {
         # custom_strategies_per_month.
         "strategies": 13,
         "signal_weekly_quota": -1,
-        "watchlist_limit": 150,
+        # -1 = every symbol we track. Pro is the "watch the whole market" tier, so
+        # rather than a number that silently caps below the roster every time
+        # `sync_symbols` lists new perps, the cap is lifted entirely — you can never
+        # hold more than the symbols that exist anyway.
+        "watchlist_limit": -1,
         "layout_limit": 50,
-        "default_watchlist": 150,   # symbols pre-loaded at signup (onboarding)
+        # -1 mirrors the limit: seed EVERY active symbol, forex included (onboarding
+        # treats -1 as "all crypto + all forex"). Other tiers seed crypto only.
+        "default_watchlist": -1,    # symbols pre-loaded at signup (onboarding)
         "default_strategies": -1,   # follow every active strategy
         "custom_strategies_per_month": 5,  # create your own strategies (rolling 30d)
         "indicator_tiers": [FREE, STARTER, PRO],
@@ -108,7 +114,7 @@ PLANS: dict[str, dict] = {
             "Everything in Starter",
             "Build your own strategy with AI (up to 5/mo)",
             "Stochastic, ATR, Fibonacci & Ichimoku Cloud",
-            "Watchlist of 150 coins, set up for you",
+            "Watchlist of every coin & FX pair we track",
             "Every signal strategy followed by default",
             "Unlimited signals",
             "Telegram signal alerts",
@@ -142,7 +148,7 @@ LIFETIME_PLAN: dict = {
         "One payment — never expires, never renews",
         "Build your own strategy with AI (up to 5/mo)",
         "Every indicator: Stochastic, ATR, Fibonacci & Ichimoku Cloud",
-        "Watchlist of 150 coins, set up for you",
+        "Watchlist of every coin & FX pair we track",
         "Unlimited signals + Telegram alerts",
         "Save up to 50 chart layouts",
     ],

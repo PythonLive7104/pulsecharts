@@ -83,6 +83,11 @@ export const useStore = create((set, get) => ({
 
   // --- workspace ---
   symbols: [],
+  // The user's watchlist lives in the store rather than inside the Watchlist panel
+  // because two views need the same copy: the panel, and the symbol picker (which
+  // marks which symbols are already watched and toggles them inline).
+  watchlist: [],
+  watchError: null,
   // UI filter for the symbol search/picker: "crypto" | "forex". Transient.
   assetClass: "crypto",
   layout: _persisted?.layout || "1",
@@ -106,6 +111,7 @@ export const useStore = create((set, get) => ({
     await api.login(email, password);
     set({ isAuthed: true });
     await get().loadEntitlements();
+    await get().loadWatchlist();
   },
   async register(email, password, referralCode) {
     // No auto-login: new accounts are unverified and the token endpoint refuses
@@ -126,6 +132,8 @@ export const useStore = create((set, get) => ({
     set({
       isAuthed: false,
       entitlements: null,
+      watchlist: [],
+      watchError: null,
       layout: "1",
       panes: [pane],
       activePaneId: pane.id,
@@ -165,6 +173,57 @@ export const useStore = create((set, get) => ({
     }
     _serverSyncReady = true;
     await get().loadSymbols();
+    await get().loadWatchlist();
+  },
+
+  // --- watchlist actions ---
+  async loadWatchlist() {
+    if (!getToken()) {
+      set({ watchlist: [] });
+      return;
+    }
+    try {
+      set({ watchlist: await api.watchlist(), watchError: null });
+    } catch {
+      /* not authed yet / offline — leave what we have */
+    }
+  },
+
+  isWatched: (ticker) => get().watchlist.some((it) => it.symbol.ticker === ticker),
+
+  async addToWatchlist(ticker) {
+    const sym = get().symbols.find((s) => s.ticker === ticker);
+    if (!sym || get().isWatched(ticker)) return;
+    try {
+      set({ watchError: null });
+      await api.addWatch(sym.id);
+      await get().loadWatchlist();
+    } catch (e) {
+      // e.g. "Watchlist limit reached (80). Upgrade for more." or a plan-gated symbol.
+      set({ watchError: e.message });
+    }
+  },
+
+  async removeFromWatchlist(ticker) {
+    const item = get().watchlist.find((it) => it.symbol.ticker === ticker);
+    if (!item) return;
+    try {
+      set({ watchError: null });
+      await api.removeWatch(item.id);
+      await get().loadWatchlist();
+    } catch (e) {
+      set({ watchError: e.message });
+    }
+  },
+
+  toggleWatchlist(ticker) {
+    return get().isWatched(ticker)
+      ? get().removeFromWatchlist(ticker)
+      : get().addToWatchlist(ticker);
+  },
+
+  clearWatchError() {
+    if (get().watchError) set({ watchError: null });
   },
 
   async loadSymbols() {

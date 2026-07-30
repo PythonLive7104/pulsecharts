@@ -58,7 +58,8 @@ def provision_default_setup(user, as_plan: str | None = None, include_forex: boo
     """Seed `user` with a default watchlist + followed strategies for their plan.
 
     - Watchlist: the top N active *crypto* symbols (by curated sort order), where
-      N is the plan's `default_watchlist`.
+      N is the plan's `default_watchlist`. N = -1 (Pro) means every active symbol,
+      forex included.
     - Strategies: the top N active strategies by priority, where N is the plan's
       `default_strategies` (-1 = every active strategy).
 
@@ -86,14 +87,19 @@ def provision_default_setup(user, as_plan: str | None = None, include_forex: boo
     want_symbols = plan.get("default_watchlist", 0)
     added_symbols = 0
     if want_symbols:
+        # -1 = "every symbol we track" (Pro). Unlike the numeric tiers that seed a
+        # crypto-only top-N, this includes forex — it mirrors an uncapped
+        # watchlist_limit, so the seeded list IS the whole roster.
+        all_symbols = want_symbols == -1
+        if all_symbols:
+            include_forex = True
         existing_ids = set(
             WatchlistItem.objects.filter(user=user).values_list("symbol_id", flat=True)
         )
-        top_symbols = list(
-            Symbol.objects.filter(
-                is_active=True, asset_class=Symbol.AssetClass.CRYPTO
-            ).order_by("sort_order", "ticker")[:want_symbols]
-        )
+        crypto_qs = Symbol.objects.filter(
+            is_active=True, asset_class=Symbol.AssetClass.CRYPTO
+        ).order_by("sort_order", "ticker")
+        top_symbols = list(crypto_qs if all_symbols else crypto_qs[:want_symbols])
         if include_forex:
             top_symbols += list(
                 Symbol.objects.filter(

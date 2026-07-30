@@ -27,7 +27,8 @@ class WatchlistView(generics.ListCreateAPIView):
                 f"{symbol.ticker} is available on the {symbol.get_min_plan_display()} plan. Upgrade to add it."
             )
         limit = watchlist_limit_for(user)
-        if WatchlistItem.objects.filter(user=user).count() >= limit:
+        # -1 == unlimited (Pro): every symbol we track is fair game, so no cap check.
+        if limit != -1 and WatchlistItem.objects.filter(user=user).count() >= limit:
             raise ValidationError(
                 f"Watchlist limit reached ({limit}). Upgrade for more."
             )

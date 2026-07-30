@@ -1,47 +1,24 @@
 // Watchlist panel (Section 5, 12 — tier-capped server-side).
-import { useEffect, useState } from "react";
-import { api } from "../api";
+// The list itself lives in the store so this panel and the symbol picker
+// (SymbolSearch, which can add/remove inline) always agree.
+import { useEffect } from "react";
 import { useStore } from "../store/useStore";
 
 export default function Watchlist() {
   const isAuthed = useStore((s) => s.isAuthed);
   const activePane = useStore((s) => s.activePane());
   const activeSymbol = activePane?.symbol || null;
-  const symbols = useStore((s) => s.symbols);
   const selectSymbol = useStore((s) => s.selectSymbol);
 
-  const [items, setItems] = useState([]);
-  const [error, setError] = useState(null);
-
-  async function refresh() {
-    try {
-      setItems(await api.watchlist());
-    } catch {
-      /* not authed yet */
-    }
-  }
+  const items = useStore((s) => s.watchlist);
+  const error = useStore((s) => s.watchError);
+  const loadWatchlist = useStore((s) => s.loadWatchlist);
+  const addToWatchlist = useStore((s) => s.addToWatchlist);
+  const removeFromWatchlist = useStore((s) => s.removeFromWatchlist);
 
   useEffect(() => {
-    if (isAuthed) refresh();
-    else setItems([]);
-  }, [isAuthed]);
-
-  async function add() {
-    const sym = symbols.find((s) => s.ticker === activeSymbol);
-    if (!sym) return;
-    try {
-      setError(null);
-      await api.addWatch(sym.id);
-      refresh();
-    } catch (e) {
-      setError(e.message); // e.g. "Watchlist limit reached" / "already in watchlist"
-    }
-  }
-
-  async function remove(id) {
-    await api.removeWatch(id);
-    refresh();
-  }
+    loadWatchlist();
+  }, [isAuthed, loadWatchlist]);
 
   if (!isAuthed) {
     return (
@@ -57,7 +34,11 @@ export default function Watchlist() {
   return (
     <div className="panel">
       <h3>Watchlist</h3>
-      <button className="add-btn" onClick={add} disabled={!activeSymbol || alreadyWatched}>
+      <button
+        className="add-btn"
+        onClick={() => activeSymbol && addToWatchlist(activeSymbol)}
+        disabled={!activeSymbol || alreadyWatched}
+      >
         {alreadyWatched ? `✓ ${activeSymbol} in watchlist` : `+ Add ${activeSymbol || "symbol"}`}
       </button>
       {error && <p className="error">{error}</p>}
@@ -65,7 +46,7 @@ export default function Watchlist() {
         {items.map((it) => (
           <li key={it.id} className="watch-item">
             <span onClick={() => activePane && selectSymbol(activePane.id, it.symbol.ticker)}>{it.symbol.ticker}</span>
-            <button onClick={() => remove(it.id)}>×</button>
+            <button onClick={() => removeFromWatchlist(it.symbol.ticker)}>×</button>
           </li>
         ))}
         {items.length === 0 && <li className="muted">Empty</li>}

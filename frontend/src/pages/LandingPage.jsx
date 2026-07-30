@@ -193,61 +193,79 @@ export default function LandingPage() {
 
       {/* Feature deep-dive */}
       <section id="features" className="features">
-        <h2>Everything a crypto &amp; forex trader needs</h2>
+        <h2>Two markets, one workspace — with a signal engine built in</h2>
         <p className="section-sub">
-          A focused, fast charting workspace — live data, the indicators that matter,
-          algorithmic signals and the tools to act on them. Start free, upgrade when you want more.
+          Live crypto and forex charts, 11 indicators, and an always-on engine that watches
+          the strategies you follow and tells you the moment a setup fires.
+          Start free; upgrade when you want the signals.
         </p>
         <div className="feature-grid">
-          <div className="feature">
-            <div className="feature-icon">📈</div>
-            <h3>Real-time candlestick charts <span className="feature-tag free">Free</span></h3>
-            <p>Live OHLC candles for every Hyperliquid-listed coin <strong>and the major forex pairs</strong>, drawn with TradingView's lightweight-charts. Flip between 1m and 1d timeframes instantly, and the feed auto-reconnects if your connection drops — no frozen charts.</p>
-          </div>
-          <div className="feature">
-            <div className="feature-icon">🧮</div>
-            <h3>11 technical indicators <span className="feature-tag">Free + Premium</span></h3>
-            <p>SMA, EMA and Volume free forever. Unlock RSI, MACD, Bollinger Bands, Stochastic, ATR, VWAP, Fibonacci and Ichimoku Cloud on Premium — all computed in your browser against the live candle buffer, so they update tick-by-tick with zero lag.</p>
-          </div>
-          <div className="feature">
+          {/* The two cards that actually differentiate the product get hero
+              treatment: double width, accent framing, and their specifics as a
+              scannable list instead of a paragraph nobody finishes. */}
+          <div className="feature hero">
             <div className="feature-icon">🤖</div>
             <h3>Algorithmic trading signals <span className="feature-tag premium">Premium</span></h3>
-            <p>An always-on engine scans the strategies you follow — across <strong>both crypto and forex</strong> — and surfaces buy/sell signals, each with an entry, a stop-loss, three take-profit targets (TP1–TP3), risk/reward math and a plain-English reason it was flagged. Get them in-app or pushed straight to your <strong>Telegram</strong>, with trade updates when a target or stop is hit. Informational only, never financial advice.</p>
+            <p>An always-on engine scans the strategies you follow across <strong>both crypto and forex</strong>, and only surfaces the setups that clear its confidence bar — no firehose of noise.</p>
+            <ul className="feature-points">
+              <li>Entry, stop-loss and three take-profit targets (TP1–TP3)</li>
+              <li>Risk/reward math, in percent and in dollars per $100 traded</li>
+              <li>A plain-English reason the setup was flagged, and what invalidates it</li>
+              <li>Pushed to <strong>Telegram</strong>, with an update when a target or stop is hit</li>
+            </ul>
+            <p className="feature-note">Informational only, never financial advice.</p>
           </div>
-          <div className="feature">
+          <div className="feature hero">
             <div className="feature-icon">🧠</div>
             <h3>Build your own strategy with AI <span className="feature-tag premium">Pro</span></h3>
-            <p><strong>Describe a strategy in plain English</strong> — "buy when RSI drops below 30 and price is above the 200 EMA" — and our <strong>AI turns your words into a live trading strategy</strong>. It reads your intent, maps it to the right indicators (EMAs, RSI, MACD, Bollinger Bands, ADX, VWAP and more), and shows you exactly what it built before you save it. From then on the engine watches your coins around the clock and sends you its signals — in-app and on Telegram — just like the built-in strategies. No code, no formulas. Custom strategies aren't backtested; informational only, not financial advice.</p>
-          </div>
-          <div className="feature">
-            <div className="feature-icon">🔔</div>
-            <h3>Price alerts</h3>
-            <p>Set price-cross alerts on any coin and get notified the moment a level is hit — so you can step away from the screen and still catch the move you were waiting for.</p>
-          </div>
-          <div className="feature">
-            <div className="feature-icon">✏️</div>
-            <h3>Drawing tools</h3>
-            <p>Mark up charts with trendlines, levels and shapes. Annotations stay pinned to price as you pan and zoom, so your analysis is exactly where you left it next time.</p>
-          </div>
-          <div className="feature">
-            <div className="feature-icon">💾</div>
-            <h3>Saved chart layouts <span className="feature-tag premium">Premium</span></h3>
-            <p>Save any combination of symbol, timeframe and indicator preset, then reload your exact setup in one click. Keep multiple layouts for different coins and trading styles and pick up right where you left off.</p>
-          </div>
-          <div className="feature">
-            <div className="feature-icon">⭐</div>
-            <h3>Watchlists <span className="feature-tag free">Free</span></h3>
-            <p>Build a watchlist of the coins you actually trade and flip between them without losing your indicators or drawings. Reorder freely; your list and workspace sync across sessions and devices.</p>
-          </div>
-          <div className="feature">
-            <div className="feature-icon">🌗</div>
-            <h3>Dark & light themes <span className="feature-tag free">Free</span></h3>
-            <p>A clean, distraction-free interface built for long sessions. Switch between dark and light any time — your preference is remembered the next time you open the app.</p>
+            <p><strong>Describe a strategy in plain English</strong> — "buy when RSI drops below 30 and price is above the 200 EMA" — and the AI turns your words into a live strategy.</p>
+            <ul className="feature-points">
+              <li>Maps your intent to the right indicators, and shows you what it built before you save</li>
+              <li>Then runs around the clock on your symbols, like any built-in strategy</li>
+              <li>Its signals land in-app and on Telegram alongside the rest</li>
+              <li>No code, no formulas, no backtesting knowledge needed</li>
+            </ul>
+            <p className="feature-note">Custom strategies aren't backtested; informational only, not financial advice.</p>
           </div>
           <div className="feature">
             <div className="feature-icon">💱</div>
             <h3>Crypto + Forex <span className="feature-tag free">New</span></h3>
-            <p>Trade two markets in one fast workspace. Flip between Hyperliquid crypto and the major forex pairs (EUR/USD, GBP/USD, USD/JPY and more) with a single toggle — same charts, same indicators, same signals. Responsive on desktop and your phone.</p>
+            <p>Flip between Hyperliquid crypto and the major FX pairs with one toggle — same charts, same indicators, same signals.</p>
+          </div>
+          <div className="feature">
+            <div className="feature-icon">📈</div>
+            <h3>Real-time candlestick charts <span className="feature-tag free">Free</span></h3>
+            <p>Live OHLC candles from 1m to 1d, drawn with TradingView's lightweight-charts. The feed auto-reconnects if your connection drops — no frozen charts.</p>
+          </div>
+          <div className="feature">
+            <div className="feature-icon">🧮</div>
+            <h3>11 technical indicators <span className="feature-tag">Free + Premium</span></h3>
+            <p>SMA, EMA and Volume free forever. RSI, MACD, Bollinger Bands, Stochastic, ATR, VWAP, Fibonacci and Ichimoku on Premium — all computed in-browser, so they move tick-by-tick.</p>
+          </div>
+          <div className="feature">
+            <div className="feature-icon">⭐</div>
+            <h3>Watchlists <span className="feature-tag free">Free</span></h3>
+            <p>Star the coins and pairs you trade straight from the symbol search. Your list and workspace follow you across sessions and devices.</p>
+          </div>
+          <div className="feature">
+            <div className="feature-icon">🔔</div>
+            <h3>Price alerts <span className="feature-tag free">Free</span></h3>
+            <p>Set price-cross alerts on any coin or pair and get notified the moment a level is hit — step away from the screen without missing the move.</p>
+          </div>
+          <div className="feature">
+            <div className="feature-icon">✏️</div>
+            <h3>Drawing tools <span className="feature-tag free">Free</span></h3>
+            <p>Trendlines, levels and shapes that stay pinned to price as you pan and zoom — your analysis is where you left it next time.</p>
+          </div>
+          <div className="feature">
+            <div className="feature-icon">💾</div>
+            <h3>Saved chart layouts <span className="feature-tag premium">Premium</span></h3>
+            <p>Save a symbol, timeframe and indicator preset together, then reload the exact setup in one click — one layout per trading style.</p>
+          </div>
+          <div className="feature">
+            <div className="feature-icon">🌗</div>
+            <h3>Dark &amp; light themes <span className="feature-tag free">Free</span></h3>
+            <p>A clean, distraction-free interface built for long sessions. Switch any time — your preference is remembered.</p>
           </div>
         </div>
       </section>

@@ -13,6 +13,11 @@ export default function SymbolSearch() {
   const activePane = useStore((s) => s.activePane());
   const selectSymbol = useStore((s) => s.selectSymbol);
   const entitlements = useStore((s) => s.entitlements);
+  const isAuthed = useStore((s) => s.isAuthed);
+  const watchlist = useStore((s) => s.watchlist);
+  const toggleWatchlist = useStore((s) => s.toggleWatchlist);
+  const watchError = useStore((s) => s.watchError);
+  const clearWatchError = useStore((s) => s.clearWatchError);
   const navigate = useNavigate();
   const planKey = entitlements?.plan_key || "free";
   const activeSymbol = activePane?.symbol || null;
@@ -21,6 +26,11 @@ export default function SymbolSearch() {
   const [query, setQuery] = useState("");
   const [highlight, setHighlight] = useState(0);
   const boxRef = useRef(null);
+
+  const watchedTickers = useMemo(
+    () => new Set(watchlist.map((it) => it.symbol.ticker)),
+    [watchlist]
+  );
 
   const results = useMemo(() => {
     const q = query.trim().toUpperCase();
@@ -33,8 +43,14 @@ export default function SymbolSearch() {
             (s.display_name || "").toUpperCase().includes(q)
         )
       : scoped;
-    return list.slice(0, MAX_RESULTS);
-  }, [symbols, query, assetClass]);
+    // Watchlisted symbols float to the top (and so survive the MAX_RESULTS cap) —
+    // the picker doubles as "the symbols I actually trade", not just a raw list.
+    const watched = list.filter((s) => watchedTickers.has(s.ticker));
+    const rest = list.filter((s) => !watchedTickers.has(s.ticker));
+    return [...watched, ...rest].slice(0, MAX_RESULTS);
+  }, [symbols, query, assetClass, watchedTickers]);
+
+  const watchedCount = results.filter((s) => watchedTickers.has(s.ticker)).length;
 
   // Close on outside click.
   useEffect(() => {
@@ -61,6 +77,14 @@ export default function SymbolSearch() {
     setOpen(false);
   }
 
+  // Star toggle: adds/removes without selecting the symbol or closing the list,
+  // so a user can curate their whole watchlist in one pass.
+  function onStar(e, s) {
+    e.preventDefault();
+    e.stopPropagation();
+    toggleWatchlist(s.ticker);
+  }
+
   function onKeyDown(e) {
     if (!open && (e.key === "ArrowDown" || e.key === "Enter")) {
       setOpen(true);
@@ -75,6 +99,10 @@ export default function SymbolSearch() {
     } else if (e.key === "Enter") {
       e.preventDefault();
       if (results[highlight]) choose(results[highlight].ticker);
+    } else if (e.key === " " && e.ctrlKey) {
+      // Ctrl+Space toggles the highlighted row's watchlist membership.
+      e.preventDefault();
+      if (results[highlight]) toggleWatchlist(results[highlight].ticker);
     } else if (e.key === "Escape") {
       setOpen(false);
     }
@@ -89,6 +117,7 @@ export default function SymbolSearch() {
         onFocus={() => {
           setOpen(true);
           setHighlight(0);
+          clearWatchError();
         }}
         onChange={(e) => {
           setQuery(e.target.value);
@@ -99,28 +128,52 @@ export default function SymbolSearch() {
       />
       {open && (
         <ul className="symbol-results">
+          {watchError && <li className="symbol-watch-error">{watchError}</li>}
           {results.length === 0 && <li className="muted no-match">No matches</li>}
           {results.map((s, i) => {
             const locked = !planAllows(planKey, s.min_plan);
+            const watched = watchedTickers.has(s.ticker);
+            // Header rows split the watchlisted block from everything else.
+            const header =
+              watchedCount > 0 && i === 0
+                ? "In your watchlist"
+                : watchedCount > 0 && i === watchedCount
+                ? "All symbols"
+                : null;
             return (
-              <li
-                key={s.id}
-                className={`symbol-result ${i === highlight ? "highlight" : ""} ${
-                  s.ticker === activeSymbol ? "current" : ""
-                } ${locked ? "locked" : ""}`}
-                onMouseEnter={() => setHighlight(i)}
-                onMouseDown={(e) => {
-                  e.preventDefault(); // keep focus so onClick fires before blur
-                  choose(s);
-                }}
-              >
-                <span className="result-ticker">{s.ticker}</span>
-                <span className="result-name">{s.display_name}</span>
-                {locked && (
-                  <span className="result-lock" title="Upgrade to access">
-                    🔒 {(s.min_plan || "pro").toUpperCase()}
-                  </span>
-                )}
+              <li key={s.id} className="symbol-result-wrap">
+                {header && <div className="symbol-group">{header}</div>}
+                <div
+                  className={`symbol-result ${i === highlight ? "highlight" : ""} ${
+                    s.ticker === activeSymbol ? "current" : ""
+                  } ${locked ? "locked" : ""} ${watched ? "watched" : ""}`}
+                  onMouseEnter={() => setHighlight(i)}
+                  onMouseDown={(e) => {
+                    e.preventDefault(); // keep focus so onClick fires before blur
+                    choose(s);
+                  }}
+                >
+                  <span className="result-ticker">{s.ticker}</span>
+                  <span className="result-name">{s.display_name}</span>
+                  {locked && (
+                    <span className="result-lock" title="Upgrade to access">
+                      🔒 {(s.min_plan || "pro").toUpperCase()}
+                    </span>
+                  )}
+                  {isAuthed && !locked && (
+                    <button
+                      type="button"
+                      className={`result-star ${watched ? "on" : ""}`}
+                      title={watched ? "Remove from watchlist" : "Add to watchlist"}
+                      aria-label={watched ? "Remove from watchlist" : "Add to watchlist"}
+                      aria-pressed={watched}
+                      onMouseDown={(e) => onStar(e, s)}
+                      onClick={(e) => e.stopPropagation()}
+                    >
+                      {watched ? "★" : "☆"}
+                    </button>
+                  )}
+                </div>
               </li>
             );
           })}

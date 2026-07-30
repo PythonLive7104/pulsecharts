@@ -101,10 +101,12 @@ def _htf_structure_ok(sym, tf: str, direction: str, cache: dict) -> bool:
 
 
 def _adx_min_now() -> float:
-    """The ADX floor in force for today (UTC). Mon/Tue run stricter than Wed–Fri —
-    the early week ranges more, and the standard trend line lets that chop through.
-    Falls back to SIGNAL_ADX_MIN for any weekday left at 0. Read per call rather than
-    cached so a long-lived worker picks up the change when the day rolls over."""
+    """The ADX floor in force for today (UTC). Currently a flat SIGNAL_ADX_MIN every
+    day: SIGNAL_ADX_MIN_BY_WEEKDAY is parked at 0 across the board, and any weekday
+    left at 0 falls back to the base floor. Setting a day splits it out again (the
+    early week ranges more, so Mon/Tue running stricter is the usual reason to).
+    Read per call rather than cached so a long-lived worker picks up the change when
+    the day rolls over."""
     by_day = getattr(settings, "SIGNAL_ADX_MIN_BY_WEEKDAY", None) or {}
     return by_day.get(timezone.now().weekday()) or settings.SIGNAL_ADX_MIN
 

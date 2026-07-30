@@ -343,24 +343,24 @@ SIGNAL_PREGATE_ENABLED = env.bool("SIGNAL_PREGATE_ENABLED", default=True)
 # higher-timeframe trend. Keeps trend strategies out of chop. Runs before the
 # LLM call, so it also saves tokens.
 SIGNAL_REGIME_FILTER_ENABLED = env.bool("SIGNAL_REGIME_FILTER_ENABLED", default=True)
-# 28 (was 25→20): pushed above the standard 25 trend line to keep trades out of
-# ranging markets, where both tight and wide stops bleed (the user wants few/no
-# range trades). Raise toward 30 to be stricter; lower if volume drops too far.
-SIGNAL_ADX_MIN = env.float("SIGNAL_ADX_MIN", default=28.0)
+# 30 (was 28, 25, 20): well above the standard 25 trend line, to keep trades out of
+# ranging markets where both tight and wide stops bleed (the user wants few/no range
+# trades). This is the single floor for every day of the week — lower it if volume
+# drops too far.
+SIGNAL_ADX_MIN = env.float("SIGNAL_ADX_MIN", default=30.0)
 
-# Per-weekday override of SIGNAL_ADX_MIN (apps/signals/tasks._adx_min_now). Early in
-# the week the market ranges more, so the standard 25 trend line lets chop setups
-# through; Mon/Tue therefore demand a stronger trend than Wed–Fri. Keys are
-# datetime.weekday() (Mon=0 … Sun=6) evaluated in UTC (TIME_ZONE), which runs 1h
-# behind Lagos time — a scan at 00:30 Mon in Lagos still counts as Sunday here.
-# Set a day to 0 to fall back to SIGNAL_ADX_MIN. Sat/Sun default to the fallback
-# because both markets are normally skipped then (SIGNAL_SKIP_CRYPTO_WEEKEND).
+# Per-weekday override of SIGNAL_ADX_MIN (apps/signals/tasks._adx_min_now). Parked:
+# every day defaults to 0, i.e. "fall back to SIGNAL_ADX_MIN", so the floor is one
+# flat number. The mechanism stays because early-week sessions range more than
+# Wed–Fri, so splitting Mon/Tue out again is a one-value change.
+# Keys are datetime.weekday() (Mon=0 … Sun=6) evaluated in UTC (TIME_ZONE), which
+# runs 1h behind Lagos time — a scan at 00:30 Mon in Lagos still counts as Sunday.
 SIGNAL_ADX_MIN_BY_WEEKDAY = {
-    0: env.float("SIGNAL_ADX_MIN_MON", default=30.0),
-    1: env.float("SIGNAL_ADX_MIN_TUE", default=30.0),
-    2: env.float("SIGNAL_ADX_MIN_WED", default=25.0),
-    3: env.float("SIGNAL_ADX_MIN_THU", default=25.0),
-    4: env.float("SIGNAL_ADX_MIN_FRI", default=25.0),
+    0: env.float("SIGNAL_ADX_MIN_MON", default=0.0),
+    1: env.float("SIGNAL_ADX_MIN_TUE", default=0.0),
+    2: env.float("SIGNAL_ADX_MIN_WED", default=0.0),
+    3: env.float("SIGNAL_ADX_MIN_THU", default=0.0),
+    4: env.float("SIGNAL_ADX_MIN_FRI", default=0.0),
     5: env.float("SIGNAL_ADX_MIN_SAT", default=0.0),
     6: env.float("SIGNAL_ADX_MIN_SUN", default=0.0),
 }
