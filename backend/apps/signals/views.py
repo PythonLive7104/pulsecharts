@@ -387,16 +387,16 @@ class SignalFeedView(APIView):
             "resumes_at": _next_market_open().isoformat(),
         }
 
-        # A plan with no signal access (quota 0) gets a locked upgrade card. No
-        # current plan is 0 — Free gets a real 20/week feed — so this is a guard for
-        # any future no-access tier, not the Free path.
+        # No signal access (quota 0) → locked upgrade card instead of a feed. This is
+        # the Free path: signals are the paid product, and because plan_key is
+        # expiry-aware, every LAPSED Starter/Pro lands here the moment their plan ends.
         if quota == 0:
             return Response({
                 "locked": True,
                 "quota": 0,
                 "delivered_this_week": 0,
                 "signals": [],
-                "disclaimer": "Trading signals are a Premium feature.",
+                "disclaimer": "Trading signals are included on the Starter and Pro plans.",
             })
 
         # Shadow mode (Section 13.7): generate + evaluate but don't surface.

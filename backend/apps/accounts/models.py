@@ -91,6 +91,13 @@ class User(AbstractUser):
     # from this, so the next lapse notifies again — no reset needed at grant time.
     plan_expiry_notified_for = models.DateTimeField(null=True, blank=True)
 
+    # Last time the recurring "upgrade to keep getting signals" Telegram nudge went
+    # out. Distinct from plan_expiry_notified_for, which fires ONCE per lapse: this
+    # one repeats on an interval for as long as the user has no signal access, so it
+    # has to be a plain timestamp rather than keyed to an expiry value. Also covers
+    # never-paid users, who have no expiry to key on at all.
+    upgrade_nudge_sent_at = models.DateTimeField(null=True, blank=True)
+
     # Referral code used at signup (attribution); the grant itself is applied to
     # plan_tier/plan_expiry at registration time.
     referred_by_code = models.CharField(max_length=40, blank=True, default="")

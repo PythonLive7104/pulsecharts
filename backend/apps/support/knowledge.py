@@ -19,6 +19,7 @@ SUGGESTED_QUESTIONS = [
     "What's included in premium?",
     "Is there a lifetime deal?",
     "Do you offer trading signals?",
+    "How do referrals work?",
     "Why no signals on weekends?",
 ]
 
@@ -51,22 +52,24 @@ KNOWLEDGE = [
         "answer": (
             "Yes — the free tier is genuinely free, no card required. It includes "
             "live crypto & forex charts, every timeframe, unlimited symbol "
-            "switching, the SMA/EMA/Volume indicators, a 20-coin watchlist, 4 signal "
-            "strategies, and a taste of trading signals (up to 20/week). Starter and "
-            "Pro add the advanced indicators, more signals, and Telegram alerts."
+            "switching, the SMA/EMA/Volume indicators and a 20-coin watchlist. "
+            "Trading signals are part of the paid plans: Starter and Pro add the "
+            "signal feed, the advanced indicators, and Telegram alerts."
         ),
     },
     {
         "id": "premium",
-        "keywords": ["premium", "paid", "pro", "starter", "upgrade", "subscription", "plan", "plans", "what's included", "benefits"],
+        "keywords": ["premium", "paid", "pro", "starter", "upgrade", "subscription", "plan", "plans",
+                     "what's included", "what is included", "included in premium", "benefits"],
         "answer": (
-            "There are two paid tiers. Starter ($9) adds RSI, MACD, Bollinger "
-            "Bands and VWAP, up to 400 signals/week, Telegram alerts, 6 signal "
-            "strategies, and 10 saved layouts. Pro ($19) unlocks every indicator "
-            "(Stochastic, ATR, Fibonacci, Ichimoku Cloud), unlimited signals, "
-            "build-your-own-strategy with AI, and a 150-coin watchlist. Each is a "
-            "one-time payment for 30 days of access. Prefer to pay once? There's also "
-            "a Pro Lifetime option — ask me about the lifetime deal."
+            "There are two paid tiers. Starter ($9) adds the signal feed (up to "
+            "400/week) with Telegram alerts, RSI, MACD, Bollinger Bands and VWAP, "
+            "6 signal strategies, an 80-coin watchlist and 10 saved layouts. Pro "
+            "($19) unlocks every indicator (Stochastic, ATR, Fibonacci, Ichimoku "
+            "Cloud), unlimited signals, build-your-own-strategy with AI, a watchlist "
+            "of every symbol we track and 50 saved layouts. Each is a one-time "
+            "payment for 30 days of access. Prefer to pay once? There's also a Pro "
+            "Lifetime option — ask me about the lifetime deal."
         ),
     },
     {
@@ -94,7 +97,8 @@ KNOWLEDGE = [
             "Yes! Pro Lifetime is a single payment of $67 — that's 25% off the usual "
             "$89 — and it never expires. You get every Pro feature for life: all "
             "indicators, unlimited signals on crypto & forex, Telegram alerts, "
-            "build-your-own-AI-strategy, a 150-coin watchlist and 50 saved layouts, "
+            "build-your-own-AI-strategy, a watchlist of every symbol we track and "
+            "50 saved layouts, "
             "with nothing to renew. Grab it from the pricing section or your billing "
             "page while the discount lasts."
         ),
@@ -140,16 +144,17 @@ KNOWLEDGE = [
     },
     {
         "id": "signals",
-        "keywords": ["signal", "signals", "buy sell", "trade signal", "alerts", "strategy", "strategies", "confidence", "take profit", "stop loss", "tp1", "tp2", "tp3"],
+        "keywords": ["signal", "signals", "buy sell", "trade signal", "strategy", "strategies", "confidence", "take profit", "stop loss", "tp1", "tp2", "tp3"],
         "answer": (
-            "Algorithmic strategies scan tracked crypto AND forex pairs and surface "
-            "buy/sell setups with an entry, a stop-loss, three take-profit targets "
-            "(TP1/TP2/TP3) and a conviction score. A setup only surfaces when several "
+            "Six built-in strategies scan tracked crypto AND forex pairs on the 1h "
+            "and 4h timeframes, and surface buy/sell setups with an entry, a "
+            "stop-loss, three take-profit targets (TP1/TP2/TP3) and a conviction "
+            "score. A setup only surfaces when several "
             "strategies agree on it. The idea is to bank a partial at each target and "
             "move your stop to break-even after TP1; you also get an update if a "
-            "trade's trend flips and the setup is invalidated. Free gets a taste (up "
-            "to 20/week), Starter up to 400/week, and Pro unlimited — with Telegram "
-            "alerts on the paid tiers. They're informational only, not financial advice."
+            "trade's trend flips and the setup is invalidated. Signals are paid-only: "
+            "Starter gets up to 400/week and Pro unlimited, both with Telegram "
+            "alerts. They're informational only, not financial advice."
         ),
     },
     {
@@ -205,22 +210,83 @@ KNOWLEDGE = [
         "id": "layouts",
         "keywords": ["layout", "layouts", "save", "saved", "presets", "workspace"],
         "answer": (
-            "Saved chart layouts (symbol + timeframe + indicator setup) are a "
-            "premium feature, so you can jump straight back into your setups across "
-            "devices. The free tier keeps a single active chart."
+            "A saved layout stores a symbol, timeframe and indicator setup together "
+            "so you can reload it in one click, on any device. Free keeps 1 layout, "
+            "Starter 10 and Pro 50."
         ),
     },
     {
         "id": "watchlist",
         "keywords": ["watchlist", "watch list", "favourite", "favorite", "track coins"],
         "answer": (
-            "Every account gets a watchlist to save and reorder symbols. The free "
-            "tier has a capped number of symbols; premium expands it."
+            "Every account gets a watchlist to save and reorder symbols, and it's "
+            "set up for you at signup so you're not starting from an empty list. "
+            "Free holds 20 symbols, Starter 80, and Pro every symbol we track — "
+            "crypto and forex. Add or remove any symbol straight from the search "
+            "box above the chart."
+        ),
+    },
+    {
+        # Distinct from the "signals" entry: these are user-set price levels, not
+        # generated setups. Multi-word keywords ("price alert") outscore the single
+        # word "alerts" over there, so a price question lands here.
+        "id": "price_alerts",
+        "keywords": [
+            "price alert", "price alerts", "alert me", "notify me", "notify when",
+            "set an alert", "level alert", "price notification", "reach a price",
+        ],
+        "answer": (
+            "Price alerts are free on every plan. Set one on any coin or forex pair "
+            "and we'll notify you the moment price crosses your level, so you can "
+            "step away from the screen without missing the move. Set them from the "
+            "Alerts button in the dashboard."
+        ),
+    },
+    {
+        "id": "drawing_tools",
+        "keywords": [
+            "draw", "drawing", "drawing tools", "trendline", "trend line", "trendlines",
+            "annotate", "mark up", "fib tool", "shapes", "lines on chart",
+        ],
+        "answer": (
+            "Drawing tools are free on every plan: trendlines, rays, horizontal and "
+            "vertical levels, channels, Fibonacci and Elliott labels. Your drawings "
+            "stay pinned to price as you pan and zoom, and they're saved with your "
+            "workspace so they're still there next time."
+        ),
+    },
+    {
+        "id": "referrals",
+        "keywords": [
+            "refer", "referral", "referrals", "referral code", "invite", "invite a friend",
+            "share link", "earn", "earn credit", "credits", "free premium", "free pro",
+        ],
+        "answer": (
+            "Every account gets a personal referral code from the Plan & Billing "
+            "page. Share your link, and you earn $1 in credit each time someone "
+            "signs up with it. Credits can be redeemed for a plan once you've earned "
+            "enough — $9 for Starter, $19 for Pro — so a handful of referrals gets "
+            "you a paid month without paying."
+        ),
+    },
+    {
+        "id": "access_code",
+        "keywords": [
+            "access code", "invite code", "promo code", "promo", "coupon", "voucher",
+            "redeem code", "redeem a code", "code doesn't work", "code not working",
+        ],
+        "answer": (
+            "If you were given an access code, redeem it on the Plan & Billing page "
+            "and it unlocks a premium plan for a fixed trial window. It's one code "
+            "per account — once you've redeemed one, that's it, so a second code "
+            "won't apply. If a code is rejected, it's usually because it's been "
+            "rotated or you've already used one; contact us below and we'll check."
         ),
     },
     {
         "id": "telegram",
-        "keywords": ["telegram", "notification", "notifications", "push", "bot"],
+        "keywords": ["telegram", "telegram alert", "telegram alerts", "notification",
+                     "notifications", "push", "bot"],
         "answer": (
             "Starter and Pro members can connect a Telegram bot to receive new "
             "trading signals as push messages, capped by their plan's weekly limit "
@@ -230,7 +296,9 @@ KNOWLEDGE = [
     },
     {
         "id": "billing",
-        "keywords": ["billing", "payment", "pay", "card", "refund", "cancel", "cancellation", "invoice", "paystack", "dodo"],
+        "keywords": ["billing", "payment", "pay", "card", "refund", "cancel", "cancellation",
+                     "cancel my subscription", "cancel subscription", "how do i cancel",
+                     "invoice", "paystack", "dodo"],
         "answer": (
             "Payments are handled securely by Paystack. Each plan is a one-time "
             "payment that unlocks 30 days of access — nothing auto-renews and no "

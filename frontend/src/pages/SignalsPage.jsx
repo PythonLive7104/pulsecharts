@@ -173,16 +173,15 @@ export default function SignalsPage() {
 
   const quota = entitlements?.signal_weekly_quota;
   const quotaLabel = quota === -1 ? "Unlimited" : quota;
-  // Locked only when the server says this plan has no signal access (quota 0).
-  // Free/Starter get a (smaller) in-app feed + trade updates; the Telegram panel
-  // still pitches the premium upgrade.
+  // Locked when the server says this plan has no signal access (quota 0) — i.e.
+  // Free, which includes every lapsed Starter/Pro. Signals are paid-only.
   const locked = Boolean(feed?.locked);
 
-  // Plan-aware upsell: Free and Starter have a capped weekly feed (20 / 400), so
-  // nudge them to upgrade for more — Pro is unlimited, so it never shows. The
-  // copy sharpens once they've used up this week's allowance.
+  // Upsell inside the feed is Starter-only now: Starter has a weekly cap worth
+  // upgrading past, Pro is unlimited, and Free never reaches this branch (it gets
+  // the locked card instead). The copy sharpens once the cap is used up.
   const planKey = entitlements?.plan_key;
-  const showUpsell = planKey === "free" || planKey === "starter";
+  const showUpsell = planKey === "starter";
   const usedThisWeek = feed?.delivered_this_week ?? 0;
   const atCap = quota != null && quota !== -1 && usedThisWeek >= quota;
   const upsell = showUpsell ? (
@@ -193,14 +192,10 @@ export default function SignalsPage() {
             ? "You've reached this week's signal limit"
             : `${entitlements?.plan_label || "Free"} plan · ${usedThisWeek} of ${quota} signals this week`}
         </strong>
-        <span className="muted">
-          {planKey === "free"
-            ? "Upgrade to Starter for 400 signals/week and Telegram alerts — or Pro for unlimited."
-            : "Upgrade to Pro for unlimited signals."}
-        </span>
+        <span className="muted">Upgrade to Pro for unlimited signals.</span>
       </div>
       <Link to="/account/billing" className="btn-primary">
-        {planKey === "free" ? "Upgrade" : "Upgrade to Pro"}
+        Upgrade to Pro
       </Link>
     </div>
   ) : null;
@@ -310,10 +305,19 @@ export default function SignalsPage() {
               <div className="lock-icon">🔒</div>
               <h1>Trading Signals</h1>
               <p className="muted">
-                AI-generated buy/sell signals with entry, stop-loss, and TP1–TP3 targets,
-                confidence scores, and reasoning are included on the Starter &amp; Pro plans.
+                Buy/sell signals with entry, stop-loss and TP1–TP3 targets, a confidence
+                score and the reasoning behind each call are included on the
+                <strong> Starter</strong> and <strong>Pro</strong> plans.
               </p>
-              <Link to="/account/billing" className="btn-primary btn-lg">Upgrade</Link>
+              {/* Named separately from the generic "Upgrade" so a lapsed user reads it
+                  as "choose a plan", not "you already had this". */}
+              <p className="muted lock-plans">
+                Choose Starter for the full signal feed, or Pro for unlimited signals,
+                every strategy and your own AI-built strategies.
+              </p>
+              <Link to="/account/billing" className="btn-primary btn-lg">
+                Choose Starter or Pro
+              </Link>
             </div>
             {telegramPanel}
           </div>

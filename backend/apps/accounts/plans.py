@@ -40,7 +40,11 @@ PLANS: dict[str, dict] = {
         # ZERO signals, silently. Sits one ABOVE the floor so a free user has some
         # slack (any 3 of their 4 may agree) rather than needing unanimity.
         "strategies": 4,            # strategies a user can follow
-        "signal_weekly_quota": 20,  # signals/week in the feed (-1 = unlimited)
+        # 0 = NO signal access: the feed returns the locked upgrade card and Telegram
+        # sends an upgrade nudge instead of signals. Signals are the paid product, so
+        # the free tier (which includes every LAPSED paid plan — plan_key is
+        # expiry-aware) previews the app, not the signals.
+        "signal_weekly_quota": 0,   # signals/week in the feed (-1 = unlimited)
         "watchlist_limit": 20,
         "layout_limit": 1,
         "default_watchlist": 20,    # symbols pre-loaded at signup (onboarding)
@@ -54,8 +58,7 @@ PLANS: dict[str, dict] = {
             "Live candlestick charts, all timeframes",
             "SMA, EMA & Volume overlays",
             "Starter watchlist of 20 coins, ready to go",
-            "4 signal strategies followed for you",
-            "Up to 20 signals/week",
+            "Trading signals on Starter & Pro",
         ],
     },
     STARTER: {

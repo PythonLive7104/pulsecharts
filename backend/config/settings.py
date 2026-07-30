@@ -519,6 +519,11 @@ SIGNAL_TIMEFRAMES = env.list("SIGNAL_TIMEFRAMES", default=["1h", "4h"])
 # weekdays (Saturday worst at ~27%). On by default; set False to scan crypto 24/7.
 SIGNAL_SKIP_CRYPTO_WEEKEND = env.bool("SIGNAL_SKIP_CRYPTO_WEEKEND", default=True)
 
+# How often a Telegram-linked user with NO signal access (free / lapsed) is nudged
+# to upgrade — apps.accounts.tasks.run_upgrade_nudges. The beat task runs daily and
+# this is the per-user gap, so 7 = at most one reminder a week. 0 disables nudges.
+SIGNAL_UPGRADE_NUDGE_DAYS = env.int("SIGNAL_UPGRADE_NUDGE_DAYS", default=7)
+
 # Cap how many symbols a single scan evaluates. 0 = all active (the default).
 #
 # The cap existed to control LLM cost, but the engine now runs SIGNAL_ENGINE_MODE=rules
@@ -599,6 +604,13 @@ CELERY_BEAT_SCHEDULE = {
     "notify-expired-plans": {
         "task": "apps.accounts.tasks.notify_expired_plans",
         "schedule": env.float("EXPIRY_NOTICE_INTERVAL", default=3600.0),  # hourly
+    },
+    # Recurring "upgrade to get signals" nudge for Telegram-linked users with no
+    # signal access. Runs daily; the per-user interval (SIGNAL_UPGRADE_NUDGE_DAYS)
+    # is what stops it becoming spam.
+    "send-upgrade-nudges": {
+        "task": "apps.accounts.tasks.send_upgrade_nudges",
+        "schedule": env.float("UPGRADE_NUDGE_INTERVAL", default=86400.0),  # once a day
     },
     # Auto-trade executor (v2). Both self-gate on AUTO_TRADE_ENABLED, so these are
     # inert no-ops until the feature is switched on.

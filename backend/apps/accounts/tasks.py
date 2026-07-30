@@ -156,6 +156,127 @@ def notify_expired_plans() -> dict:
     return run_expiry_notices()
 
 
+# --- recurring upgrade nudge (Telegram) -----------------------------------
+
+
+def _format_upgrade_nudge(trade_count: int) -> str:
+    """HTML 'you're not getting signals' nudge pointing at the plans page."""
+    from django.conf import settings
+
+    subscribe_url = f"{settings.FRONTEND_URL}/account/billing"
+    lines = ["🔒 <b>You're not receiving signals</b>", ""]
+    if trade_count:
+        lines += [
+            f"<b>{trade_count}</b> new setup{'s' if trade_count != 1 else ''} fired in the "
+            "last 24 hours. You're not getting them because trading signals are part of "
+            "the <b>Starter</b> and <b>Pro</b> plans.",
+        ]
+    else:
+        lines += [
+            "Trading signals — entry, stop-loss, TP1–TP3 and the reasoning behind each "
+            "call — are part of the <b>Starter</b> and <b>Pro</b> plans.",
+        ]
+    lines += [
+        "",
+        "Upgrade to Starter or Pro to get them in the app and here on Telegram:"
+        f"\n👉 {subscribe_url}",
+        "",
+        "<i>Informational only. Not financial advice.</i>",
+    ]
+    return "\n".join(lines)
+
+
+def _recent_trade_count(hours: int = 24) -> int:
+    """Distinct trades (symbol + timeframe + direction) generated in the window.
+
+    Counts TRADES, not signal rows: the scan writes one row per strategy, so a
+    setup several strategies agree on would otherwise inflate the number we quote
+    at the user. Deliberately not personalised — the nudge goes to users with no
+    signal access, so there's no per-user feed to measure.
+    """
+    from datetime import timedelta
+
+    from django.utils import timezone
+
+    from apps.signals.models import Signal
+
+    since = timezone.now() - timedelta(hours=hours)
+    return (
+        Signal.objects.filter(
+            generated_at__gte=since,
+            direction__in=[Signal.Direction.BUY, Signal.Direction.SELL],
+        )
+        .values("symbol_id", "timeframe", "direction")
+        .distinct()
+        .count()
+    )
+
+
+def run_upgrade_nudges() -> dict:
+    """Remind Telegram-linked users with NO signal access to upgrade.
+
+    Audience is derived from the plan matrix, not from a tier list: anyone whose
+    effective plan grants ``signal_weekly_quota == 0`` (today: Free, which includes
+    every lapsed Starter/Pro since plan_key is expiry-aware). If a future tier gets
+    signal access back, this follows automatically.
+
+    Repeats every SIGNAL_UPGRADE_NUDGE_DAYS for as long as they have no access —
+    unlike run_expiry_notices(), which fires once per lapse. A user who never paid
+    has no expiry to key on, so this is the only reminder they'd ever get.
+    """
+    from datetime import timedelta
+
+    from django.conf import settings
+    from django.db.models import Q
+    from django.utils import timezone
+
+    from apps.accounts import telegram
+    from apps.signals.quota import signal_quota_for
+    from .models import User
+
+    if not telegram.is_configured():
+        return {"nudged": 0, "skipped": "telegram not configured"}
+
+    every_days = int(getattr(settings, "SIGNAL_UPGRADE_NUDGE_DAYS", 7) or 0)
+    if every_days <= 0:
+        return {"nudged": 0, "skipped": "nudges disabled"}
+
+    now = timezone.now()
+    due_before = now - timedelta(days=every_days)
+    # A plan that lapsed in the last few days already triggered run_expiry_notices()
+    # ("your plan has expired"). Don't stack a second message on top of it — wait for
+    # the normal interval, by which point that notice is old news.
+    just_lapsed_after = now - timedelta(days=EXPIRY_NOTICE_LOOKBACK_DAYS)
+    candidates = (
+        User.objects.filter(telegram_active=True)
+        .exclude(telegram_chat_id="")
+        .filter(Q(upgrade_nudge_sent_at__isnull=True) | Q(upgrade_nudge_sent_at__lte=due_before))
+        .exclude(plan_expiry__gte=just_lapsed_after, plan_expiry__lte=now)
+    )
+
+    trade_count = None
+    nudged = 0
+    for user in candidates.iterator():
+        # Expiry-aware, via the plan matrix — an active paid user is never nudged.
+        if signal_quota_for(user) != 0:
+            continue
+        if trade_count is None:  # compute once, only if someone actually qualifies
+            trade_count = _recent_trade_count()
+        if telegram.send_message(user.telegram_chat_id, _format_upgrade_nudge(trade_count)):
+            User.objects.filter(pk=user.pk).update(upgrade_nudge_sent_at=now)
+            nudged += 1
+        # send failure (network): leave the timestamp alone so the next tick retries.
+
+    if nudged:
+        logger.info("upgrade nudges: nudged=%d", nudged)
+    return {"nudged": nudged}
+
+
+@shared_task(name="apps.accounts.tasks.send_upgrade_nudges")
+def send_upgrade_nudges() -> dict:
+    return run_upgrade_nudges()
+
+
 @shared_task(name="apps.accounts.tasks.enforce_plan_limits")
 def enforce_plan_limits() -> dict:
     """Daily sweep: trim any user holding more saved items than their effective

@@ -54,8 +54,7 @@ export const PLAN_FALLBACK = [
       "Live candlestick charts, all timeframes",
       "SMA, EMA & Volume overlays",
       "Starter watchlist of 20 coins, ready to go",
-      "4 signal strategies followed for you",
-      "Up to 20 signals/week",
+      "Trading signals on Starter & Pro",
     ],
   },
   {
