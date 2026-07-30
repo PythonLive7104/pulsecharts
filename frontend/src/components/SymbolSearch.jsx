@@ -6,6 +6,11 @@ import { useStore } from "../store/useStore";
 import { planAllows } from "../lib/plans";
 
 const MAX_RESULTS = 50; // cap the rendered list for snappy filtering
+// Rows the watched block gets while there is anything left to add. Kept small enough
+// that the "Not added yet" section is reachable without a long scroll: an account
+// watching most of the roster (Pro seeds every symbol) would otherwise fill all
+// MAX_RESULTS rows with "✓ Added" and have nothing to ADD.
+const WATCHED_SLOTS = 8;
 
 export default function SymbolSearch() {
   const symbols = useStore((s) => s.symbols);
@@ -43,14 +48,26 @@ export default function SymbolSearch() {
             (s.display_name || "").toUpperCase().includes(q)
         )
       : scoped;
-    // Watchlisted symbols float to the top (and so survive the MAX_RESULTS cap) —
-    // the picker doubles as "the symbols I actually trade", not just a raw list.
+    // Watchlisted symbols float to the top — the picker doubles as "the symbols I
+    // actually trade". But the watched block only gets the WHOLE list when there is
+    // nothing left to add; otherwise it yields slots so the not-yet-added symbols
+    // are always reachable (that's the whole point of the Add button).
     const watched = list.filter((s) => watchedTickers.has(s.ticker));
     const rest = list.filter((s) => !watchedTickers.has(s.ticker));
-    return [...watched, ...rest].slice(0, MAX_RESULTS);
+    // Only when there is nothing to add does the watched block take the whole list.
+    const watchedSlots = rest.length > 0 ? WATCHED_SLOTS : MAX_RESULTS;
+    const shownWatched = watched.slice(0, watchedSlots);
+    const shownRest = rest.slice(0, Math.max(MAX_RESULTS - shownWatched.length, 0));
+    return {
+      rows: [...shownWatched, ...shownRest],
+      watchedShown: shownWatched.length,
+      watchedTotal: watched.length,
+      restTotal: rest.length,
+    };
   }, [symbols, query, assetClass, watchedTickers]);
 
-  const watchedCount = results.filter((s) => watchedTickers.has(s.ticker)).length;
+  const rows = results.rows;
+  const watchedCount = results.watchedShown;
 
   // Close on outside click.
   useEffect(() => {
@@ -92,17 +109,17 @@ export default function SymbolSearch() {
     }
     if (e.key === "ArrowDown") {
       e.preventDefault();
-      setHighlight((h) => Math.min(h + 1, results.length - 1));
+      setHighlight((h) => Math.min(h + 1, rows.length - 1));
     } else if (e.key === "ArrowUp") {
       e.preventDefault();
       setHighlight((h) => Math.max(h - 1, 0));
     } else if (e.key === "Enter") {
       e.preventDefault();
-      if (results[highlight]) choose(results[highlight].ticker);
+      if (rows[highlight]) choose(rows[highlight].ticker);
     } else if (e.key === " " && e.ctrlKey) {
       // Ctrl+Space toggles the highlighted row's watchlist membership.
       e.preventDefault();
-      if (results[highlight]) toggleWatchlist(results[highlight].ticker);
+      if (rows[highlight]) toggleWatchlist(rows[highlight].ticker);
     } else if (e.key === "Escape") {
       setOpen(false);
     }
@@ -129,16 +146,20 @@ export default function SymbolSearch() {
       {open && (
         <ul className="symbol-results">
           {watchError && <li className="symbol-watch-error">{watchError}</li>}
-          {results.length === 0 && <li className="muted no-match">No matches</li>}
-          {results.map((s, i) => {
+          {rows.length === 0 && <li className="muted no-match">No matches</li>}
+          {rows.map((s, i) => {
             const locked = !planAllows(planKey, s.min_plan);
             const watched = watchedTickers.has(s.ticker);
-            // Header rows split the watchlisted block from everything else.
+            // Header rows split the watchlisted block from everything else. The
+            // first says how much of the watchlist is shown, so a truncated block
+            // reads as "type to find the rest", not "that's all of it".
             const header =
               watchedCount > 0 && i === 0
-                ? "In your watchlist"
+                ? results.watchedTotal > watchedCount
+                  ? `In your watchlist · ${watchedCount} of ${results.watchedTotal} — type to find others`
+                  : "In your watchlist"
                 : watchedCount > 0 && i === watchedCount
-                ? "All symbols"
+                ? "Not added yet"
                 : null;
             return (
               <li key={s.id} className="symbol-result-wrap">
@@ -180,6 +201,14 @@ export default function SymbolSearch() {
               </li>
             );
           })}
+          {/* Nothing left to add is a state worth stating — otherwise a list of all
+              "✓ Added" rows looks like the picker is broken. */}
+          {rows.length > 0 && results.restTotal === 0 && (
+            <li className="symbol-foot muted">
+              Every {assetClass === "forex" ? "pair" : "coin"} we track is already in your
+              watchlist.
+            </li>
+          )}
         </ul>
       )}
     </div>
