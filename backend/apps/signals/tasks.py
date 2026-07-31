@@ -129,13 +129,15 @@ def _regime_ok(sym, tf: str, direction: str, indicators: dict, htf_cache: dict,
         ema9, ema21, atr = indicators.get("ema9"), indicators.get("ema21"), indicators.get("atr")
         if ema9 is not None and ema21 is not None and atr and abs(ema9 - ema21) < sep_min * atr:
             return False  # EMAs bunched → ranging, skip
-    # HTF agreement is itself a 200-EMA gate (bias off the 4h/1d 200 EMA). When the
-    # 200-EMA trend filter is disabled, drop it too — the ADX + chop filters above
-    # still stand, and the Fib zone confirms the entry — so we don't reintroduce the
-    # very constraint the filter is meant to remove. It can also be dropped on its
-    # own (SIGNAL_HTF_REGIME_ENABLED=False) to keep the 200 EMA deciding trend on the
-    # signal's own timeframe without also demanding the higher timeframe agree.
-    if not settings.SIGNAL_EMA200_TREND_FILTER or not settings.SIGNAL_HTF_REGIME_ENABLED:
+    # HTF agreement is a 200-EMA gate on the HIGHER frame (1h→4h, 4h→1d): the
+    # long-horizon regime, not the signal frame's own trend.
+    #
+    # It used to be chained to SIGNAL_EMA200_TREND_FILTER — turning the on-frame 200
+    # EMA off silently disabled this too, so "daily-200 bias only" was impossible to
+    # configure. They're independent questions ("is the signal frame trending?" vs
+    # "is the higher frame trending?") and are now independent flags: this one is
+    # governed solely by SIGNAL_HTF_REGIME_ENABLED.
+    if not settings.SIGNAL_HTF_REGIME_ENABLED:
         return True
     htf = _HTF_MAP.get(tf)
     if not htf:

@@ -28,7 +28,7 @@ from apps.market_data.feeds import get_candles
 from apps.market_data.models import Symbol
 from apps.signals.engine import generate_judgment
 from apps.signals.evaluate import walk
-from apps.signals.indicators import compute_indicators, _market_structure
+from apps.signals.indicators import compute_indicators, _ema, _market_structure
 from apps.signals.levels import TP_MULTIPLES, compute_levels
 from apps.signals.models import SignalService
 from apps.signals.pregate import EMA_STACK_EXEMPT, candidate_direction, passes_pregate
@@ -174,10 +174,22 @@ class Command(BaseCommand):
                                  "signals need HH+HL for BUY / LH+LL for SELL). Additive to "
                                  "the EMA gates; combine with --no-ema200 to test structure "
                                  "standing in for the 200 EMA.")
+        parser.add_argument("--no-structure", action="store_true",
+                            help="Force the market-structure filter OFF. Needed because the "
+                                 "env (SIGNAL_STRUCTURE_TREND_FILTER) is applied at startup, "
+                                 "so --structure alone can only ever turn it ON — with the env "
+                                 "already True, both spellings of the run were identical.")
         parser.add_argument("--htf-structure", action="store_true",
                             help="Require the next-higher timeframe's swing structure (per "
                                  "_HTF_MAP: 1h→4h, 4h→1d) to agree with the signal. "
                                  "Point-in-time aligned; breakout strategies exempt.")
+        parser.add_argument("--htf-bias", action="store_true",
+                            help="Require the next-higher timeframe's 200-EMA bias (per "
+                                 "_HTF_MAP: 1h\u21924h, 4h\u21921d) to agree with the signal — "
+                                 "price above the higher frame's 200 EMA allows BUYs only, "
+                                 "below allows SELLs only. This is the live HTF regime gate "
+                                 "(SIGNAL_HTF_REGIME_ENABLED), which the plain backtest skips. "
+                                 "Point-in-time aligned; no strategy is exempt, matching live.")
         parser.add_argument("--overext", type=float, default=None,
                             help="Override the overextension guard (ATR stretch beyond EMA21 "
                                  "that blocks a chase entry). 0 disables; live default is 2.0. "
@@ -210,8 +222,8 @@ class Command(BaseCommand):
                 "200-EMA trend filter OFF (direction from fast EMAs; Fib zone confirms)."))
         if opts.get("structure"):
             pregate.STRUCTURE_TREND_FILTER = True
-            self.stdout.write(self.style.WARNING(
-                "Market-structure filter ON (BUY needs HH+HL, SELL needs LH+LL)."))
+        if opts.get("no_structure"):
+            pregate.STRUCTURE_TREND_FILTER = False
         if opts.get("overext") is not None:
             pregate.OVEREXT_ATR_MULT = opts["overext"]
             self.stdout.write(self.style.WARNING(
@@ -221,10 +233,37 @@ class Command(BaseCommand):
         if htf_structure_on:
             self.stdout.write(self.style.WARNING(
                 "HTF structure confluence ON (higher timeframe must agree; breakouts exempt)."))
+        htf_bias_on = bool(opts.get("htf_bias"))
+        if htf_bias_on:
+            self.stdout.write(self.style.WARNING(
+                "HTF 200-EMA bias ON (higher timeframe's 200 EMA must agree; no exemptions)."))
         timeframes = (
             [t.strip() for t in opts["timeframes"].split(",") if t.strip()]
             if opts["timeframes"] else list(settings.SIGNAL_TIMEFRAMES)
         )
+
+        # EFFECTIVE config, not just the overrides. Gates are module-level state that
+        # SignalsConfig.ready() seeds from env BEFORE any flag is parsed, so a run
+        # could silently inherit live settings — two runs meant to differ came out
+        # byte-identical because the flag couldn't move an env-set gate. Printing the
+        # resolved values makes every result self-documenting.
+        self.stdout.write(self.style.MIGRATE_HEADING("Effective config:"))
+        for label, value in [
+            ("ema gate", pregate.EMA_GATE_MODE),
+            ("200 EMA (own frame)", "ON" if pregate.EMA200_TREND_FILTER else "OFF"),
+            ("market structure", "ON" if pregate.STRUCTURE_TREND_FILTER else "OFF"),
+            ("HTF structure", "ON" if opts.get("htf_structure") else "OFF"),
+            ("HTF 200-EMA bias", "ON" if opts.get("htf_bias") else "OFF"),
+            ("fib pullback", f"[{pregate.FIB_PULLBACK_MIN}, {pregate.FIB_PULLBACK_MAX}]"
+                             if pregate.FIB_PULLBACK_MIN else "OFF"),
+            ("overext guard", f"{pregate.OVEREXT_ATR_MULT}xATR"
+                              if pregate.OVEREXT_ATR_MULT else "OFF"),
+            ("ADX floor", opts.get("adx_min") if opts.get("adx_min") is not None
+                          else "OFF (backtest skips the live regime filter)"),
+            ("timeframes", ",".join(timeframes)),
+            ("candles / symbols", f"{opts['candles']} / {opts['max_symbols']}"),
+        ]:
+            self.stdout.write(f"  {label:22s} {value}")
         svc_qs = SignalService.objects.all() if opts["include_inactive"] \
             else SignalService.objects.filter(is_active=True)
         services = list(svc_qs)
@@ -268,7 +307,7 @@ class Command(BaseCommand):
                     continue
                 self._run_series(sym, tf, candles, services, rb, llm, budget,
                                  sym.asset_class, htf_structure_on, opts["candles"],
-                                 opts.get("adx_min"))
+                                 opts.get("adx_min"), htf_bias_on)
                 series += 1
                 self.stdout.write(f"  · {sym.ticker} {tf}", ending="\r")
             if llm_on and budget["left"] <= 0:
@@ -300,9 +339,38 @@ class Command(BaseCommand):
         return [(hc[j + 1]["time"], _market_structure(hc[: j + 1])[0])
                 for j in range(len(hc) - 1)]
 
+    def _htf_bias_timeline(self, sym, tf, htf_limit):
+        """Sorted [(usable_from_time, 'up'|'down'), …] of the higher timeframe's
+        200-EMA bias — the live HTF regime gate (tasks._htf_direction), which reads
+        price vs the higher frame's 200 EMA: above = bullish, below = bearish.
+
+        Entry j is computed from higher-timeframe bar j (closed) and tagged with bar
+        j+1's open time, so it can never be used before it was knowable. Returns None
+        when there's no higher frame, the fetch fails, or there isn't enough history
+        for a 200 EMA — all of which fail OPEN, matching live's "ERR → allow".
+        """
+        htf = _HTF_MAP.get(tf)
+        if not htf:
+            return None
+        try:
+            hc = get_candles(sym, htf, limit=max(htf_limit, 300))
+        except (requests.RequestException, ValueError):
+            return None
+        if len(hc) < 210:  # 200 EMA + a bar to hand it forward
+            return None
+        closes = [c["close"] for c in hc]
+        ema200 = _ema(closes, 200)
+        out = []
+        for j in range(len(hc) - 1):
+            e = ema200[j]
+            if e is None:
+                continue
+            out.append((hc[j + 1]["time"], "up" if closes[j] > e else "down"))
+        return out or None
+
     def _run_series(self, sym, tf, candles, services, rb, llm, budget,
                     asset_class="crypto", htf_structure_on=False, htf_limit=500,
-                    adx_min=None):
+                    adx_min=None, htf_bias_on=False):
         ticker = sym.ticker
         n = len(candles)
         threshold = settings.SIGNAL_MIN_CONFIDENCE
@@ -315,6 +383,9 @@ class Command(BaseCommand):
         # (blocks); before the first entry = no data yet (fails open).
         htf_timeline = self._htf_timeline(sym, tf, htf_limit) if htf_structure_on else None
         hp = -1  # pointer into htf_timeline; -1 = nothing usable yet
+        # Same point-in-time treatment for the HTF 200-EMA bias (--htf-bias).
+        bias_timeline = self._htf_bias_timeline(sym, tf, htf_limit) if htf_bias_on else None
+        bp = -1
 
         for i in range(MIN_CANDLES, n - 1):
             if llm is not None and budget["left"] <= 0:
@@ -333,6 +404,13 @@ class Command(BaseCommand):
                     continue
             future = candles[i + 1:]
 
+            htf_bias_now = None  # 'up' | 'down' | None (no data yet → fail open)
+            if bias_timeline is not None:
+                t = candles[i]["time"]
+                while bp + 1 < len(bias_timeline) and bias_timeline[bp + 1][0] <= t:
+                    bp += 1
+                htf_bias_now = bias_timeline[bp][1] if bp >= 0 else None
+
             htf_struct_now = None  # 'up' | 'down' | None (choppy) | 'SKIP' (no data)
             if htf_timeline is not None:
                 t = candles[i]["time"]
@@ -346,6 +424,13 @@ class Command(BaseCommand):
                 direction = candidate_direction(svc.slug, snap)
                 if direction not in ("BUY", "SELL"):
                     continue
+
+                # HTF 200-EMA bias. No strategy exemption: live's _regime_ok applies
+                # this to every strategy (only the EMA-separation chop filter exempts
+                # breakouts). None = not knowable yet → allow, as live fails open.
+                if htf_bias_now is not None:
+                    if htf_bias_now != ("up" if direction == "BUY" else "down"):
+                        continue
 
                 # HTF structure confluence (breakouts exempt, mirroring the live gate).
                 if (htf_timeline is not None and htf_struct_now != "SKIP"

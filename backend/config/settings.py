@@ -381,8 +381,10 @@ SIGNAL_EMA_SEP_MIN_ATR = env.float("SIGNAL_EMA_SEP_MIN_ATR", default=0.5)
 # on the signal's own timeframe. Measured on 450 1h bars it rejects ~52% of setups
 # that already cleared ADX + chop, so it is the single largest volume cost in the
 # live scan. Off = the 200 EMA still decides trend, just on the entry timeframe
-# alone. Only consulted when SIGNAL_EMA200_TREND_FILTER is on. Like the chop filter,
-# it can't be backtested (the backtest skips the regime filter) — tune it live.
+# alone. INDEPENDENT of SIGNAL_EMA200_TREND_FILTER since 2026-07-31: it used to be
+# chained to it, which made "higher-timeframe bias only, no on-frame 200 EMA"
+# impossible to express. Backtest it with `backtest --htf-bias` (the plain backtest
+# still skips the rest of the regime filter).
 SIGNAL_HTF_REGIME_ENABLED = env.bool("SIGNAL_HTF_REGIME_ENABLED", default=True)
 
 # EMA-alignment gate every non-breakout signal must pass (apps/signals/pregate.py).
