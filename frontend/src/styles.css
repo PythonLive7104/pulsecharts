@@ -13,6 +13,12 @@
   --accent-hover: #265fd8;
   --green: #0c9a82;
   --red: #e23b3b;
+  /* Warning amber. The light value is darkened well past the "pretty" amber so
+     it still clears AA contrast on a white panel — a mid amber reads as greyed
+     out there and the message gets skipped. */
+  --warn: #8a5300;
+  --warn-bg: #fff5df;
+  --warn-border: #e8b64c;
   --hero-glow: radial-gradient(circle at 50% 0%, #e6eefc 0%, var(--bg) 60%);
 }
 
@@ -28,6 +34,9 @@
   --accent-hover: #5a95f5;
   --green: #26a69a;
   --red: #ef5350;
+  --warn: #ffc957;
+  --warn-bg: rgba(255, 201, 87, 0.13);
+  --warn-border: rgba(255, 201, 87, 0.45);
   --hero-glow: radial-gradient(circle at 50% 0%, #1b2740 0%, var(--bg) 60%);
 }
 
@@ -713,17 +722,32 @@ a.brand:hover { text-decoration: none; }
 }
 .symbol-result.highlight .result-add:hover { background: rgba(255, 255, 255, 0.3); color: #fff; }
 .symbol-watch-error { padding: 0 9px 7px; font-size: 12px; color: var(--red); line-height: 1.4; }
-/* Pre-emptive "you're full" line: amber, shown before the user clicks anything. */
+/* Pre-emptive "you're full" line, shown before the user clicks anything. Styled
+   as a tinted banner rather than loose amber text: as plain text it sat at the
+   same weight as the row labels and read as decoration, so people scrolled past
+   it and kept clicking Add. The fill + left bar make it a callout, and --warn is
+   theme-aware so it stays legible on the white panel in light mode. */
 .symbol-limit {
-  padding: 0 9px 7px;
+  margin: 0 6px 6px;
+  padding: 7px 9px;
+  border-radius: 6px;
+  border-left: 3px solid var(--warn-border);
+  background: var(--warn-bg);
   font-size: 12px;
-  line-height: 1.4;
-  color: #e0a106;
+  font-weight: 600;
+  line-height: 1.45;
+  color: var(--warn);
 }
-.symbol-limit a { color: inherit; font-weight: 700; text-decoration: underline; }
+.symbol-limit a {
+  color: inherit;
+  font-weight: 800;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.symbol-limit a:hover { color: var(--warn); text-decoration-thickness: 2px; }
 /* At the cap: unwatched rows dim their Add button, but it still responds. */
 .result-add.atLimit { opacity: 0.45; }
-.result-add.atLimit:hover { opacity: 1; border-color: #e0a106; color: #e0a106; }
+.result-add.atLimit:hover { opacity: 1; border-color: var(--warn-border); color: var(--warn); }
 /* Crypto/Forex asset-class toggle in the symbol bar. */
 .asset-toggle {
   display: inline-flex;
