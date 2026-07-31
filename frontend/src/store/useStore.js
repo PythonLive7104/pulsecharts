@@ -194,6 +194,15 @@ export const useStore = create((set, get) => ({
   async addToWatchlist(ticker) {
     const sym = get().symbols.find((s) => s.ticker === ticker);
     if (!sym || get().isWatched(ticker)) return;
+    // Answer the limit locally instead of round-tripping to a 400. The server still
+    // enforces it — this is purely so the message appears the instant they click.
+    const limit = get().watchlistLimit();
+    if (limit !== -1 && get().watchlist.length >= limit) {
+      set({
+        watchError: `Watchlist full — ${limit} of ${limit}. Remove a symbol below, or upgrade for more.`,
+      });
+      return;
+    }
     try {
       set({ watchError: null });
       await api.addWatch(sym.id);
@@ -202,6 +211,18 @@ export const useStore = create((set, get) => ({
       // e.g. "Watchlist limit reached (80). Upgrade for more." or a plan-gated symbol.
       set({ watchError: e.message });
     }
+  },
+
+  // -1 = unlimited (Pro). Null entitlements (not loaded yet) reads as unlimited so
+  // we never block an add on a slow entitlements fetch — the server decides anyway.
+  watchlistLimit() {
+    const limit = get().entitlements?.watchlist_limit;
+    return limit == null ? -1 : limit;
+  },
+
+  watchlistFull() {
+    const limit = get().watchlistLimit();
+    return limit !== -1 && get().watchlist.length >= limit;
   },
 
   async removeFromWatchlist(ticker) {

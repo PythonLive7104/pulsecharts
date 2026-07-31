@@ -1,7 +1,7 @@
 // Type-to-filter symbol picker (Section 9 — SymbolSearch). Replaces the plain
 // dropdown, which doesn't scale to the full Hyperliquid perp universe (~180).
 import { useEffect, useMemo, useRef, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { useStore } from "../store/useStore";
 import { planAllows } from "../lib/plans";
 
@@ -53,6 +53,10 @@ export default function SymbolSearch() {
   }, [symbols, query, assetClass]);
 
   const watchedShown = rows.filter((s) => watchedTickers.has(s.ticker)).length;
+  // Derived from the values this component already subscribes to, so it re-renders
+  // the moment the watchlist or the plan changes.
+  const watchLimit = entitlements?.watchlist_limit ?? -1;
+  const full = watchLimit !== -1 && watchlist.length >= watchLimit;
 
   // Close on outside click.
   useEffect(() => {
@@ -142,12 +146,23 @@ export default function SymbolSearch() {
       />
       {open && (
         <ul className="symbol-results" ref={listRef}>
-          {watchError && <li className="symbol-watch-error">{watchError}</li>}
           {rows.length === 0 && <li className="muted no-match">No matches</li>}
-          {rows.length > 0 && (
-            <li className="symbol-group">
-              {rows.length} {assetClass === "forex" ? "pairs" : "coins"} · {watchedShown} in
-              your watchlist
+          {(rows.length > 0 || watchError) && (
+            // Sticky: the limit warning and any error have to stay on screen while
+            // you scroll, or you click Add 40 rows down and never see why nothing
+            // happened — which is exactly how this read as broken.
+            <li className="symbol-head">
+              <div className="symbol-group">
+                {rows.length} {assetClass === "forex" ? "pairs" : "coins"} · {watchedShown} in
+                your watchlist
+              </div>
+              {full && !watchError && (
+                <div className="symbol-limit">
+                  Watchlist full — {watchLimit} of {watchLimit}. Remove one below, or{" "}
+                  <Link to="/account/billing">upgrade</Link> for more.
+                </div>
+              )}
+              {watchError && <div className="symbol-watch-error">{watchError}</div>}
             </li>
           )}
           {rows.map((s, i) => {
@@ -176,8 +191,19 @@ export default function SymbolSearch() {
                   {isAuthed && !locked && (
                     <button
                       type="button"
-                      className={`result-add ${watched ? "on" : ""}`}
-                      title={watched ? "Remove from watchlist" : "Add to watchlist"}
+                      // `atLimit` greys the button but keeps it clickable — clicking
+                      // is what surfaces the "watchlist full" message, and a silently
+                      // dead button is what made this feel broken in the first place.
+                      className={`result-add ${watched ? "on" : ""} ${
+                        full && !watched ? "atLimit" : ""
+                      }`}
+                      title={
+                        watched
+                          ? "Remove from watchlist"
+                          : full
+                            ? `Watchlist full (${watchLimit} of ${watchLimit}) — remove one or upgrade`
+                            : "Add to watchlist"
+                      }
                       aria-label={watched ? "Remove from watchlist" : "Add to watchlist"}
                       aria-pressed={watched}
                       onMouseDown={(e) => onToggleWatch(e, s)}
