@@ -343,11 +343,13 @@ SIGNAL_PREGATE_ENABLED = env.bool("SIGNAL_PREGATE_ENABLED", default=True)
 # higher-timeframe trend. Keeps trend strategies out of chop. Runs before the
 # LLM call, so it also saves tokens.
 SIGNAL_REGIME_FILTER_ENABLED = env.bool("SIGNAL_REGIME_FILTER_ENABLED", default=True)
-# 30 (was 28, 25, 20): well above the standard 25 trend line, to keep trades out of
-# ranging markets where both tight and wide stops bleed (the user wants few/no range
-# trades). This is the single floor for every day of the week — lower it if volume
-# drops too far.
-SIGNAL_ADX_MIN = env.float("SIGNAL_ADX_MIN", default=30.0)
+# 25 — the standard trend line, and the measured optimum. Quality is NOT monotonic
+# in ADX: a 1000-candle backtest (20 coins, 1h/4h) put 25 ahead of BOTH 30 and no
+# filter on every axis — n=1399 / 55.9% / +0.12R, vs 30 at n=1202 / 50.8% / +0.02R
+# and no floor at n=1718 / 54.1% / +0.08R. Above 30 you're buying already-extended
+# moves that revert (worst avg MAE, -6.0%); below 25 is genuine chop (~46% win,
+# ~-0.10R per trade). This is the single floor for every day of the week.
+SIGNAL_ADX_MIN = env.float("SIGNAL_ADX_MIN", default=25.0)
 
 # Per-weekday override of SIGNAL_ADX_MIN (apps/signals/tasks._adx_min_now). Parked:
 # every day defaults to 0, i.e. "fall back to SIGNAL_ADX_MIN", so the floor is one
