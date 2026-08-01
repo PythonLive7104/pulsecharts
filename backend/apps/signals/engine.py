@@ -359,7 +359,7 @@ def _rules_signal(symbol, timeframe, strategy_slug, strategy_name, strategy_focu
     if levels is None:
         return None
 
-    confidence = confidence_score(direction, indicators) or settings.SIGNAL_RULE_CONFIDENCE
+    confidence = confidence_score(direction, indicators, strategy_slug) or settings.SIGNAL_RULE_CONFIDENCE
     reasoning, invalidation = _rule_reasoning(strategy_slug, strategy_name, direction, indicators)
     return {
         "direction": direction,
@@ -390,7 +390,7 @@ def _custom_signal(strategy_name, rule_config, indicators, stop_mults):
     if levels is None:
         return None
 
-    confidence = confidence_score(direction, indicators) or settings.SIGNAL_RULE_CONFIDENCE
+    confidence = confidence_score(direction, indicators, strategy_slug) or settings.SIGNAL_RULE_CONFIDENCE
     reasoning, invalidation = describe_match(strategy_name, rule_config, indicators, direction)
     return {
         "direction": direction,
@@ -426,7 +426,7 @@ def _hybrid_signal(symbol, timeframe, strategy_slug, strategy_name, strategy_foc
 
     # Confidence is the deterministic conviction score (how strongly indicators
     # align) — not the LLM's guess and not a win-rate. Varies per setup.
-    confidence = confidence_score(direction, indicators) or settings.SIGNAL_RULE_CONFIDENCE
+    confidence = confidence_score(direction, indicators, strategy_slug) or settings.SIGNAL_RULE_CONFIDENCE
 
     reasoning, invalidation = "", ""
     try:

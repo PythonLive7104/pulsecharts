@@ -78,14 +78,21 @@ def confluence_min(kind: str | None = None, counts: dict | None = None) -> int:
 
 
 def _group(signals) -> dict:
-    """(symbol_id, timeframe) -> {direction: {service_id: best signal for that service}}.
+    """(symbol_id, timeframe, kind) -> {direction: {service_id: best signal per service}}.
 
     Keeps only the highest-confidence signal per service per direction, so a
     strategy that somehow fired twice still counts as one vote.
+
+    KIND is part of the key because trend and reversion are separate populations that
+    must not compete for one slot. Grouped together, two trend signals (short of their
+    floor of 3) outvoted a lone fade and then failed the floor themselves — so the
+    fade was crowded out by a cluster that didn't qualify either, and nothing surfaced
+    at all. They can't co-fire on the same bar anyway (opposite ADX bounds), so they
+    only ever meet here because the feed looks back over 2 days, across regimes.
     """
     groups: dict = defaultdict(lambda: defaultdict(dict))
     for s in signals:
-        svc_map = groups[(s.symbol_id, s.timeframe)][s.direction]
+        svc_map = groups[(s.symbol_id, s.timeframe, kind_of(s.service.slug))][s.direction]
         cur = svc_map.get(s.service_id)
         if cur is None or s.confidence_pct > cur.confidence_pct:
             svc_map[s.service_id] = s
@@ -111,7 +118,7 @@ def _annotate(signal: Signal, svc_map: dict) -> Signal:
 
 def collapse(signals) -> list[Signal]:
     """Collapse candidate signals to one representative per (symbol, timeframe)
-    that meets the confluence threshold. Each representative is annotated with
+    that meets the confluence threshold for ITS KIND. Each representative is annotated with
     ``.confluence_count`` / ``.confluence_services``. Returned newest-first.
 
     Custom (user-created) strategies are EXEMPT from the K-of-N threshold: the user
@@ -123,21 +130,25 @@ def collapse(signals) -> list[Signal]:
 
     reps: list[Signal] = []
     kind_counts = active_kind_counts()  # once per collapse, not once per group
-    for by_dir in _group(system).values():
+    # Each kind is scored against its OWN floor, then at most one card survives per
+    # (symbol, timeframe) — so a user is never shown a BUY and a SELL for the same
+    # chart just because the regime changed within the lookback window.
+    best_per_chart: dict[tuple, Signal] = {}
+    for (symbol_id, timeframe, kind), by_dir in _group(system).items():
         direction = _winning_direction(by_dir)
         if direction is None:
             continue
         svc_map = by_dir[direction]
-        # The floor depends on what kind of setup this is. A group is all one kind in
-        # practice (the regime bounds don't overlap), so the representative's kind
-        # decides — and mixed groups take the stricter floor of the two.
-        kinds = {kind_of(s.service.slug) for s in svc_map.values()}
-        k = (max(confluence_min(kind, kind_counts) for kind in kinds)
-             if kinds else confluence_min())
-        if len(svc_map) < k:
+        if len(svc_map) < confluence_min(kind, kind_counts):
             continue
-        rep = max(svc_map.values(), key=lambda s: s.confidence_pct)
-        reps.append(_annotate(rep, svc_map))
+        rep = _annotate(max(svc_map.values(), key=lambda s: s.confidence_pct), svc_map)
+        key = (symbol_id, timeframe)
+        cur = best_per_chart.get(key)
+        if cur is None or (rep.confluence_count, rep.confidence_pct) > (
+            cur.confluence_count, cur.confidence_pct
+        ):
+            best_per_chart[key] = rep
+    reps.extend(best_per_chart.values())
 
     # Each custom strategy surfaces its best signal per (symbol, timeframe, direction)
     # on its own — no threshold, agreement count is just itself.

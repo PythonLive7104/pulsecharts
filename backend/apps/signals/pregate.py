@@ -670,14 +670,72 @@ def candidate_direction_for_service(service, indicators: dict) -> str | None:
     return candidate_direction(service.slug, indicators)
 
 
-def confidence_score(direction: str, ind: dict) -> int:
-    """Deterministic *conviction* score (~55–95): how strongly the indicators
+def _confidence_reversion(direction: str, ind: dict) -> int:
+    """Conviction score for a MEAN-REVERSION setup, on the same 55-95 scale.
+
+    The trend scorer below is unusable here: it rewards EMA9>EMA21, price above the
+    200 EMA, a positive MACD histogram and RSI>=50 — every one of which a fade fails
+    BY DEFINITION, because failing them is what makes it a fade. A textbook fade
+    scored ~55-60 against a delivery floor of 70, so every one would have been
+    generated, stored, and then silently dropped before reaching a user.
+
+    So score what actually makes a fade compelling: how far past the extreme price
+    is, how stretched the oscillators are, how quiet the trend is, and whether the
+    move looks like capitulation.
+    """
+    buy = direction == "BUY"
+
+    def f(k):
+        v = ind.get(k)
+        return float(v) if v is not None else None
+
+    close, atr, adx, rsi = f("close"), f("atr"), f("adx"), f("rsi")
+    stoch, vol, vol_ma = f("stoch_k"), f("volume"), f("volume_ma20")
+    upper, lower, mid = f("bb_upper"), f("bb_lower"), f("bb_mid")
+
+    score = 55.0
+    # 1. How far beyond the band price closed, in ATR — deeper = more stretched.
+    band = lower if buy else upper
+    if band is not None and close is not None and atr:
+        beyond = (band - close) / atr if buy else (close - band) / atr
+        if beyond > 0:
+            score += min(10.0, beyond * 10)
+    # 2. RSI past its extreme, scaled by how far past.
+    if rsi is not None:
+        past = (30 - rsi) if buy else (rsi - 70)
+        if past > 0:
+            score += min(9.0, past * 0.6)
+    # 3. Stochastic agreeing at the same extreme — a second, independent oscillator.
+    if stoch is not None and ((stoch <= 20) if buy else (stoch >= 80)):
+        score += 7
+    # 4. The quieter the trend, the safer the fade (this is the regime it needs).
+    if adx is not None and adx <= 20:
+        score += min(8.0, (20 - adx) * 0.8)
+    # 5. A volume spike into the extreme reads as capitulation, not fresh trend.
+    if vol is not None and vol_ma not in (None, 0) and vol > vol_ma * 1.5:
+        score += 5
+    # 6. Room to run: the mean is the target, so distance to it is the reward.
+    if mid is not None and close is not None and atr:
+        to_mean = (mid - close) / atr if buy else (close - mid) / atr
+        if to_mean >= 1.0:
+            score += 4
+    return int(max(50, min(95, round(score))))
+
+
+def confidence_score(direction: str, ind: dict, strategy_slug: str | None = None) -> int:
+    """Deterministic *conviction* score (~55-95): how strongly the indicators
     line up behind `direction`. This is NOT a win-rate / accuracy figure — it just
     measures how many confirmations agree. Realized accuracy is tracked separately
     (stats.accuracy_stats). Varies per setup so it's a meaningful curation signal.
+
+    Scored per strategy KIND: the confirmations that make a trend setup convincing are
+    the very things a mean-reversion setup trades against, so a fade is scored by
+    _confidence_reversion instead.
     """
     if direction not in ("BUY", "SELL"):
         return 0
+    if strategy_slug and kind_of(strategy_slug) == KIND_REVERSION:
+        return _confidence_reversion(direction, ind)
     buy = direction == "BUY"
 
     def f(k):
