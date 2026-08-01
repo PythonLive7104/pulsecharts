@@ -78,8 +78,24 @@ def signal_quota_for(user) -> int:
 
 
 def strategies_allowed_for(user) -> int:
-    """How many strategies this user's plan lets them follow at once."""
-    return plan_for(user)["strategies"]
+    """How many strategies this user's plan lets them follow at once.
+
+    Pro means "follow everything", so its cap is DERIVED from the live roster rather
+    than trusted from the plan dict: activating a strategy would otherwise silently
+    push Pro users over a hardcoded limit and start refusing follows (the number and
+    the roster drifted apart exactly this way once already). Lower tiers use their
+    plan value, which is a deliberate product limit rather than a headcount.
+    """
+    from apps.accounts.plans import PRO
+
+    plan = plan_for(user)
+    limit = plan["strategies"]
+    if plan["key"] != PRO:
+        return limit
+    from .models import SignalService
+
+    built_in = SignalService.objects.filter(is_active=True, owner__isnull=True).count()
+    return max(limit, built_in + int(plan.get("custom_strategies_per_month", 0)))
 
 
 def custom_strategy_quota_for(user) -> dict:

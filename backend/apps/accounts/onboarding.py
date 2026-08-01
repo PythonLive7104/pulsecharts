@@ -23,13 +23,20 @@ logger = logging.getLogger("accounts")
 # active services are ever followed; any active service not listed here is
 # appended after these (ordered by id), so a newly added strategy still gets
 # picked up for Pro's "follow everything".
+# Order matters: Free follows the first 4 and Starter the first 6, so anything below
+# position 6 is invisible to every tier except Pro. `bb-fade` sits at 3 deliberately —
+# it is the only NON-trend strategy, and the whole point of adding it is that it pays
+# when the trend book doesn't. Leaving it at the end (where an unlisted slug lands)
+# would mean no Free or Starter user ever received a mean-reversion signal.
+# Inactive strategies are skipped, so listing one before it's activated is harmless.
 STRATEGY_PRIORITY = [
     "momentum-crossover",
     "macd-trend-following",
-    "volatility-breakout",
+    "bb-fade",
     "trend-rider",
     "vwap-trend",
     "bollinger-breakout",
+    "volatility-breakout",
     "trend-pullback",
 ]
 

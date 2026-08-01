@@ -116,7 +116,15 @@ def _regime_ok(sym, tf: str, direction: str, indicators: dict, htf_cache: dict,
     """True if the market is trending (ADX), not chopping (EMA separation), and the
     higher timeframe agrees with `direction`. Fails open on a higher-timeframe fetch
     error so a transient API hiccup doesn't silence the whole feed."""
+    from . import pregate
+
     adx = indicators.get("adx")
+    # Mean reversion inverts this test. A fade needs a RANGE — no strong trend to
+    # stand in front of — so it's gated by an ADX ceiling instead of the trend floor,
+    # and skips the chop filter below (bunched EMAs are the setup, not a warning).
+    if pregate.kind_of(strategy_slug) == pregate.KIND_REVERSION:
+        return adx is not None and adx <= settings.SIGNAL_ADX_MAX_REVERSION
+
     if adx is None or adx < _adx_min_now():
         return False
     # Chop filter: in a range the fast EMAs bunch together / flatten. Require EMA9 &
@@ -636,40 +644,72 @@ def _fmt_price(x) -> str:
 
 
 def format_signal_for_telegram(s: Signal) -> str:
-    """HTML-formatted signal card for a Telegram message."""
+    """HTML-formatted signal card for a Telegram message.
+
+    Two decisions worth keeping:
+
+    * The levels go in a <pre> block. Telegram renders it monospace, so the price and
+      percentage columns actually line up (a proportional font can't be padded into
+      columns), and it gives a tap-to-copy block for the numbers you're about to put
+      into an exchange.
+    * The strategy name is NOT printed separately. The templated reasoning already
+      opens with it ("VWAP Trend SELL setup — …"), so a header line and a list of
+      agreeing strategies repeated it up to three times on one card.
+    """
     import html
 
     head = "🟢 BUY" if s.direction == Signal.Direction.BUY else "🔴 SELL"
     p = _fmt_price
 
-    lines = [
-        f"<b>{head} {html.escape(s.symbol.ticker)}</b> · {html.escape(s.timeframe)} · {s.confidence_pct}% conviction",
-        f"<i>{html.escape(s.service.name)}</i>",
-    ]
-    # Confluence badge: when several strategies agree, that's the headline value.
+    # Header: what and where, then how strongly — two lines instead of four.
+    badges = [f"{s.confidence_pct}% conviction"]
     n_agree = getattr(s, "confluence_count", 1)
     if n_agree >= 2:
-        svcs = ", ".join(html.escape(name) for name in getattr(s, "confluence_services", []))
-        lines.append(f"📊 <b>{n_agree} strategies agree</b>: {svcs}")
-    tp_line = f"TP1 {p(s.tp1)} · TP2 {p(s.tp2)} · TP3 {p(s.tp3)}"
-    if s.tp4 is not None:  # legacy signals may still carry a TP4
-        tp_line += f" · TP4 {p(s.tp4)}"
-    lines += [
+        badges.append(f"{n_agree} strategies agree")
+    # Daily 200-EMA confirmation. Omitted when unknown (legacy rows, new listings,
+    # failed daily fetch); a signal fighting the daily trend says so rather than
+    # staying quiet about it.
+    if s.daily_ema200_aligned is True:
+        badges.append("daily 200 EMA ✅")
+    elif s.daily_ema200_aligned is False:
+        badges.append("against daily 200 EMA ⚠️")
+
+    # Levels, with the distance and R multiple that make them sizeable. R comes from
+    # the stored risk_reward_* so legacy rows (which had a 4.5R TP4) stay truthful.
+    rows = [("Entry", s.entry_price, None, None), ("Stop", s.stop_loss, s.risk_pct, None)]
+    for i, (tp, reward, rr) in enumerate(
+        ((s.tp1, s.reward_tp1_pct, s.risk_reward_tp1),
+         (s.tp2, s.reward_tp2_pct, s.risk_reward_tp2),
+         (s.tp3, s.reward_tp3_pct, s.risk_reward_tp3),
+         (s.tp4, s.reward_tp4_pct, s.risk_reward_tp4)), start=1
+    ):
+        if tp is not None:
+            rows.append((f"TP{i}", tp, reward, rr))
+
+    width = max(len(p(price)) for _, price, _, _ in rows)
+    block = []
+    for label, price, pct, rr in rows:
+        line = f"{label:<6}{p(price):>{width}}"
+        if label == "Stop" and pct is not None:
+            line += f"   risk {pct:.1f}%"
+        elif pct is not None:
+            line += f"  {f'+{pct:.1f}%':>7}"
+            if rr:
+                line += f"  {rr:g}R"
+        block.append(line)
+
+    lines = [
+        f"<b>{head} {html.escape(s.symbol.ticker)}</b> · {html.escape(s.timeframe)}",
+        " · ".join(badges),
         "",
-        f"Entry: <b>{p(s.entry_price)}</b>",
-        f"Stop:  <b>{p(s.stop_loss)}</b>",
-        tp_line,
+        "<pre>" + html.escape("\n".join(block)) + "</pre>",
     ]
-    # Daily 200-EMA higher-timeframe confirmation. Omitted when unknown (null).
-    if s.daily_ema200_aligned is not None:
-        mark = "Yes ✅" if s.daily_ema200_aligned else "No ⚠️"
-        lines.append(f"Daily 200 EMA: <b>{mark}</b>")
     if s.reasoning:
         lines += ["", html.escape(s.reasoning)]
     lines += [
         "",
-        "💡 Take partial at TP1, move your stop to entry, let the rest run.",
-        "<i>Informational only. Not financial advice.</i>",
+        "💡 Bank ½ at TP1 → stop to entry → let the rest run.",
+        "<i>Not financial advice.</i>",
     ]
     return "\n".join(lines)
 

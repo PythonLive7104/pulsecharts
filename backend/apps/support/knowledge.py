@@ -148,7 +148,8 @@ KNOWLEDGE = [
         "id": "signals",
         "keywords": ["signal", "signals", "buy sell", "trade signal", "strategy", "strategies", "confidence", "take profit", "stop loss", "tp1", "tp2", "tp3"],
         "answer": (
-            "Six built-in strategies scan tracked crypto AND forex pairs on the 1h "
+            "A roster of built-in strategies — trend-following and mean-reversion — "
+            "scans tracked crypto AND forex pairs on the 1h "
             "and 4h timeframes, and surface buy/sell setups with an entry, a "
             "stop-loss, three take-profit targets (TP1/TP2/TP3) and a conviction "
             "score. A setup only surfaces when several "

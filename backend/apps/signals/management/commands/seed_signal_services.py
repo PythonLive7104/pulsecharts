@@ -128,6 +128,49 @@ SERVICES = [
             "strengthens the case; a falling ADX warns the trend is fading."
         ),
     },
+    # --- mean reversion (kind: reversion — pregate.STRATEGY_KIND) -------------
+    # Seeded INACTIVE. These are the first non-trend strategies in the roster: the
+    # six active ones are six expressions of a single trend-following edge, so they
+    # all lose together in a range. These fade extremes instead, and are gated
+    # differently (ADX ceiling not floor, no EMA-stack/structure/overextension
+    # requirement, tighter stops) — see pregate.kind_of. Activate only if
+    # `backtest --include-inactive` shows a real edge.
+    {
+        "name": "Bollinger Band Fade",
+        "slug": "bb-fade",
+        "strategy_type": "reversion",
+        "description": "Fades a close outside a Bollinger band when RSI is at an extreme.",
+        "strategy_focus": (
+            "In a range (low ADX), a close beyond the outer Bollinger band with RSI "
+            "stretched to an extreme tends to snap back toward the middle band."
+        ),
+        "is_active": False,
+    },
+    {
+        "name": "RSI Exhaustion Reversal",
+        "slug": "rsi-exhaustion",
+        "strategy_type": "reversion",
+        "description": "Fades a move when RSI and Stochastic are both at an extreme.",
+        "strategy_focus": (
+            "Two independent oscillators at the same extreme (RSI <=25 with Stochastic "
+            "<=20, or RSI >=75 with Stochastic >=80) while price sits beyond the mean "
+            "suggests the move is spent rather than continuing."
+        ),
+        "is_active": False,
+    },
+    {
+        "name": "VWAP Stretch Reversion",
+        "slug": "vwap-stretch",
+        "strategy_type": "reversion",
+        "description": "Fades price stretched more than 2xATR away from VWAP.",
+        "strategy_focus": (
+            "Price a long way from VWAP in ATR terms tends to revert toward it when no "
+            "strong trend is driving the move. Distance is measured in ATR so it "
+            "adapts to each symbol's volatility."
+        ),
+        "is_active": False,
+    },
+
 ]
 
 

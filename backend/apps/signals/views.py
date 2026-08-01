@@ -483,6 +483,17 @@ class SignalFeedView(APIView):
                 [SignalDelivery(user=user, signal=s) for s in reps],
                 ignore_conflicts=True,
             )
+            # Persist the agreement count that got each signal through the floor.
+            # collapse() annotates it in memory; stamped here, at the moment of
+            # delivery, so `feed_stats --by-confluence` can later ask whether the
+            # floor is set where it earns its keep. Written once (only where still
+            # null) so a second user's delivery can't overwrite the first count.
+            for rep in reps:
+                n = getattr(rep, "confluence_count", None)
+                if n:
+                    Signal.objects.filter(pk=rep.pk, confluence_count__isnull=True).update(
+                        confluence_count=n
+                    )
 
         delivered_this_week = SignalDelivery.objects.filter(
             user=user, delivered_at__gte=week_cutoff

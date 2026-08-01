@@ -200,6 +200,10 @@ PREGATES = {
     "ema-ribbon": _ema_ribbon,
     "donchian-trend": _donchian_trend,
     "adx-trend": _adx_trend,
+    # Mean reversion: the direction test IS the setup test, so reuse it.
+    "bb-fade": lambda ind: _dir_bb_fade(ind) is not None,
+    "rsi-exhaustion": lambda ind: _dir_rsi_exhaustion(ind) is not None,
+    "vwap-stretch": lambda ind: _dir_vwap_stretch(ind) is not None,
 }
 
 
@@ -342,6 +346,67 @@ def _dir_adx_trend(ind: dict) -> str | None:
     return None
 
 
+# --- mean reversion -------------------------------------------------------
+# These fade an extreme back toward the mean. They are only sane in a RANGE, so the
+# live regime filter checks ADX <= SIGNAL_ADX_MAX_REVERSION for them (rather than the
+# >= floor a trend strategy needs) and skips the chop filter — see tasks._regime_ok.
+# Their stops are also tighter (SIGNAL_ATR_*_REVERSION): a fade that needs 3-4.5xATR
+# of room isn't a fade, and with the 1R/2R/3R ladder a wide stop puts every target
+# out of reach.
+
+
+def _dir_bb_fade(ind: dict) -> str | None:
+    """Price closed outside a Bollinger band with RSI at an extreme — fade it."""
+    v = _vals(ind, "close", "bb_upper", "bb_lower", "rsi")
+    if v is None:
+        return None
+    close, upper, lower, rsi = v
+    # Fall back to 30/70 when the entry guard's bounds are disabled (0), otherwise
+    # the fade would silently never fire.
+    oversold = RSI_OVERSOLD or 30.0
+    overbought = RSI_OVERBOUGHT or 70.0
+    if close <= lower and rsi <= oversold:
+        return "BUY"
+    if close >= upper and rsi >= overbought:
+        return "SELL"
+    return None
+
+
+def _dir_rsi_exhaustion(ind: dict) -> str | None:
+    """RSI and Stochastic both at an extreme on the same side, price beyond the mean —
+    two independent oscillators agreeing that a move is spent."""
+    v = _vals(ind, "rsi", "stoch_k", "close", "bb_mid")
+    if v is None:
+        return None
+    rsi, k, close, mid = v
+    if rsi <= 25 and k <= 20 and close < mid:
+        return "BUY"
+    if rsi >= 75 and k >= 80 and close > mid:
+        return "SELL"
+    return None
+
+
+def _dir_vwap_stretch(ind: dict) -> str | None:
+    """Price stretched a long way from VWAP — fade back toward it. Distance is
+    measured in ATR so it adapts to each symbol's volatility."""
+    v = _vals(ind, "close", "vwap", "atr")
+    if v is None:
+        return None
+    close, vwap, atr = v
+    if not atr:
+        return None
+    stretch = (close - vwap) / atr
+    if stretch <= -VWAP_STRETCH_ATR:
+        return "BUY"
+    if stretch >= VWAP_STRETCH_ATR:
+        return "SELL"
+    return None
+
+
+# How far from VWAP (in ATR) counts as stretched enough to fade.
+VWAP_STRETCH_ATR = 2.0
+
+
 DIRECTIONS = {
     "momentum-crossover": _dir_momentum,
     "macd-trend-following": _dir_macd,
@@ -353,6 +418,9 @@ DIRECTIONS = {
     "ema-ribbon": _dir_ema_ribbon,
     "donchian-trend": _dir_donchian_trend,
     "adx-trend": _dir_adx_trend,
+    "bb-fade": _dir_bb_fade,
+    "rsi-exhaustion": _dir_rsi_exhaustion,
+    "vwap-stretch": _dir_vwap_stretch,
 }
 
 
@@ -479,11 +547,45 @@ def ema_trend_aligned(ind: dict, direction: str) -> bool:
     return ema9 > ema21 > ema200 if buy else ema9 < ema21 < ema200
 
 
-# Breakout strategies trade range expansions and legitimately fire BEFORE the EMA
-# stack lines up — gating them on the full trend stack defeats their purpose (and
-# they backtest negative under it). They're exempt from the EMA-stack gate; every
-# trend/momentum strategy still requires the full stack.
-EMA_STACK_EXEMPT = {"bollinger-breakout", "volatility-breakout"}
+# --- strategy kinds -------------------------------------------------------
+# What a strategy is TRYING to do decides which quality gates make sense for it.
+# The gates below (EMA stack, structure, overextension) all encode "is this a
+# healthy trend?" — the right question for a trend strategy, and the wrong one for
+# anything else:
+#
+#   trend      pulls with an established trend  -> every gate applies
+#   breakout   fires as a range expands, BEFORE the stack lines up
+#   reversion  fades an extreme, i.e. deliberately trades AGAINST the fast stack,
+#              from an over-extended price, with no HH/HL structure behind it
+#
+# A mean-reversion strategy was structurally impossible here before this map: the
+# stack gate rejected its direction, the overextension guard rejected its entry, and
+# the structure filter rejected its context — so the ones that existed backtested
+# terribly and were deleted in June for being bad, when they were being tested inside
+# filters designed to block them.
+KIND_TREND = "trend"
+KIND_BREAKOUT = "breakout"
+KIND_REVERSION = "reversion"
+
+STRATEGY_KIND = {
+    "bollinger-breakout": KIND_BREAKOUT,
+    "volatility-breakout": KIND_BREAKOUT,
+    "bb-fade": KIND_REVERSION,
+    "rsi-exhaustion": KIND_REVERSION,
+    "vwap-stretch": KIND_REVERSION,
+}
+
+
+def kind_of(strategy_slug: str) -> str:
+    """A strategy's kind; anything unmapped (incl. custom user strategies) is trend."""
+    return STRATEGY_KIND.get(strategy_slug, KIND_TREND)
+
+
+# Exempt from the trend-quality gates: breakouts (fire before the stack lines up) and
+# reversions (trade against it by design). Kept under the original name because the
+# backtest and engine import it. Every trend/momentum strategy still requires the
+# full stack, the structure and the overextension guard.
+EMA_STACK_EXEMPT = {slug for slug, kind in STRATEGY_KIND.items() if kind != KIND_TREND}
 
 
 def passes_ema_gate(strategy_slug: str, indicators: dict, direction: str) -> bool:

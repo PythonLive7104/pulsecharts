@@ -31,6 +31,7 @@ from apps.signals.evaluate import walk
 from apps.signals.indicators import compute_indicators, _ema, _market_structure
 from apps.signals.levels import TP_MULTIPLES, compute_levels
 from apps.signals.models import SignalService
+from apps.signals import pregate
 from apps.signals.pregate import EMA_STACK_EXEMPT, candidate_direction, passes_pregate
 from apps.signals.tasks import _HTF_MAP
 
@@ -103,10 +104,117 @@ def _record(bucket, res):
     bucket["mae"] += res["mae_pct"]
 
 
-def _outcome(direction, snap, future, asset_class="crypto"):
-    """Deterministic levels + walk for a setup; None if degenerate or unresolved."""
-    floor = settings.SIGNAL_ATR_STOP_FLOOR.get(asset_class) or settings.SIGNAL_ATR_STOP_FLOOR["crypto"]
-    cap = settings.SIGNAL_ATR_STOP_CAP.get(asset_class) or settings.SIGNAL_ATR_STOP_CAP["crypto"]
+# --- exit lab -------------------------------------------------------------
+# Management schemes that CANNOT be derived from the winners-by-best-TP aggregate
+# (EXIT_MODELS above), because they depend on the price path after TP1: a later
+# breakeven point, no breakeven at all, or a trailing stop. Each is
+#   (label, banked fractions at TP1/TP2/TP3, breakeven after TP-n or None, ATR trail
+#    multiple applied to the runner once TP1 banks or None).
+# All are replayed in ONE pass over the same candles, so adding schemes is cheap and
+# every scheme is scored on exactly the same trades.
+EXIT_LAB = [
+    ("live 50/25/25, BE@TP1     ", (0.5, 0.25, 0.25), 1, None),
+    ("50/25/25, BE@TP2          ", (0.5, 0.25, 0.25), 2, None),
+    ("50/25/25, no BE           ", (0.5, 0.25, 0.25), None, None),
+    ("all off @TP1              ", (1.0, 0.0, 0.0), 1, None),
+    ("50% TP1 + 50% trail 2xATR ", (0.5, 0.0, 0.0), 1, 2.0),
+    ("50% TP1 + 50% trail 3xATR ", (0.5, 0.0, 0.0), 1, 3.0),
+    ("33/33/34, BE@TP1          ", (1 / 3, 1 / 3, 1 / 3), 1, None),
+]
+
+# Bars of forward path replayed per trade. The base walk stops at its own resolution;
+# schemes that hold a runner can outlive it, so they need their own horizon — capped
+# so a never-resolving trade can't walk the whole series.
+REPLAY_BARS = 300
+
+
+def _replay_exits(direction, entry, stop0, tps, future, atr):
+    """Realized R per scheme in EXIT_LAB, from one pass over the forward candles.
+
+    Intrabar ambiguity is resolved the same way evaluate.walk does: when a bar touches
+    both a stop and a target, whichever is nearer the open is assumed first, and with
+    no open available the stop wins (worst case). Returns None if the trade is
+    degenerate (no risk distance).
+    """
+    buy = direction == "BUY"
+    risk = abs(entry - stop0)
+    if not risk:
+        return None
+
+    def to_r(price):
+        return ((price - entry) if buy else (entry - price)) / risk
+
+    # Per-scheme state: banked R, un-banked fraction, its current stop, TPs banked.
+    state = [{"r": 0.0, "left": 1.0, "stop": stop0, "hit": 0} for _ in EXIT_LAB]
+    peak = entry  # running extreme, for the trailing schemes
+
+    for c in future[:REPLAY_BARS]:
+        hi, lo, opn = c["high"], c["low"], c.get("open")
+        peak = max(peak, hi) if buy else min(peak, lo)
+        bar_tp = 0
+        for i, tp in enumerate(tps, start=1):
+            if (hi >= tp) if buy else (lo <= tp):
+                bar_tp = i
+
+        for st, (_, banks, be_at, trail) in zip(state, EXIT_LAB):
+            if st["left"] <= 0:
+                continue
+            # Trailing stop rides the running extreme once TP1 has banked.
+            if trail and st["hit"] >= 1 and atr:
+                trailed = (peak - trail * atr) if buy else (peak + trail * atr)
+                st["stop"] = max(st["stop"], trailed) if buy else min(st["stop"], trailed)
+            sl_hit = (lo <= st["stop"]) if buy else (hi >= st["stop"])
+            new_tp = max(st["hit"], bar_tp)
+
+            if sl_hit and new_tp > st["hit"]:
+                stop_first = (abs(opn - st["stop"]) <= abs(opn - tps[0])) if opn is not None else True
+                if stop_first:
+                    st["r"] += st["left"] * to_r(st["stop"])
+                    st["left"] = 0.0
+                    continue
+            elif sl_hit:
+                st["r"] += st["left"] * to_r(st["stop"])
+                st["left"] = 0.0
+                continue
+
+            # Bank every target newly reached this bar.
+            for level in range(st["hit"] + 1, new_tp + 1):
+                frac = banks[level - 1] if level - 1 < len(banks) else 0.0
+                frac = min(frac, st["left"])
+                if frac:
+                    st["r"] += frac * to_r(tps[level - 1])
+                    st["left"] -= frac
+            st["hit"] = new_tp
+            if be_at is not None and st["hit"] >= be_at:
+                st["stop"] = max(st["stop"], entry) if buy else min(st["stop"], entry)
+            if st["left"] <= 1e-9 or st["hit"] >= len(tps) and not trail:
+                # Fixed-ladder schemes close the last tranche at the final target.
+                if st["left"] > 1e-9 and st["hit"] >= len(tps):
+                    st["r"] += st["left"] * to_r(tps[-1])
+                    st["left"] = 0.0
+
+    # Anything still open at the horizon closes at its scheme's stop — conservative,
+    # and identical across schemes so the comparison stays fair.
+    for st in state:
+        if st["left"] > 1e-9:
+            st["r"] += st["left"] * to_r(st["stop"])
+            st["left"] = 0.0
+    return [st["r"] for st in state]
+
+
+def _outcome(direction, snap, future, asset_class="crypto", strategy_slug=None):
+    """Deterministic levels + walk for a setup; None if degenerate or unresolved.
+
+    Mean-reversion setups get their own (much tighter) ATR stop band — with the trend
+    band their TP1 would sit further away than the trade was ever going, so they'd
+    look worthless for a reason that has nothing to do with the strategy.
+    """
+    if strategy_slug and pregate.kind_of(strategy_slug) == pregate.KIND_REVERSION:
+        floor = settings.SIGNAL_ATR_FLOOR_REVERSION
+        cap = settings.SIGNAL_ATR_CAP_REVERSION
+    else:
+        floor = settings.SIGNAL_ATR_STOP_FLOOR.get(asset_class) or settings.SIGNAL_ATR_STOP_FLOOR["crypto"]
+        cap = settings.SIGNAL_ATR_STOP_CAP.get(asset_class) or settings.SIGNAL_ATR_STOP_CAP["crypto"]
     levels = compute_levels(
         direction, float(snap["close"]), float(snap["atr"]),
         float(snap["swing_high"]), float(snap["swing_low"]),
@@ -114,11 +222,12 @@ def _outcome(direction, snap, future, asset_class="crypto"):
     )
     if levels is None:
         return None
-    res = walk(
-        direction, float(snap["close"]), levels["stop_loss"],
-        [levels[k] for k in ("tp1", "tp2", "tp3", "tp4") if levels[k] is not None], future,
-    )
-    return res if (res["terminal"] or res["best_tp"] >= 1) else None
+    tps = [levels[k] for k in ("tp1", "tp2", "tp3", "tp4") if levels[k] is not None]
+    res = walk(direction, float(snap["close"]), levels["stop_loss"], tps, future)
+    if not (res["terminal"] or res["best_tp"] >= 1):
+        return None
+    res["_levels"] = (levels["stop_loss"], tps)  # for --exit-lab's replay
+    return res
 
 
 def _totals(stats):
@@ -190,6 +299,11 @@ class Command(BaseCommand):
                                  "below allows SELLs only. This is the live HTF regime gate "
                                  "(SIGNAL_HTF_REGIME_ENABLED), which the plain backtest skips. "
                                  "Point-in-time aligned; no strategy is exempt, matching live.")
+        parser.add_argument("--exit-lab", action="store_true",
+                            help="Also replay alternative trade-management schemes per trade "
+                                 "(later breakeven, no breakeven, ATR trails) and report each "
+                                 "one's expectancy on the SAME trades. Costs one extra pass "
+                                 "over the forward candles per trade.")
         parser.add_argument("--overext", type=float, default=None,
                             help="Override the overextension guard (ATR stretch beyond EMA21 "
                                  "that blocks a chase entry). 0 disables; live default is 2.0. "
@@ -281,6 +395,8 @@ class Command(BaseCommand):
             return
 
         rb = {svc.slug: _blank(svc.name) for svc in services}
+        # Per-scheme totals for --exit-lab: index-aligned with EXIT_LAB.
+        exit_lab = {"on": bool(opts.get("exit_lab")), "n": 0, "r": [0.0] * len(EXIT_LAB)}
         llm = {svc.slug: _blank(svc.name) for svc in services} if llm_on else None
         # Shared LLM budget + call stats across all series.
         budget = {"left": opts["llm_sample"] if llm_on else 0,
@@ -307,7 +423,7 @@ class Command(BaseCommand):
                     continue
                 self._run_series(sym, tf, candles, services, rb, llm, budget,
                                  sym.asset_class, htf_structure_on, opts["candles"],
-                                 opts.get("adx_min"), htf_bias_on)
+                                 opts.get("adx_min"), htf_bias_on, exit_lab)
                 series += 1
                 self.stdout.write(f"  · {sym.ticker} {tf}", ending="\r")
             if llm_on and budget["left"] <= 0:
@@ -318,6 +434,15 @@ class Command(BaseCommand):
             self._report_compare(rb, llm, budget)
         else:
             self._report(rb, series)
+        if exit_lab["on"] and exit_lab["n"]:
+            self.stdout.write(self.style.MIGRATE_HEADING(
+                f"\n  Exit lab — replayed per trade (n={exit_lab['n']}), same trades:"))
+            ranked = sorted(zip(EXIT_LAB, exit_lab["r"]), key=lambda x: -x[1])
+            for (label, banks, be_at, trail), total in ranked:
+                self.stdout.write(f"    {label} exp={total / exit_lab['n']:+.3f}R")
+            self.stdout.write(
+                "    (path-replayed, so trailing/later-BE schemes are exact rather than\n"
+                "     derived from the winners-by-best-TP aggregate above.)")
 
     def _htf_timeline(self, sym, tf, htf_limit):
         """Sorted [(usable_from_time, structure), …] for the timeframe above `tf`.
@@ -370,7 +495,7 @@ class Command(BaseCommand):
 
     def _run_series(self, sym, tf, candles, services, rb, llm, budget,
                     asset_class="crypto", htf_structure_on=False, htf_limit=500,
-                    adx_min=None, htf_bias_on=False):
+                    adx_min=None, htf_bias_on=False, exit_lab=None):
         ticker = sym.ticker
         n = len(candles)
         threshold = settings.SIGNAL_MIN_CONFIDENCE
@@ -398,10 +523,9 @@ class Command(BaseCommand):
             # ADX floor — proxy for the live regime filter's ADX gate (which the
             # backtest otherwise skips). ADX is symbol/timeframe-level, so gate the
             # whole bar, matching how _regime_ok reads one ADX per (symbol, tf).
-            if adx_min is not None:
-                adx = snap.get("adx")
-                if adx is None or adx < adx_min:
-                    continue
+            # NOTE: applied per-strategy below, not here — the floor is a trend test
+            # and mean reversion needs the opposite bound.
+            bar_adx = snap.get("adx")
             future = candles[i + 1:]
 
             htf_bias_now = None  # 'up' | 'down' | None (no data yet → fail open)
@@ -425,6 +549,16 @@ class Command(BaseCommand):
                 if direction not in ("BUY", "SELL"):
                     continue
 
+                # Regime bound, by strategy kind: trend/breakout need ADX at or above
+                # the floor; a fade needs it at or below the reversion ceiling (it is
+                # only sane when no strong trend is running).
+                if adx_min is not None:
+                    if pregate.kind_of(svc.slug) == pregate.KIND_REVERSION:
+                        if bar_adx is None or bar_adx > settings.SIGNAL_ADX_MAX_REVERSION:
+                            continue
+                    elif bar_adx is None or bar_adx < adx_min:
+                        continue
+
                 # HTF 200-EMA bias. No strategy exemption: live's _regime_ok applies
                 # this to every strategy (only the EMA-separation chop filter exempts
                 # breakouts). None = not knowable yet → allow, as live fails open.
@@ -439,11 +573,20 @@ class Command(BaseCommand):
                     if htf_struct_now != want:  # opposite trend or choppy (None) → skip
                         continue
 
-                res = _outcome(direction, snap, future, asset_class)
+                res = _outcome(direction, snap, future, asset_class, svc.slug)
                 if res is None:
                     free_at[svc.slug] = i + 1
                     continue
                 free_at[svc.slug] = i + 1 + res["bars"]
+
+                if exit_lab and exit_lab["on"]:
+                    stop0, tps = res["_levels"]
+                    rs = _replay_exits(direction, float(snap["close"]), stop0, tps,
+                                       future, snap.get("atr"))
+                    if rs:
+                        exit_lab["n"] += 1
+                        for k, r in enumerate(rs):
+                            exit_lab["r"][k] += r
 
                 # Rule-based-only mode: record every candidate, move on.
                 if llm is None:

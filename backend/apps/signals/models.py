@@ -119,6 +119,13 @@ class Signal(models.Model):
     # to compute a 200 EMA (new listings) or when the daily fetch failed.
     daily_ema200_aligned = models.BooleanField(null=True, blank=True)
 
+    # How many distinct strategies agreed with this call at the moment it was
+    # DELIVERED (confluence.collapse annotates it in memory; this persists it).
+    # Without it there is no way to ask the only question that matters about the
+    # confluence floor — "did 3-agreement actually beat 2?" — of real results.
+    # Null = generated but never delivered, or delivered before this existed.
+    confluence_count = models.PositiveSmallIntegerField(null=True, blank=True)
+
     # --- outcome tracking (Section 13.7, 18, 20.5) ---
     class Outcome(models.TextChoices):
         PENDING = "PENDING", "Pending"

@@ -122,10 +122,19 @@ def generate_annotation(symbol, timeframe, strategy_name, strategy_focus, direct
     return _parse_llm_json(resp, "annotation"), getattr(resp, "usage", None)
 
 
-def _stop_mults(asset_class):
-    """ATR (floor, cap) stop multipliers for this asset class — crypto wider than
-    forex (settings.SIGNAL_ATR_STOP_FLOOR/CAP). Falls back to the crypto band for
-    any unknown class."""
+def _stop_mults(asset_class, strategy_slug=None):
+    """ATR (floor, cap) stop multipliers for this setup.
+
+    Trend/breakout setups use the asset-class band (crypto wider than forex —
+    settings.SIGNAL_ATR_STOP_FLOOR/CAP), falling back to crypto for an unknown class.
+    MEAN-REVERSION setups use their own, much tighter band: they target the mean a
+    couple of ATR away, so a 3-4.5xATR stop would make TP1 unreachable by
+    construction (see settings.SIGNAL_ATR_FLOOR_REVERSION).
+    """
+    from . import pregate
+
+    if strategy_slug and pregate.kind_of(strategy_slug) == pregate.KIND_REVERSION:
+        return settings.SIGNAL_ATR_FLOOR_REVERSION, settings.SIGNAL_ATR_CAP_REVERSION
     floor = settings.SIGNAL_ATR_STOP_FLOOR.get(asset_class) or settings.SIGNAL_ATR_STOP_FLOOR["crypto"]
     cap = settings.SIGNAL_ATR_STOP_CAP.get(asset_class) or settings.SIGNAL_ATR_STOP_CAP["crypto"]
     return floor, cap
@@ -165,7 +174,7 @@ def generate_signal(
         bump("gated")
         return None
 
-    stop_mults = _stop_mults(asset_class)
+    stop_mults = _stop_mults(asset_class, strategy_slug)
 
     # Rules mode: fully deterministic, no LLM call at all. The rule picks the
     # direction + confidence and the reasoning is templated. Zero per-signal cost,

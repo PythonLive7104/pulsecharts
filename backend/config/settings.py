@@ -334,6 +334,14 @@ SIGNAL_MIN_CONFIDENCE = env.int("SIGNAL_MIN_CONFIDENCE", default=65)
 # ZERO signals, silently.
 SIGNAL_CONFLUENCE_MIN = env.int("SIGNAL_CONFLUENCE_MIN", default=3)
 
+# Confluence floor for MEAN-REVERSION signals, which are a structurally separate
+# population: a fade needs ADX <= SIGNAL_ADX_MAX_REVERSION while a trend signal needs
+# ADX >= SIGNAL_ADX_MIN, so the two can never co-occur on the same bar and a fade can
+# only ever be confirmed by other fades. With far fewer reversion strategies than
+# trend ones, the trend floor would demand near-unanimity and they'd generate signals
+# that never surface. Keep this at (roughly) the same STRICTNESS, not the same number.
+SIGNAL_CONFLUENCE_MIN_REVERSION = env.int("SIGNAL_CONFLUENCE_MIN_REVERSION", default=2)
+
 # Rule-based pre-gate: skip the (paid) LLM call when a strategy's basic
 # conditions clearly aren't present (apps/signals/pregate.py). Big cost saver.
 SIGNAL_PREGATE_ENABLED = env.bool("SIGNAL_PREGATE_ENABLED", default=True)
@@ -496,6 +504,19 @@ SIGNAL_ATR_STOP_CAP = {
     "crypto": env.float("SIGNAL_ATR_CAP_CRYPTO", default=4.5),  # was 3.0
     "forex": env.float("SIGNAL_ATR_CAP_FOREX", default=3.0),
 }
+
+# MEAN-REVERSION geometry. A fade targets the mean, typically 1-2 ATR away, so the
+# trend band above (3.0-4.5xATR on crypto) puts TP1 — one full risk distance — beyond
+# where the trade was ever going. These tighter multiples are what make the same
+# 1R/2R/3R ladder reachable for a fade. Applied by strategy KIND (pregate.kind_of),
+# not by asset class.
+SIGNAL_ATR_FLOOR_REVERSION = env.float("SIGNAL_ATR_FLOOR_REVERSION", default=1.0)
+SIGNAL_ATR_CAP_REVERSION = env.float("SIGNAL_ATR_CAP_REVERSION", default=1.5)
+
+# Mean reversion is only sane in a RANGE, so the regime filter inverts for it: instead
+# of ADX >= SIGNAL_ADX_MIN (trend strength), a fade needs ADX <= this (no strong trend
+# to fight). Above it, a "reversion" is just standing in front of a trend.
+SIGNAL_ADX_MAX_REVERSION = env.float("SIGNAL_ADX_MAX_REVERSION", default=20.0)
 
 # Optional: your model's price per 1M tokens, so each scan can log estimated $.
 # Leave 0 to skip the dollar estimate (token counts are still logged).

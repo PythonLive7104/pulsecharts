@@ -21,6 +21,7 @@ from django.conf import settings
 from django.db.models import Q
 
 from .models import Signal
+from .pregate import kind_of
 
 
 def deliverable_q() -> Q:
@@ -32,8 +33,18 @@ def deliverable_q() -> Q:
     return Q(confidence_pct__gte=settings.SIGNAL_MIN_CONFIDENCE) | Q(service__owner__isnull=False)
 
 
-def confluence_min() -> int:
-    """Minimum distinct agreeing strategies to surface a signal (>= 1)."""
+def confluence_min(kind: str | None = None) -> int:
+    """Minimum distinct agreeing strategies to surface a signal (>= 1).
+
+    Mean reversion has its own floor: trend and reversion signals can never appear on
+    the same bar (their ADX bounds are mutually exclusive), so a fade is only ever
+    confirmed by other fades — of which there are far fewer. Applying the trend floor
+    to them would demand near-unanimity and quietly bin every fade.
+    """
+    from .pregate import KIND_REVERSION
+
+    if kind == KIND_REVERSION:
+        return max(1, int(getattr(settings, "SIGNAL_CONFLUENCE_MIN_REVERSION", 2)))
     return max(1, int(getattr(settings, "SIGNAL_CONFLUENCE_MIN", 1)))
 
 
@@ -81,13 +92,17 @@ def collapse(signals) -> list[Signal]:
     system = [s for s in signals if not s.service.owner_id]
     custom = [s for s in signals if s.service.owner_id]
 
-    k = confluence_min()
     reps: list[Signal] = []
     for by_dir in _group(system).values():
         direction = _winning_direction(by_dir)
         if direction is None:
             continue
         svc_map = by_dir[direction]
+        # The floor depends on what kind of setup this is. A group is all one kind in
+        # practice (the regime bounds don't overlap), so the representative's kind
+        # decides — and mixed groups take the stricter floor of the two.
+        kinds = {kind_of(s.service.slug) for s in svc_map.values()}
+        k = max(confluence_min(kind) for kind in kinds) if kinds else confluence_min()
         if len(svc_map) < k:
             continue
         rep = max(svc_map.values(), key=lambda s: s.confidence_pct)
