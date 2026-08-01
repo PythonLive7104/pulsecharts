@@ -33,19 +33,48 @@ def deliverable_q() -> Q:
     return Q(confidence_pct__gte=settings.SIGNAL_MIN_CONFIDENCE) | Q(service__owner__isnull=False)
 
 
-def confluence_min(kind: str | None = None) -> int:
-    """Minimum distinct agreeing strategies to surface a signal (>= 1).
-
-    Mean reversion has its own floor: trend and reversion signals can never appear on
-    the same bar (their ADX bounds are mutually exclusive), so a fade is only ever
-    confirmed by other fades — of which there are far fewer. Applying the trend floor
-    to them would demand near-unanimity and quietly bin every fade.
-    """
+def _configured_min(kind: str | None) -> int:
+    """The configured floor for a kind, before it's capped to what's achievable."""
     from .pregate import KIND_REVERSION
 
     if kind == KIND_REVERSION:
         return max(1, int(getattr(settings, "SIGNAL_CONFLUENCE_MIN_REVERSION", 2)))
     return max(1, int(getattr(settings, "SIGNAL_CONFLUENCE_MIN", 1)))
+
+
+def active_kind_counts() -> dict:
+    """How many ACTIVE built-in strategies exist of each kind."""
+    from .models import SignalService
+    from .pregate import kind_of
+
+    counts: dict = defaultdict(int)
+    for slug in SignalService.objects.filter(
+        is_active=True, owner__isnull=True
+    ).values_list("slug", flat=True):
+        counts[kind_of(slug)] += 1
+    return counts
+
+
+def confluence_min(kind: str | None = None, counts: dict | None = None) -> int:
+    """Minimum distinct agreeing strategies to surface a signal (>= 1).
+
+    Two things shape this:
+
+    * Kinds are scored separately. Trend and reversion signals can never appear on the
+      same bar (their ADX bounds are mutually exclusive), so a fade is only ever
+      confirmed by other fades — of which there are far fewer.
+    * The floor is CAPPED at how many active strategies of that kind exist. Otherwise
+      a floor of 2 with one active fade is an impossible bar: the strategy generates
+      signals that are silently binned, forever, with nothing in the logs to say so.
+      Self-limiting means enabling a strategy can never quietly disable its own output.
+    """
+    configured = _configured_min(kind)
+    if counts is None:
+        counts = active_kind_counts()
+    available = counts.get(kind, 0) if kind else 0
+    if available:
+        return max(1, min(configured, available))
+    return configured
 
 
 def _group(signals) -> dict:
@@ -93,6 +122,7 @@ def collapse(signals) -> list[Signal]:
     custom = [s for s in signals if s.service.owner_id]
 
     reps: list[Signal] = []
+    kind_counts = active_kind_counts()  # once per collapse, not once per group
     for by_dir in _group(system).values():
         direction = _winning_direction(by_dir)
         if direction is None:
@@ -102,7 +132,8 @@ def collapse(signals) -> list[Signal]:
         # practice (the regime bounds don't overlap), so the representative's kind
         # decides — and mixed groups take the stricter floor of the two.
         kinds = {kind_of(s.service.slug) for s in svc_map.values()}
-        k = max(confluence_min(kind) for kind in kinds) if kinds else confluence_min()
+        k = (max(confluence_min(kind, kind_counts) for kind in kinds)
+             if kinds else confluence_min())
         if len(svc_map) < k:
             continue
         rep = max(svc_map.values(), key=lambda s: s.confidence_pct)

@@ -144,7 +144,13 @@ SERVICES = [
             "In a range (low ADX), a close beyond the outer Bollinger band with RSI "
             "stretched to an extreme tends to snap back toward the middle band."
         ),
-        "is_active": False,
+        # ACTIVE from 2026-08-01: 51.7% / +0.15R over n=58 (6 syms, 1000 candles) —
+        # ahead of every active trend strategy, and it trades a regime they are
+        # forbidden from touching (ADX <= 20). Its two siblings stay off: RSI
+        # Exhaustion has no usable sample (n=8) and VWAP Stretch measured NEGATIVE.
+        # NOTE: is_active is part of `defaults` here, so flipping the row in the admin
+        # WITHOUT changing this line gets silently reverted by the next seed run.
+        "is_active": True,
     },
     {
         "name": "RSI Exhaustion Reversal",

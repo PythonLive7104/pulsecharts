@@ -22,6 +22,8 @@ from django.core.management.base import BaseCommand
 # block: infrastructure and secrets differ between machines by design and must never
 # be copied from production to a dev checkout.
 SETTINGS = [
+    ("SIGNAL_ENGINE_ENABLED", "SIGNAL_ENGINE_ENABLED"),
+    ("SIGNAL_SHADOW_MODE", "SIGNAL_SHADOW_MODE"),
     ("SIGNAL_ENGINE_MODE", "SIGNAL_ENGINE_MODE"),
     ("SIGNAL_PREGATE_ENABLED", "SIGNAL_PREGATE_ENABLED"),
     ("SIGNAL_MIN_CONFIDENCE", "SIGNAL_MIN_CONFIDENCE"),
@@ -39,6 +41,10 @@ SETTINGS = [
     ("SIGNAL_RSI_OVERBOUGHT", "SIGNAL_RSI_OVERBOUGHT"),
     ("SIGNAL_RSI_OVERSOLD", "SIGNAL_RSI_OVERSOLD"),
     ("SIGNAL_OVEREXT_ATR_MULT", "SIGNAL_OVEREXT_ATR_MULT"),
+    ("SIGNAL_REENTRY_COOLDOWN_BARS", "SIGNAL_REENTRY_COOLDOWN_BARS"),
+    ("SIGNAL_EXIT_ON_TREND_BREAK", "SIGNAL_EXIT_ON_TREND_BREAK"),
+    ("SIGNAL_HTF_STRUCTURE_ENABLED", "SIGNAL_HTF_STRUCTURE_ENABLED"),
+    ("SIGNAL_EVAL_BARS", "SIGNAL_EVAL_BARS"),
     ("SIGNAL_FIB_PULLBACK_MIN", "SIGNAL_FIB_PULLBACK_MIN"),
     ("SIGNAL_FIB_PULLBACK_MAX", "SIGNAL_FIB_PULLBACK_MAX"),
     ("SIGNAL_SKIP_CRYPTO_WEEKEND", "SIGNAL_SKIP_CRYPTO_WEEKEND"),
@@ -103,6 +109,19 @@ class Command(BaseCommand):
         self.stdout.write(f"  {'RSI_OVERBOUGHT / OVERSOLD':34s} "
                           f"{pregate.RSI_OVERBOUGHT} / {pregate.RSI_OVERSOLD}")
         self.stdout.write(f"  {'ADX floor in force today':34s} {_adx_min_now()}")
+        # Stop geometry: dicts keyed by asset class, plus the reversion pair. These
+        # decide how far the stop sits and therefore where every TP lands, so they
+        # belong in any config comparison.
+        floor, cap = settings.SIGNAL_ATR_STOP_FLOOR, settings.SIGNAL_ATR_STOP_CAP
+        self.stdout.write(f"  {'ATR stop crypto (floor-cap)':34s} "
+                          f"{floor.get('crypto')}-{cap.get('crypto')}")
+        self.stdout.write(f"  {'ATR stop forex  (floor-cap)':34s} "
+                          f"{floor.get('forex')}-{cap.get('forex')}")
+        self.stdout.write(f"  {'ATR stop reversion (floor-cap)':34s} "
+                          f"{settings.SIGNAL_ATR_FLOOR_REVERSION}-{settings.SIGNAL_ATR_CAP_REVERSION}")
+        by_day = getattr(settings, "SIGNAL_ADX_MIN_BY_WEEKDAY", {})
+        if any(by_day.values()):
+            self.stdout.write(f"  {'ADX per-weekday overrides':34s} {by_day}")
 
         active = list(
             SignalService.objects.filter(is_active=True, owner__isnull=True)
