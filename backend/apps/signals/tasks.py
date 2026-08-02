@@ -648,10 +648,10 @@ def format_signal_for_telegram(s: Signal) -> str:
 
     Two decisions worth keeping:
 
-    * The levels go in a <pre> block. Telegram renders it monospace, so the price and
-      percentage columns actually line up (a proportional font can't be padded into
-      columns), and it gives a tap-to-copy block for the numbers you're about to put
-      into an exchange.
+    * Levels are plain bold lines, NOT a <pre> block. Monospace aligns the columns,
+      but Telegram renders it at a smaller size in muted grey and staples a COPY CODE
+      button underneath — so the most important numbers on the card ended up the
+      hardest to read on a phone. Full-size bold beats aligned-but-tiny.
     * The strategy name is NOT printed separately. The templated reasoning already
       opens with it ("VWAP Trend SELL setup — …"), so a header line and a list of
       agreeing strategies repeated it up to three times on one card.
@@ -686,23 +686,22 @@ def format_signal_for_telegram(s: Signal) -> str:
         if tp is not None:
             rows.append((f"TP{i}", tp, reward, rr))
 
-    width = max(len(p(price)) for _, price, _, _ in rows)
     block = []
     for label, price, pct, rr in rows:
-        line = f"{label:<6}{p(price):>{width}}"
+        line = f"{label} <b>{p(price)}</b>"
         if label == "Stop" and pct is not None:
-            line += f"   risk {pct:.1f}%"
+            line += f" · risk {pct:.1f}%"
         elif pct is not None:
-            line += f"  {f'+{pct:.1f}%':>7}"
+            line += f" · +{pct:.1f}%"
             if rr:
-                line += f"  {rr:g}R"
+                line += f" ({rr:g}R)"
         block.append(line)
 
     lines = [
         f"<b>{head} {html.escape(s.symbol.ticker)}</b> · {html.escape(s.timeframe)}",
         " · ".join(badges),
         "",
-        "<pre>" + html.escape("\n".join(block)) + "</pre>",
+        *block,
     ]
     if s.reasoning:
         lines += ["", html.escape(s.reasoning)]
