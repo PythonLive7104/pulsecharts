@@ -1274,6 +1274,19 @@ a.brand:hover { text-decoration: none; }
 .signal-foot { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; margin-top: 12px; font-size: 13px; color: var(--text); }
 /* The strategy list wraps; the timestamp must not — it was being broken mid-value
    and pulled into the middle of the strategy names. */
+/* Kind label on a signal card. Muted and small — it explains the confluence count,
+   it isn't a selling point. */
+.sig-kind {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  padding: 2px 7px;
+  margin-right: 8px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  color: var(--muted);
+  white-space: nowrap;
+}
 .sig-strategies { min-width: 0; }
 .sig-time { flex: 0 0 auto; white-space: nowrap; font-size: 12px; font-variant-numeric: tabular-nums; }
 .signal-disclaimer { margin-top: 8px; font-size: 11px; color: var(--muted); }

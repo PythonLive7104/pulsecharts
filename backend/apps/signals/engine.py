@@ -257,8 +257,12 @@ def _checks(slug, ind, buy):
     out = []
 
     def ema_cross():
+        # Read the relation off the numbers. Hard-coding it from `buy` printed
+        # "EMA9 4.05 > EMA21 4.09" on a mean-reversion card — a false statement,
+        # because a fade trades AGAINST the fast EMAs by design.
         if g("ema9") is not None and g("ema21") is not None:
-            out.append(f"EMA9 {_p(g('ema9'))} {'>' if buy else '<'} EMA21 {_p(g('ema21'))}")
+            rel = ">" if g("ema9") > g("ema21") else "<"
+            out.append(f"EMA9 {_p(g('ema9'))} {rel} EMA21 {_p(g('ema21'))}")
 
     def price_ema200():
         # Render the ACTUAL relation, not the trade direction's assumed one: with
@@ -273,8 +277,11 @@ def _checks(slug, ind, buy):
             out.append(f"MACD histogram {g('macd_hist'):+.4f} ({'bullish' if buy else 'bearish'})")
 
     def rsi_50():
+        # Same rule: state where RSI actually is, not where the direction assumes.
         if g("rsi") is not None:
-            out.append(f"RSI {g('rsi'):.0f} ({'≥' if buy else '≤'}50, momentum {'up' if buy else 'down'})")
+            r = g("rsi")
+            out.append(f"RSI {r:.0f} ({'≥' if r >= 50 else '<'}50, "
+                       f"momentum {'up' if r >= 50 else 'down'})")
 
     def rsi_pullback():
         if g("rsi") is not None:
@@ -312,6 +319,37 @@ def _checks(slug, ind, buy):
         if vol and vma:
             out.append(f"volume {vol / vma:.1f}× its 20-bar average")
 
+    # --- mean reversion: what a fade actually watched -----------------------
+    def bb_extreme():
+        band = g("bb_lower") if buy else g("bb_upper")
+        if g("close") is not None and band is not None:
+            out.append(f"price closed {'below the lower' if buy else 'above the upper'} "
+                       f"Bollinger band ({_p(band)})")
+
+    def rsi_extreme():
+        if g("rsi") is not None:
+            out.append(f"RSI {g('rsi'):.0f} ({'oversold' if buy else 'overbought'})")
+
+    def stoch_extreme():
+        if g("stoch_k") is not None:
+            out.append(f"Stochastic %K {g('stoch_k'):.0f} "
+                       f"({'oversold' if buy else 'overbought'})")
+
+    def vwap_stretch():
+        close, vwap, atr = g("close"), g("vwap"), g("atr")
+        if close is not None and vwap is not None and atr:
+            out.append(f"price {abs(close - vwap) / atr:.1f}×ATR "
+                       f"{'below' if buy else 'above'} VWAP ({_p(vwap)})")
+
+    def adx_range():
+        if g("adx") is not None:
+            out.append(f"ADX {g('adx'):.0f} (ranging — no strong trend to fade into)")
+
+    def to_mean():
+        mid, close, atr = g("bb_mid"), g("close"), g("atr")
+        if mid is not None and close is not None and atr:
+            out.append(f"mean {_p(mid)} sits {abs(mid - close) / atr:.1f}×ATR away")
+
     selection = {
         "momentum-crossover": (ema_cross, macd_hist, rsi_50),
         "macd-trend-following": (price_ema200, macd_hist),
@@ -323,6 +361,11 @@ def _checks(slug, ind, buy):
         "ema-ribbon": (ribbon, price_ema9),
         "donchian-trend": (range_break, price_ema200),
         "adx-trend": (price_ema200, ema_cross, adx),
+        # Mean reversion. Without these the fades fell through to the trend default
+        # below and printed trend claims that were factually wrong on the card.
+        "bb-fade": (bb_extreme, rsi_extreme, adx_range),
+        "rsi-exhaustion": (rsi_extreme, stoch_extreme, to_mean),
+        "vwap-stretch": (vwap_stretch, adx_range, to_mean),
     }.get(slug, (ema_cross, rsi_50, adx))
     for fn in selection:
         fn()
@@ -336,10 +379,20 @@ def _rule_reasoning(strategy_slug, strategy_name, direction, indicators):
     checks = _checks(strategy_slug, indicators, buy)
     body = "; ".join(checks) if checks else "entry conditions aligned"
     reasoning = f"{strategy_name} {direction} setup — {body}."
-    invalidation = (
-        "A close back through the stop, or the EMA stack flipping against the "
-        f"{'long' if buy else 'short'}, invalidates the setup."
-    )
+    from .pregate import KIND_REVERSION, kind_of
+
+    if kind_of(strategy_slug) == KIND_REVERSION:
+        # "The EMA stack flipping against the long" is meaningless for a fade — it
+        # is already positioned against the fast EMAs.
+        invalidation = (
+            "A close beyond the stop, or price continuing away from the mean "
+            "instead of reverting, invalidates the setup."
+        )
+    else:
+        invalidation = (
+            "A close back through the stop, or the EMA stack flipping against the "
+            f"{'long' if buy else 'short'}, invalidates the setup."
+        )
     return reasoning, invalidation
 
 

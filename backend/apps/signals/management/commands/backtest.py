@@ -304,6 +304,12 @@ class Command(BaseCommand):
                                  "(later breakeven, no breakeven, ATR trails) and report each "
                                  "one's expectancy on the SAME trades. Costs one extra pass "
                                  "over the forward candles per trade.")
+        parser.add_argument("--reversion-htf", action="store_true",
+                            help="Apply the higher-timeframe 200-EMA bias to MEAN-REVERSION "
+                                 "strategies only (the live SIGNAL_REVERSION_HTF_GUARD): a "
+                                 "fade must agree with the higher frame's trend, so it buys "
+                                 "dips in an uptrend rather than catching a falling knife. "
+                                 "Unlike --htf-bias this leaves trend strategies untouched.")
         parser.add_argument("--overext", type=float, default=None,
                             help="Override the overextension guard (ATR stretch beyond EMA21 "
                                  "that blocks a chase entry). 0 disables; live default is 2.0. "
@@ -351,6 +357,10 @@ class Command(BaseCommand):
         if htf_bias_on:
             self.stdout.write(self.style.WARNING(
                 "HTF 200-EMA bias ON (higher timeframe's 200 EMA must agree; no exemptions)."))
+        reversion_htf_on = bool(opts.get("reversion_htf"))
+        if reversion_htf_on:
+            self.stdout.write(self.style.WARNING(
+                "Reversion HTF guard ON (fades must agree with the higher-timeframe trend)."))
         timeframes = (
             [t.strip() for t in opts["timeframes"].split(",") if t.strip()]
             if opts["timeframes"] else list(settings.SIGNAL_TIMEFRAMES)
@@ -423,7 +433,8 @@ class Command(BaseCommand):
                     continue
                 self._run_series(sym, tf, candles, services, rb, llm, budget,
                                  sym.asset_class, htf_structure_on, opts["candles"],
-                                 opts.get("adx_min"), htf_bias_on, exit_lab)
+                                 opts.get("adx_min"), htf_bias_on, exit_lab,
+                                 reversion_htf_on)
                 series += 1
                 self.stdout.write(f"  · {sym.ticker} {tf}", ending="\r")
             if llm_on and budget["left"] <= 0:
@@ -495,7 +506,8 @@ class Command(BaseCommand):
 
     def _run_series(self, sym, tf, candles, services, rb, llm, budget,
                     asset_class="crypto", htf_structure_on=False, htf_limit=500,
-                    adx_min=None, htf_bias_on=False, exit_lab=None):
+                    adx_min=None, htf_bias_on=False, exit_lab=None,
+                    reversion_htf_on=False):
         ticker = sym.ticker
         n = len(candles)
         threshold = settings.SIGNAL_MIN_CONFIDENCE
@@ -509,7 +521,8 @@ class Command(BaseCommand):
         htf_timeline = self._htf_timeline(sym, tf, htf_limit) if htf_structure_on else None
         hp = -1  # pointer into htf_timeline; -1 = nothing usable yet
         # Same point-in-time treatment for the HTF 200-EMA bias (--htf-bias).
-        bias_timeline = self._htf_bias_timeline(sym, tf, htf_limit) if htf_bias_on else None
+        bias_timeline = (self._htf_bias_timeline(sym, tf, htf_limit)
+                         if (htf_bias_on or reversion_htf_on) else None)
         bp = -1
 
         for i in range(MIN_CANDLES, n - 1):
@@ -559,10 +572,15 @@ class Command(BaseCommand):
                     elif bar_adx is None or bar_adx < adx_min:
                         continue
 
-                # HTF 200-EMA bias. No strategy exemption: live's _regime_ok applies
-                # this to every strategy (only the EMA-separation chop filter exempts
-                # breakouts). None = not knowable yet → allow, as live fails open.
-                if htf_bias_now is not None:
+                # HTF 200-EMA bias. --htf-bias applies it to every strategy;
+                # --reversion-htf applies it to fades only, mirroring the live
+                # SIGNAL_REVERSION_HTF_GUARD. None = not knowable yet → allow, as
+                # live fails open.
+                applies = htf_bias_on or (
+                    reversion_htf_on
+                    and pregate.kind_of(svc.slug) == pregate.KIND_REVERSION
+                )
+                if applies and htf_bias_now is not None:
                     if htf_bias_now != ("up" if direction == "BUY" else "down"):
                         continue
 

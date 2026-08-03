@@ -123,7 +123,21 @@ def _regime_ok(sym, tf: str, direction: str, indicators: dict, htf_cache: dict,
     # stand in front of — so it's gated by an ADX ceiling instead of the trend floor,
     # and skips the chop filter below (bunched EMAs are the setup, not a warning).
     if pregate.kind_of(strategy_slug) == pregate.KIND_REVERSION:
-        return adx is not None and adx <= settings.SIGNAL_ADX_MAX_REVERSION
+        if adx is None or adx > settings.SIGNAL_ADX_MAX_REVERSION:
+            return False
+        if not settings.SIGNAL_REVERSION_HTF_GUARD:
+            return True
+        # A quiet own-frame ADX only says THIS frame is calm — it may be a pullback
+        # inside a strong 4h/daily trend, and fading that is the classic way mean
+        # reversion gets run over. Require the fade to agree with the higher frame's
+        # 200-EMA bias: buy the dip in an uptrend, sell the rally in a downtrend.
+        htf = _HTF_MAP.get(tf)
+        if not htf:
+            return True  # no higher frame configured — own-frame ADX alone
+        htf_dir = _htf_direction(sym, htf, htf_cache)
+        if htf_dir in ("ERR", None):
+            return True  # unknown or no clear higher trend → nothing to fight
+        return direction == htf_dir
 
     if adx is None or adx < _adx_min_now():
         return False
@@ -667,10 +681,17 @@ def format_signal_for_telegram(s: Signal) -> str:
     p = _fmt_price
 
     # Header: what and where, then how strongly — two lines instead of four.
+    from .pregate import KIND_REVERSION, kind_of
+
     badges = [f"{s.confidence_pct}% conviction"]
     n_agree = getattr(s, "confluence_count", 1)
     if n_agree >= 2:
         badges.append(f"{n_agree} strategies agree")
+    # Say what KIND of setup this is. Reversion is scored against its own confluence
+    # floor, so a fade legitimately arrives with fewer agreeing strategies than a
+    # trend signal — without this the card looks like the 3-of-N rule was skipped.
+    if kind_of(s.service.slug) == KIND_REVERSION:
+        badges.append("mean reversion ↩️")
     # Daily 200-EMA confirmation. Omitted when unknown (legacy rows, new listings,
     # failed daily fetch); a signal fighting the daily trend says so rather than
     # staying quiet about it.

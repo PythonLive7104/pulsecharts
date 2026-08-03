@@ -128,6 +128,14 @@ export default function SignalCard({ s }) {
       )}
 
       <div className="signal-foot">
+        {/* Each kind is scored against its own confluence floor, so a fade arrives
+            with fewer agreeing strategies than a trend signal. Without this label a
+            2-of-2 reversion card reads as a 3-of-N trend signal that slipped the net. */}
+        {s.strategy_kind === "reversion" && (
+          <span className="sig-kind" title="Fades an extreme back toward the mean — scored against the mean-reversion confluence floor, not the trend one.">
+            ↩ mean reversion
+          </span>
+        )}
         <span className="sig-strategies">{nAgree >= 2 ? agree.join(" + ") : s.strategy}</span>
         {/* Freshness is what the reader actually wants here; the exact timestamp is a
             hover away for anyone lining the signal up against a chart. */}

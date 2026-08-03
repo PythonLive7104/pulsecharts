@@ -30,11 +30,17 @@ logger = logging.getLogger("accounts")
 # would mean no Free or Starter user ever received a mean-reversion signal.
 # Inactive strategies are skipped, so listing one before it's activated is harmless.
 STRATEGY_PRIORITY = [
+    # 1-4: TREND. Free follows exactly these, so it keeps 4 trend strategies and the
+    # 3-of-4 confluence floor stays reachable with slack.
     "momentum-crossover",
     "macd-trend-following",
-    "bb-fade",
     "trend-rider",
     "vwap-trend",
+    # 5-6: MEAN REVERSION. Ranked here on purpose — Starter (8) and Pro (all) pick
+    # them up by default, Free (4) does not. A fade inside Free's four would leave
+    # only 3 trend strategies followed and force unanimity on the trend feed.
+    "bb-fade",
+    "vwap-stretch",
     "bollinger-breakout",
     "volatility-breakout",
     "trend-pullback",

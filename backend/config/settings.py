@@ -518,6 +518,19 @@ SIGNAL_ATR_CAP_REVERSION = env.float("SIGNAL_ATR_CAP_REVERSION", default=1.5)
 # to fight). Above it, a "reversion" is just standing in front of a trend.
 SIGNAL_ADX_MAX_REVERSION = env.float("SIGNAL_ADX_MAX_REVERSION", default=20.0)
 
+# Higher-timeframe guard for MEAN REVERSION (tasks._regime_ok): require a fade to
+# agree with the higher frame's 200-EMA bias (buy dips in an uptrend, sell rallies in
+# a downtrend) rather than fading on the own-frame ADX alone.
+#
+# DEFAULT OFF — MEASURED, AND IT COSTS MORE THAN IT SAVES. On the 20-symbol /
+# 1200-candle run it lifted BB Fade to 58.3% / +0.34R (from 55.2% / +0.26R), but the
+# trades it removed were themselves worth +0.20R each, and for VWAP Stretch the
+# removed trades averaged +0.27R — exactly what it kept. Net effect: ~45% less total
+# profit for ~3 points of win rate. It improves the AVERAGE by discarding good trades,
+# which is only worth doing if a high headline win rate matters more than money.
+# Re-measure with `backtest --reversion-htf` before turning it on.
+SIGNAL_REVERSION_HTF_GUARD = env.bool("SIGNAL_REVERSION_HTF_GUARD", default=False)
+
 # Optional: your model's price per 1M tokens, so each scan can log estimated $.
 # Leave 0 to skip the dollar estimate (token counts are still logged).
 OPENAI_PRICE_IN_PER_1M = env.float("OPENAI_PRICE_IN_PER_1M", default=0.0)

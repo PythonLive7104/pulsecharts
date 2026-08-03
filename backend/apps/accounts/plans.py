@@ -39,6 +39,11 @@ PLANS: dict[str, dict] = {
         # arithmetically impossible for enough strategies to agree — the tier gets
         # ZERO signals, silently. Sits one ABOVE the floor so a free user has some
         # slack (any 3 of their 4 may agree) rather than needing unanimity.
+        #
+        # These 4 are all TREND strategies. The mean-reversion pair is deliberately
+        # ranked below them in onboarding.STRATEGY_PRIORITY so it lands on Starter/Pro
+        # only — a fade inside Free's 4 would leave 3 trend strategies and force
+        # unanimity (3-of-3) on the trend feed.
         "strategies": 4,            # strategies a user can follow
         # 0 = NO signal access: the feed returns the locked upgrade card and Telegram
         # sends an upgrade nudge instead of signals. Signals are the paid product, so
@@ -56,7 +61,7 @@ PLANS: dict[str, dict] = {
         # Must also be >= the confluence floor: the cap only sets what a user MAY
         # follow, this sets what they actually DO follow out of the box. A free user
         # left below the floor would see nothing at all.
-        "default_strategies": 4,    # strategies followed by default
+        "default_strategies": 4,    # 4 trend strategies; no fades on Free
         "custom_strategies_per_month": 0,  # Pro-only feature
         "indicator_tiers": [FREE],
         "features": [
@@ -76,19 +81,22 @@ PLANS: dict[str, dict] = {
         # Kept clear of Free's cap: the ladder is slack-above-the-confluence-floor
         # (Free: 3-of-4, Starter: 3-of-6, Pro: 3-of-7+), so more strategies followed
         # means more setups clear the threshold.
-        "strategies": 6,
+        # 8 = 6 trend + the 2 mean-reversion strategies followed by default. Same
+        # reasoning as Free: the cap must leave enough TREND strategies followed to
+        # reach the 3-of-N confluence floor.
+        "strategies": 8,
         "signal_weekly_quota": 400,
         "watchlist_limit": 80,
         "layout_limit": 10,
         "default_watchlist": 80,    # symbols pre-loaded at signup (onboarding)
-        "default_strategies": 6,    # strategies followed by default
+        "default_strategies": 8,    # 6 trend + both fades
         "custom_strategies_per_month": 0,  # Pro-only feature
         "indicator_tiers": [FREE, STARTER],
         "features": [
             "Everything in Free",
             "RSI, MACD, Bollinger Bands & VWAP",
             "Watchlist of 80 coins, set up for you",
-            "6 signal strategies followed by default",
+            "8 signal strategies followed by default",
             "Up to 400 signals/week",
             "Telegram signal alerts",
             "Save up to 10 chart layouts",

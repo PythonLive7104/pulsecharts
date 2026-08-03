@@ -57,6 +57,11 @@ class SignalSerializer(serializers.ModelSerializer):
     # hasn't annotated confluence (e.g. resolved history).
     confluence_count = serializers.SerializerMethodField()
     confluence_services = serializers.SerializerMethodField()
+    # "trend" | "breakout" | "reversion". Exposed so the card can say WHY a signal
+    # with fewer agreeing strategies is legitimate: each kind is scored against its
+    # own confluence floor, and without the label a 2-of-2 fade looks like a 3-of-N
+    # trend signal that slipped through.
+    strategy_kind = serializers.SerializerMethodField()
 
     class Meta:
         model = Signal
@@ -67,3 +72,8 @@ class SignalSerializer(serializers.ModelSerializer):
 
     def get_confluence_services(self, obj):
         return getattr(obj, "confluence_services", None) or [obj.service.name]
+
+    def get_strategy_kind(self, obj):
+        from .pregate import kind_of
+
+        return kind_of(obj.service.slug)
