@@ -87,7 +87,8 @@ class Command(BaseCommand):
                 trades[key] = s
 
         stats: dict[int, dict] = defaultdict(
-            lambda: {"n": 0, "wins": 0, "r": 0.0, "ticker": "", "enabled": True}
+            lambda: {"n": 0, "wins": 0, "r": 0.0, "ticker": "", "enabled": True,
+                     "asset_class": ""}
         )
         for s in trades.values():
             if s.outcome == Signal.Outcome.PENDING:
@@ -99,6 +100,7 @@ class Command(BaseCommand):
             b = stats[s.symbol_id]
             b["ticker"] = s.symbol.ticker
             b["enabled"] = s.symbol.signals_enabled
+            b["asset_class"] = s.symbol.asset_class
             b["n"] += 1
             b["r"] += SCALEOUT_R.get(s.best_tp, 0.5) if s.best_tp >= 1 else -1.0
             if s.best_tp >= 1:
@@ -128,6 +130,26 @@ class Command(BaseCommand):
             w(f"{mark}{r['ticker']:14s} n={r['n']:<4d} win={win:5.1f}%  "
               f"exp={r['exp']:+.2f}R{flag}")
         w(self.style.WARNING("  ~ = fewer than the minimum sample; NOT judged."))
+
+        # Per-symbol rows are noise at this sample size; the asset-class aggregate
+        # pools them into a number that can actually be read. This is the level at
+        # which a decision is available today.
+        groups: dict[str, dict] = defaultdict(lambda: {"n": 0, "wins": 0, "r": 0.0})
+        for r in rows:
+            g = groups[r["asset_class"] or "unknown"]
+            g["n"] += r["n"]
+            g["wins"] += r["wins"]
+            g["r"] += r["r"]
+        w(self.style.MIGRATE_HEADING("\n  Aggregate by asset class (pools the small samples)"))
+        tot_n = tot_r = tot_w = 0
+        for name, g in sorted(groups.items()):
+            tot_n += g["n"]; tot_r += g["r"]; tot_w += g["wins"]
+            w(f"  {name:12s} n={g['n']:<5d} win={g['wins'] / g['n'] * 100:5.1f}%  "
+              f"exp={g['r'] / g['n']:+.2f}R")
+        if tot_n:
+            w(f"  {'ALL':12s} n={tot_n:<5d} win={tot_w / tot_n * 100:5.1f}%  "
+              f"exp={tot_r / tot_n:+.2f}R")
+        w(f"  spread across {len(rows)} symbols — {tot_n / len(rows):.1f} trades each on average.")
 
         if not losers:
             w(self.style.SUCCESS(

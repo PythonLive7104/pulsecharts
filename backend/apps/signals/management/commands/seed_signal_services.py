@@ -144,14 +144,13 @@ SERVICES = [
             "In a range (low ADX), a close beyond the outer Bollinger band with RSI "
             "stretched to an extreme tends to snap back toward the middle band."
         ),
-        # OFF (2026-08-01, user's call). Backtested well standalone (51.7% / +0.15R,
-        # n=58) and the pipeline now supports it end to end — but it delivers with
-        # only 1 agreeing strategy, which is a weaker filter than the 3-of-6 the rest
-        # of the feed clears, and existing users would have to swap a follow to see it.
-        # Flip to True + re-run this command to switch it back on; nothing else needs
-        # to change. NOTE: is_active is in `defaults`, so flipping the row in the admin
-        # without changing this line gets reverted by the next seed run.
-        "is_active": False,
+        # ACTIVE 2026-08-03. 55.2% / +0.26R over n=440 (20 syms, 1200 candles, live
+        # gates) — the largest sample and the highest expectancy of any strategy in
+        # the roster, against +0.02R for the best ACTIVE trend strategy. Fires at
+        # ADX <= 20, a regime the trend book is gated out of, so it adds trades rather
+        # than duplicating them. NOTE: is_active is in `defaults`, so flipping the row
+        # in the admin without changing this line gets reverted by the next seed run.
+        "is_active": True,
     },
     {
         "name": "RSI Exhaustion Reversal",
@@ -175,7 +174,10 @@ SERVICES = [
             "strong trend is driving the move. Distance is measured in ATR so it "
             "adapts to each symbol's volatility."
         ),
-        "is_active": False,
+        # ACTIVE 2026-08-03. Reverses the earlier call: it read -0.03R at n=36, but
+        # 55.6% / +0.27R at n=180 on the 20-symbol run. The small sample was the
+        # wrong one.
+        "is_active": True,
     },
 
 ]
