@@ -190,7 +190,12 @@ def run_scan(symbol_limit: int | None = None, use_pregate: bool | None = None) -
     watched_ids = list(WatchlistItem.objects.values_list("symbol_id", flat=True).distinct())
     if not watched_ids:
         return {"created": 0, "note": "no watched symbols — nothing to scan"}
-    watched = Symbol.objects.filter(is_active=True, id__in=watched_ids)
+    # signals_enabled excludes symbols that are fine to chart but poor to trade
+    # (see Symbol.signals_enabled). Applied here, at the scan, so a disabled symbol
+    # stays fully usable everywhere else in the product.
+    watched = Symbol.objects.filter(
+        is_active=True, signals_enabled=True, id__in=watched_ids
+    )
     limit = settings.SIGNAL_SCAN_SYMBOL_LIMIT if symbol_limit is None else symbol_limit
     if limit:
         # The cap caps the LARGE crypto universe (cost control) but must not starve

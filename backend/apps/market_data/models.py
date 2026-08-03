@@ -34,6 +34,13 @@ class Symbol(models.Model):
     feed_symbol = models.CharField(max_length=32, blank=True, default="")
     display_name = models.CharField(max_length=64, blank=True, default="")
     is_active = models.BooleanField(default=True)
+    # Scan this symbol for trading signals? Separate from is_active on purpose: a
+    # symbol can be perfectly good to CHART and to keep in a watchlist while being a
+    # poor fit for the strategies — thin books wick through a 3-4.5xATR stop that
+    # sits outside normal noise on a major, so the same setup that works on BTC
+    # bleeds on a low-float alt. Turning it off removes the symbol from the signal
+    # scan ONLY; charts, search and watchlists are untouched.
+    signals_enabled = models.BooleanField(default=True)
     sort_order = models.PositiveIntegerField(default=0)
     # Minimum plan required to chart / watchlist this symbol. Default "free" =
     # available to everyone (all existing symbols). Set to "pro" to make a symbol
