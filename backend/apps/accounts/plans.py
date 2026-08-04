@@ -81,22 +81,23 @@ PLANS: dict[str, dict] = {
         # Kept clear of Free's cap: the ladder is slack-above-the-confluence-floor
         # (Free: 3-of-4, Starter: 3-of-6, Pro: 3-of-7+), so more strategies followed
         # means more setups clear the threshold.
-        # 8 = 6 trend + the 2 mean-reversion strategies followed by default. Same
+        # 9 = 6 trend + the 3 mean-reversion strategies followed by default. Same
         # reasoning as Free: the cap must leave enough TREND strategies followed to
-        # reach the 3-of-N confluence floor.
-        "strategies": 8,
+        # reach the 3-of-N confluence floor, so it grows with the roster rather than
+        # letting a new fade displace a trend strategy.
+        "strategies": 9,
         "signal_weekly_quota": 400,
         "watchlist_limit": 80,
         "layout_limit": 10,
         "default_watchlist": 80,    # symbols pre-loaded at signup (onboarding)
-        "default_strategies": 8,    # 6 trend + both fades
+        "default_strategies": 9,    # 6 trend + all 3 fades
         "custom_strategies_per_month": 0,  # Pro-only feature
         "indicator_tiers": [FREE, STARTER],
         "features": [
             "Everything in Free",
             "RSI, MACD, Bollinger Bands & VWAP",
             "Watchlist of 80 coins, set up for you",
-            "8 signal strategies followed by default",
+            "9 signal strategies followed by default",
             "Up to 400 signals/week",
             "Telegram signal alerts",
             "Save up to 10 chart layouts",

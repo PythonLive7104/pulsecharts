@@ -345,6 +345,35 @@ def _checks(slug, ind, buy):
         if g("adx") is not None:
             out.append(f"ADX {g('adx'):.0f} (ranging — no strong trend to fade into)")
 
+    def rsi2():
+        if g("rsi2") is not None:
+            out.append(f"RSI(2) {g('rsi2'):.0f} ({'washed out' if buy else 'blown off'})")
+
+    def above_ema200():
+        if g("ema200") is not None:
+            out.append(f"price {'above' if buy else 'below'} the 200 EMA ({_p(g('ema200'))})")
+
+    def streak():
+        n = g("close_streak")
+        if n:
+            out.append(f"{abs(int(n))} consecutive {'lower' if n < 0 else 'higher'} closes")
+
+    def climax():
+        vol, vma = g("volume"), g("volume_ma20")
+        high, low, close = g("high"), g("low"), g("close")
+        if vol and vma:
+            out.append(f"volume {vol / vma:.1f}× its 20-bar average")
+        if None not in (high, low, close) and high > low:
+            pos = (close - low) / (high - low) * 100
+            out.append(f"closed {pos:.0f}% up its own range "
+                       f"({'buyers took it back' if buy else 'sellers took it back'})")
+
+    def sweep():
+        lvl = g("swing_low") if buy else g("swing_high")
+        if lvl is not None:
+            out.append(f"price swept the recent {'low' if buy else 'high'} ({_p(lvl)}) "
+                       f"and closed back {'above' if buy else 'below'} it")
+
     def to_mean():
         mid, close, atr = g("bb_mid"), g("close"), g("atr")
         if mid is not None and close is not None and atr:
@@ -366,6 +395,10 @@ def _checks(slug, ind, buy):
         "bb-fade": (bb_extreme, rsi_extreme, adx_range),
         "rsi-exhaustion": (rsi_extreme, stoch_extreme, to_mean),
         "vwap-stretch": (vwap_stretch, adx_range, to_mean),
+        "sweep-reversal": (sweep, rsi_extreme, adx_range),
+        "rsi2-reversion": (rsi2, above_ema200, adx_range),
+        "streak-reversion": (streak, rsi_extreme, adx_range),
+        "volume-climax": (climax, adx_range),
     }.get(slug, (ema_cross, rsi_50, adx))
     for fn in selection:
         fn()

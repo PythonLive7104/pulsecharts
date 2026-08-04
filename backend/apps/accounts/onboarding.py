@@ -36,11 +36,12 @@ STRATEGY_PRIORITY = [
     "macd-trend-following",
     "trend-rider",
     "vwap-trend",
-    # 5-6: MEAN REVERSION. Ranked here on purpose — Starter (8) and Pro (all) pick
+    # 5-7: MEAN REVERSION. Ranked here on purpose — Starter and Pro pick
     # them up by default, Free (4) does not. A fade inside Free's four would leave
     # only 3 trend strategies followed and force unanimity on the trend feed.
     "bb-fade",
     "vwap-stretch",
+    "rsi2-reversion",
     "bollinger-breakout",
     "volatility-breakout",
     "trend-pullback",

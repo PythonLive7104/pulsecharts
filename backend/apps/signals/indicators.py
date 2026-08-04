@@ -312,6 +312,22 @@ def _fib_retrace(candles: list[dict], close: float):
     return (close - leg_low) / span, "down"
 
 
+def _close_streak(closes: list[float]) -> int:
+    """Consecutive closes in one direction, signed: +3 = three higher closes in a
+    row, -3 = three lower. 0 when the last close is unchanged or there's no data."""
+    if len(closes) < 2:
+        return 0
+    up = closes[-1] > closes[-2]
+    if closes[-1] == closes[-2]:
+        return 0
+    n = 0
+    for i in range(len(closes) - 1, 0, -1):
+        if (closes[i] > closes[i - 1]) != up or closes[i] == closes[i - 1]:
+            break
+        n += 1
+    return n if up else -n
+
+
 def compute_indicators(candles: list[dict]) -> dict:
     """Snapshot of indicator values for the most recent completed candle.
 
@@ -336,6 +352,11 @@ def compute_indicators(candles: list[dict]) -> dict:
 
     return {
         "close": last["close"],
+        # The bar's own extremes. Needed by triggers that compare the WICK against a
+        # level (a sweep pokes through and closes back inside); every other check
+        # here works off closes.
+        "high": last["high"],
+        "low": last["low"],
         "high_24h": max((c["high"] for c in day_candles), default=last["high"]),
         "low_24h": min((c["low"] for c in day_candles), default=last["low"]),
         "volume": last["volume"],
@@ -345,6 +366,13 @@ def compute_indicators(candles: list[dict]) -> dict:
         "ema50": _ema(closes, 50)[-1],
         "ema200": _ema(closes, 200)[-1],
         "rsi": _rsi(closes),
+        # 2-period RSI — Connors' short-term reversion input. Far spikier than the
+        # 14: it pins to 0/100 routinely, which is the point.
+        "rsi2": _rsi(closes, 2),
+        # Consecutive closes in one direction: +n up, -n down. A streak is a
+        # reversion trigger that owes nothing to an oscillator, so it fires on bars
+        # the band/VWAP strategies don't.
+        "close_streak": _close_streak(closes),
         "macd_line": macd_line,
         "macd_signal": macd_signal,
         "macd_hist": macd_hist,

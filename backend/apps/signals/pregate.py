@@ -204,6 +204,10 @@ PREGATES = {
     "bb-fade": lambda ind: _dir_bb_fade(ind) is not None,
     "rsi-exhaustion": lambda ind: _dir_rsi_exhaustion(ind) is not None,
     "vwap-stretch": lambda ind: _dir_vwap_stretch(ind) is not None,
+    "sweep-reversal": lambda ind: _dir_sweep_reversal(ind) is not None,
+    "rsi2-reversion": lambda ind: _dir_rsi2_reversion(ind) is not None,
+    "streak-reversion": lambda ind: _dir_streak_reversion(ind) is not None,
+    "volume-climax": lambda ind: _dir_volume_climax(ind) is not None,
 }
 
 
@@ -406,6 +410,92 @@ def _dir_vwap_stretch(ind: dict) -> str | None:
 # How far from VWAP (in ATR) counts as stretched enough to fade.
 VWAP_STRETCH_ATR = 2.0
 
+# Minimum wick beyond the swing level, in ATR, for a sweep to count. Without it any
+# trivial touch of the level would qualify.
+SWEEP_MIN_ATR = 0.15
+
+
+# Connors' RSI(2) thresholds. The 2-period RSI pins to its extremes routinely, so
+# these are far tighter than the 14-period 30/70.
+RSI2_LOW, RSI2_HIGH = 5.0, 95.0
+# Consecutive closes that count as a stretched streak.
+STREAK_BARS = 3
+# Volume climax: how far above the 20-bar average, and how wide the bar must be.
+CLIMAX_VOL_MULT, CLIMAX_RANGE_ATR = 2.5, 1.5
+
+
+def _dir_rsi2_reversion(ind: dict) -> str | None:
+    """Larry Connors' RSI(2): a 2-period RSI at an extreme, taken only in the
+    direction of the 200 EMA — buy the washout in an uptrend, sell the spike in a
+    downtrend. The 200-EMA condition is the STRATEGY's own rule here, not one of the
+    engine's trend gates (which reversion strategies are exempt from)."""
+    v = _vals(ind, "rsi2", "close", "ema200")
+    if v is None:
+        return None
+    rsi2, close, ema200 = v
+    if rsi2 <= RSI2_LOW and close > ema200:
+        return "BUY"
+    if rsi2 >= RSI2_HIGH and close < ema200:
+        return "SELL"
+    return None
+
+
+def _dir_streak_reversion(ind: dict) -> str | None:
+    """N consecutive closes in one direction, faded. Owes nothing to an oscillator,
+    so it fires on bars the band/VWAP strategies miss."""
+    streak = ind.get("close_streak")
+    if streak is None:
+        return None
+    if streak <= -STREAK_BARS:
+        return "BUY"
+    if streak >= STREAK_BARS:
+        return "SELL"
+    return None
+
+
+def _dir_volume_climax(ind: dict) -> str | None:
+    """Capitulation / blow-off: a huge-volume, wide-range bar that closes back at the
+    opposite end of its own range — the move ran out of participants."""
+    v = _vals(ind, "close", "high", "low", "volume", "volume_ma20", "atr")
+    if v is None:
+        return None
+    close, high, low, vol, vol_ma, atr = v
+    rng = high - low
+    if not (vol_ma and atr and rng):
+        return None
+    if vol < vol_ma * CLIMAX_VOL_MULT or rng < CLIMAX_RANGE_ATR * atr:
+        return None
+    pos = (close - low) / rng  # 0 = closed on the low, 1 = closed on the high
+    if pos >= 0.66:
+        return "BUY"   # sellers pushed it down, buyers took it back by the close
+    if pos <= 0.34:
+        return "SELL"
+    return None
+
+
+def _dir_sweep_reversal(ind: dict) -> str | None:
+    """Failed breakout / liquidity sweep: price pokes THROUGH a recent swing level
+    and closes back inside the range.
+
+    A different mechanism from the other fades, which trigger on distance from a mean
+    (band, VWAP). This one triggers on rejection at a level — the stop-run that
+    happens just before a reversal — so it fires on bars they don't.
+    """
+    v = _vals(ind, "close", "high", "low", "swing_high", "swing_low", "atr")
+    if v is None:
+        return None
+    close, high, low, swing_high, swing_low, atr = v
+    if not atr:
+        return None
+    floor = SWEEP_MIN_ATR * atr
+    # Swept the lows and closed back above them -> the sellers failed.
+    if low < swing_low - floor and close > swing_low:
+        return "BUY"
+    # Swept the highs and closed back below them -> the buyers failed.
+    if high > swing_high + floor and close < swing_high:
+        return "SELL"
+    return None
+
 
 DIRECTIONS = {
     "momentum-crossover": _dir_momentum,
@@ -421,6 +511,10 @@ DIRECTIONS = {
     "bb-fade": _dir_bb_fade,
     "rsi-exhaustion": _dir_rsi_exhaustion,
     "vwap-stretch": _dir_vwap_stretch,
+    "sweep-reversal": _dir_sweep_reversal,
+    "rsi2-reversion": _dir_rsi2_reversion,
+    "streak-reversion": _dir_streak_reversion,
+    "volume-climax": _dir_volume_climax,
 }
 
 
@@ -573,6 +667,10 @@ STRATEGY_KIND = {
     "bb-fade": KIND_REVERSION,
     "rsi-exhaustion": KIND_REVERSION,
     "vwap-stretch": KIND_REVERSION,
+    "sweep-reversal": KIND_REVERSION,
+    "rsi2-reversion": KIND_REVERSION,
+    "streak-reversion": KIND_REVERSION,
+    "volume-climax": KIND_REVERSION,
 }
 
 

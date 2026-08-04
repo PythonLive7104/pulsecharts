@@ -180,6 +180,66 @@ SERVICES = [
         "is_active": True,
     },
 
+    {
+        "name": "Sweep Reversal",
+        "slug": "sweep-reversal",
+        "strategy_type": "reversion",
+        "description": "Fades a failed breakout — price sweeps a swing level and closes back inside.",
+        "strategy_focus": (
+            "Price pokes through a recent swing high or low, then closes back inside "
+            "the range. The breakout failed and the traders who chased it are trapped, "
+            "which tends to push price the other way."
+        ),
+        # INACTIVE pending a backtest. Different TRIGGER from the other two fades:
+        # they fire on distance from a mean (band, VWAP), this one on rejection at a
+        # level — so it should fire on bars they miss rather than duplicating them.
+        "is_active": False,
+    },
+
+    {
+        "name": "RSI(2) Reversion",
+        "slug": "rsi2-reversion",
+        "strategy_type": "reversion",
+        "description": "Larry Connors' RSI(2) — fades a 2-period RSI extreme in the direction of the 200 EMA.",
+        "strategy_focus": (
+            "A 2-period RSI below 5 while price holds above the 200 EMA (or above 95 "
+            "while below it) marks a short-term washout inside a longer trend — the "
+            "most documented short-term mean-reversion setup there is."
+        ),
+        # ACTIVE 2026-08-04. 54.1% / +0.19R over n=305 (20 syms, 1200 candles, live
+        # gates) — best of the four reversion candidates tested that day, and its
+        # trigger (2-period RSI + 200-EMA side) is independent of the "distance from
+        # a mean" logic the other two fades share, so it adds setups rather than
+        # duplicating them. The three that stayed off: Sweep Reversal (+0.13R) and
+        # Down-Streak (+0.10R) fire hugely often but at half the quality; Volume
+        # Climax (+0.03R) was the weakest of the group.
+        "is_active": True,
+    },
+    {
+        "name": "Down-Streak Reversion",
+        "slug": "streak-reversion",
+        "strategy_type": "reversion",
+        "description": "Fades three or more consecutive closes in the same direction.",
+        "strategy_focus": (
+            "Three consecutive lower closes (or higher) is a stretched short-term move. "
+            "It uses no oscillator at all, so it fires on bars the band and VWAP "
+            "strategies never see."
+        ),
+        "is_active": False,
+    },
+    {
+        "name": "Volume Climax Reversal",
+        "slug": "volume-climax",
+        "strategy_type": "reversion",
+        "description": "Fades a capitulation bar — huge volume, wide range, closing back at the other end.",
+        "strategy_focus": (
+            "A bar on 2.5x average volume with a range over 1.5x ATR that closes back "
+            "in the top (or bottom) third of itself is exhaustion: the move ran out of "
+            "participants and the other side took control before the close."
+        ),
+        "is_active": False,
+    },
+
 ]
 
 
