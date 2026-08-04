@@ -1878,6 +1878,26 @@ a.brand:hover { text-decoration: none; }
 .hd-levels .hd-meta { font-weight: 500; font-size: 12px; color: #aeb9d2; }
 .hd-stop dd:not(.hd-meta) { color: #f87171; }
 .hd-tp dd:not(.hd-meta) { color: #4ade80; }
+/* Rotating states: a status ribbon for resolved trades, a tick on banked targets,
+   and dots so it reads as a sequence rather than a glitch. */
+.hd-inner { animation: hdIn 0.4s ease; }
+@keyframes hdIn { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+@media (prefers-reduced-motion: reduce) { .hd-inner { animation: none; } }
+.hd-status {
+  margin: -4px 0 10px; padding: 6px 10px; border-radius: 8px;
+  font-size: 12px; font-weight: 700;
+}
+.hd-win { background: rgba(34, 197, 94, 0.14); color: #86efac; border: 1px solid rgba(34,197,94,0.3); }
+.hd-flat { background: rgba(234, 179, 8, 0.12); color: #fde68a; border: 1px solid rgba(234,179,8,0.28); }
+.hd-kind { color: #c4b5fd; }
+.hd-hit dd:not(.hd-meta) { text-decoration: line-through; opacity: 0.75; }
+.hd-hit dt { color: #4ade80; }
+.hd-dots { display: flex; gap: 6px; margin-top: 14px; }
+.hd-dot {
+  width: 6px; height: 6px; border-radius: 50%;
+  background: rgba(255, 255, 255, 0.25); transition: background 0.2s ease;
+}
+.hd-dot.on { background: #7c3aed; }
 .hd-why { margin: 12px 0 0; font-size: 12.5px; line-height: 1.5; color: #aeb9d2; }
 .hd-foot { margin: 10px 0 0; font-size: 11px; color: #7f8aa3; }
 

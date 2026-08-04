@@ -28,15 +28,43 @@ const TIMEFRAMES = ["1m", "5m", "15m", "1h", "4h", "1d"];
 // a word of the subhead.
 const HERO_MARKETS = ["crypto", "forex"];
 
-// Sample card shown beside the hero copy. Deliberately a STATIC illustration with
-// round numbers, not a real signal: the point is to show the shape of what you get
-// (entry, stop, three targets, the reason) without implying a live call or a result.
-const HERO_SAMPLE = {
-  symbol: "BTC-USD", timeframe: "4h", conviction: 84, agree: 4,
-  entry: "64,120", stop: "62,515", risk: "2.5",
-  tps: [["TP1", "65,725", "+2.5%", "1R"], ["TP2", "67,330", "+5.0%", "2R"], ["TP3", "68,935", "+7.5%", "3R"]],
-  why: "EMA9 above EMA21, MACD histogram expanding, RSI 61 — four strategies agree.",
-};
+// Sample cards shown beside the hero copy, cycled so a visitor sees the whole
+// lifecycle — a BUY, a mean-reversion SELL, a trade that banked targets, and one
+// that was invalidated. Deliberately STATIC illustrations with round numbers: the
+// point is the SHAPE of what you get, never an implied live call or track record.
+// Every ladder is internally consistent (TP1/2/3 at 1R/2R/3R off the stop).
+const HERO_SAMPLES = [
+  {
+    dir: "BUY", symbol: "BTC-USD", timeframe: "4h", conviction: 84, agree: 4,
+    entry: "64,120", stop: "62,515", risk: "2.5",
+    tps: [["TP1", "65,725", "+2.5%", "1R"], ["TP2", "67,330", "+5.0%", "2R"],
+          ["TP3", "68,935", "+7.5%", "3R"]],
+    why: "EMA9 above EMA21, MACD histogram expanding, RSI 61 — four strategies agree.",
+  },
+  {
+    dir: "SELL", symbol: "SOL-USD", timeframe: "1h", conviction: 78, agree: 2,
+    kind: "mean reversion", entry: "148.20", stop: "150.42", risk: "1.5",
+    tps: [["TP1", "145.98", "+1.5%", "1R"], ["TP2", "143.76", "+3.0%", "2R"],
+          ["TP3", "141.54", "+4.5%", "3R"]],
+    why: "Price closed above the upper Bollinger band; RSI 74 (overbought); ADX 16 (ranging).",
+  },
+  {
+    dir: "BUY", symbol: "ETH-USD", timeframe: "4h", conviction: 81, agree: 3,
+    entry: "3,142.00", stop: "3,072.90", risk: "2.2",
+    tps: [["TP1", "3,211.10", "+2.2%", "1R", true], ["TP2", "3,280.20", "+4.4%", "2R", true],
+          ["TP3", "3,349.30", "+6.6%", "3R"]],
+    status: { tone: "win", text: "✅ TP2 banked · stop moved to entry, runner live" },
+    why: "Half banked at TP1, a quarter at TP2 — the rest can no longer turn into a loss.",
+  },
+  {
+    dir: "SELL", symbol: "LINK-USD", timeframe: "1h", conviction: 76, agree: 3,
+    entry: "17.84", stop: "18.34", risk: "2.8",
+    tps: [["TP1", "17.34", "+2.8%", "1R"], ["TP2", "16.84", "+5.6%", "2R"],
+          ["TP3", "16.34", "+8.4%", "3R"]],
+    status: { tone: "flat", text: "⚠️ Invalidated — trend flipped, closed flat" },
+    why: "You are told when a setup stops being valid, not left holding it.",
+  },
+];
 
 const FAQS = [
   {
@@ -68,6 +96,15 @@ export default function LandingPage() {
     const t = setInterval(() => setMarketIdx((i) => (i + 1) % HERO_MARKETS.length), 2600);
     return () => clearInterval(t);
   }, []);
+
+  // Cycle the example card through BUY / mean-reversion SELL / banked / invalidated
+  // so the hero shows the whole lifecycle, not just an entry.
+  const [sampleIdx, setSampleIdx] = useState(0);
+  useEffect(() => {
+    const t = setInterval(() => setSampleIdx((i) => (i + 1) % HERO_SAMPLES.length), 4200);
+    return () => clearInterval(t);
+  }, []);
+  const sample = HERO_SAMPLES[sampleIdx];
 
   // Live market count for the status pill. Real numbers rather than a hardcoded
   // claim that goes stale every time sync_symbols runs — and silently omitted if
@@ -193,28 +230,41 @@ export default function LandingPage() {
           {/* Show the product, don't just describe it — this is the single thing
               visitors said was missing: what do I actually get? */}
           <div className="hero-demo hero-anim" id="signals-sample" aria-label="Example signal">
-            <div className="hd-head">
-              <span className="hd-dir">🟢 BUY {HERO_SAMPLE.symbol}</span>
-              <span className="hd-tf">{HERO_SAMPLE.timeframe}</span>
-            </div>
-            <div className="hd-badges">
-              {HERO_SAMPLE.conviction}% conviction · {HERO_SAMPLE.agree} strategies agree
-            </div>
-            <dl className="hd-levels">
-              <div><dt>Entry</dt><dd>{HERO_SAMPLE.entry}</dd><dd className="hd-meta" /></div>
-              <div className="hd-stop">
-                <dt>Stop</dt><dd>{HERO_SAMPLE.stop}</dd>
-                <dd className="hd-meta">risk {HERO_SAMPLE.risk}%</dd>
+            <div key={sampleIdx} className="hd-inner">
+              {sample.status && (
+                <div className={`hd-status hd-${sample.status.tone}`}>{sample.status.text}</div>
+              )}
+              <div className="hd-head">
+                <span className="hd-dir">
+                  {sample.dir === "BUY" ? "🟢 BUY" : "🔴 SELL"} {sample.symbol}
+                </span>
+                <span className="hd-tf">{sample.timeframe}</span>
               </div>
-              {HERO_SAMPLE.tps.map(([label, price, pct, r]) => (
-                <div key={label} className="hd-tp">
-                  <dt>{label}</dt><dd>{price}</dd>
-                  <dd className="hd-meta">{pct} ({r})</dd>
+              <div className="hd-badges">
+                {sample.conviction}% conviction · {sample.agree} strategies agree
+                {sample.kind && <> · <span className="hd-kind">↩ {sample.kind}</span></>}
+              </div>
+              <dl className="hd-levels">
+                <div><dt>Entry</dt><dd>{sample.entry}</dd><dd className="hd-meta" /></div>
+                <div className="hd-stop">
+                  <dt>Stop</dt><dd>{sample.stop}</dd>
+                  <dd className="hd-meta">risk {sample.risk}%</dd>
                 </div>
+                {sample.tps.map(([label, price, pct, r, hit]) => (
+                  <div key={label} className={`hd-tp ${hit ? "hd-hit" : ""}`}>
+                    <dt>{hit ? "✓" : ""} {label}</dt><dd>{price}</dd>
+                    <dd className="hd-meta">{pct} ({r})</dd>
+                  </div>
+                ))}
+              </dl>
+              <p className="hd-why">{sample.why}</p>
+            </div>
+            <div className="hd-dots" aria-hidden="true">
+              {HERO_SAMPLES.map((_, i) => (
+                <span key={i} className={`hd-dot ${i === sampleIdx ? "on" : ""}`} />
               ))}
-            </dl>
-            <p className="hd-why">{HERO_SAMPLE.why}</p>
-            <p className="hd-foot">Example only — not a live signal or financial advice.</p>
+            </div>
+            <p className="hd-foot">Examples only — not live signals or financial advice.</p>
           </div>
         </div>
 
