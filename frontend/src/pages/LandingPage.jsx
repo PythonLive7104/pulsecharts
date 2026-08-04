@@ -23,6 +23,21 @@ const PREMIUM_INDICATORS = [
 
 const TIMEFRAMES = ["1m", "5m", "15m", "1h", "4h", "1d"];
 
+// Rotated through the headline. Visitors told us the page never said WHAT the
+// product is; naming both markets in the first line fixes that before they read
+// a word of the subhead.
+const HERO_MARKETS = ["crypto", "forex"];
+
+// Sample card shown beside the hero copy. Deliberately a STATIC illustration with
+// round numbers, not a real signal: the point is to show the shape of what you get
+// (entry, stop, three targets, the reason) without implying a live call or a result.
+const HERO_SAMPLE = {
+  symbol: "BTC-USD", timeframe: "4h", conviction: 84, agree: 4,
+  entry: "64,120", stop: "62,515", risk: "2.5",
+  tps: [["TP1", "65,725", "+2.5%", "1R"], ["TP2", "67,330", "+5.0%", "2R"], ["TP3", "68,935", "+7.5%", "3R"]],
+  why: "EMA9 above EMA21, MACD histogram expanding, RSI 61 — four strategies agree.",
+};
+
 const FAQS = [
   {
     q: "Where does the price data come from?",
@@ -47,6 +62,31 @@ const FAQS = [
 ];
 
 export default function LandingPage() {
+  // Headline word rotator (crypto <-> forex).
+  const [marketIdx, setMarketIdx] = useState(0);
+  useEffect(() => {
+    const t = setInterval(() => setMarketIdx((i) => (i + 1) % HERO_MARKETS.length), 2600);
+    return () => clearInterval(t);
+  }, []);
+
+  // Live market count for the status pill. Real numbers rather than a hardcoded
+  // claim that goes stale every time sync_symbols runs — and silently omitted if
+  // the request fails, so the hero can never show a made-up figure.
+  const [markets, setMarkets] = useState(null);
+  useEffect(() => {
+    let alive = true;
+    api.symbols()
+      .then((list) => {
+        if (!alive || !Array.isArray(list)) return;
+        setMarkets({
+          crypto: list.filter((s) => (s.asset_class || "crypto") === "crypto").length,
+          forex: list.filter((s) => s.asset_class === "forex").length,
+        });
+      })
+      .catch(() => {});
+    return () => { alive = false; };
+  }, []);
+
   const isAuthed = useStore((s) => s.isAuthed);
   const entitlements = useStore((s) => s.entitlements);
   const loadEntitlements = useStore((s) => s.loadEntitlements);
@@ -112,28 +152,69 @@ export default function LandingPage() {
 
         <div className="hero-inner">
           <div className="hero-copy">
+            {/* Status pill: a live, verifiable number instead of an adjective. */}
+            <div className="hero-pill hero-anim">
+              <span className="hero-pill-dot" aria-hidden="true" />
+              LIVE
+              {markets
+                ? ` · ${markets.crypto} COINS + ${markets.forex} FX PAIRS`
+                : " · CRYPTO & FOREX"}
+            </div>
             <h1 className="hero-anim">
-              Pro-grade crypto &amp; forex <span className="grad">charts</span>,<br />
-              without the pro-grade price.
+              Trade{" "}
+              <span className="hero-rotate">
+                <span key={HERO_MARKETS[marketIdx]} className="grad">
+                  {HERO_MARKETS[marketIdx]}
+                </span>
+              </span>{" "}
+              with a plan,<br />not a hunch.
             </h1>
             <p className="hero-sub hero-anim">
-              Real-time candlestick charting for Hyperliquid crypto and the major
-              forex pairs — switch between them in one click. Start free with live
-              charts and core indicators; upgrade for advanced analysis, saved
-              layouts, and trading signals on both — including strategies you
-              build yourself, just by describing them to our AI.
+              Live candlestick charts and 11 indicators, plus an always-on engine that
+              posts <strong>entry, stop-loss and three take-profit targets</strong> with
+              the reason behind every call — in the app or straight to your Telegram.
             </p>
             <div className="hero-cta hero-anim">
               {isAuthed ? (
                 <Link to="/app" className="btn-primary btn-lg">Open dashboard →</Link>
               ) : (
                 <>
-                  <Link to="/signup" className="btn-primary btn-lg">Start charting free</Link>
-                  <Link to="/login" className="btn-ghost btn-lg">Sign in →</Link>
+                  <Link to="/signup" className="btn-primary btn-lg">Start free →</Link>
+                  <a href="#how" className="btn-ghost btn-lg">How it works</a>
+                  <a href="#pricing" className="btn-ghost btn-lg">Pricing</a>
                 </>
               )}
             </div>
-            <p className="hero-note hero-anim">No card required · Crypto &amp; Forex · Cancel anytime</p>
+            <p className="hero-note hero-anim">
+              No card required · Crypto &amp; Forex · Signals free for 30 days
+            </p>
+          </div>
+
+          {/* Show the product, don't just describe it — this is the single thing
+              visitors said was missing: what do I actually get? */}
+          <div className="hero-demo hero-anim" id="signals-sample" aria-label="Example signal">
+            <div className="hd-head">
+              <span className="hd-dir">🟢 BUY {HERO_SAMPLE.symbol}</span>
+              <span className="hd-tf">{HERO_SAMPLE.timeframe}</span>
+            </div>
+            <div className="hd-badges">
+              {HERO_SAMPLE.conviction}% conviction · {HERO_SAMPLE.agree} strategies agree
+            </div>
+            <dl className="hd-levels">
+              <div><dt>Entry</dt><dd>{HERO_SAMPLE.entry}</dd><dd className="hd-meta" /></div>
+              <div className="hd-stop">
+                <dt>Stop</dt><dd>{HERO_SAMPLE.stop}</dd>
+                <dd className="hd-meta">risk {HERO_SAMPLE.risk}%</dd>
+              </div>
+              {HERO_SAMPLE.tps.map(([label, price, pct, r]) => (
+                <div key={label} className="hd-tp">
+                  <dt>{label}</dt><dd>{price}</dd>
+                  <dd className="hd-meta">{pct} ({r})</dd>
+                </div>
+              ))}
+            </dl>
+            <p className="hd-why">{HERO_SAMPLE.why}</p>
+            <p className="hd-foot">Example only — not a live signal or financial advice.</p>
           </div>
         </div>
 
