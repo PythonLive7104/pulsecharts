@@ -26,7 +26,15 @@ const TIMEFRAMES = ["1m", "5m", "15m", "1h", "4h", "1d"];
 // Rotated through the headline. Visitors told us the page never said WHAT the
 // product is; naming both markets in the first line fixes that before they read
 // a word of the subhead.
-const HERO_MARKETS = ["crypto", "forex"];
+const HERO_MARKETS = ["Crypto", "Forex"];
+
+// What the product IS, in three lines. Visitors told us the hero described a
+// benefit ("trade with a plan") without ever naming the thing being sold.
+const HERO_POINTS = [
+  "Buy/sell signals with entry, stop-loss and 3 take-profit targets",
+  "Live charts + 11 indicators for crypto & forex",
+  "Delivered in the app and straight to Telegram",
+];
 
 // Sample cards shown beside the hero copy, cycled so a visitor sees the whole
 // lifecycle — a BUY, a mean-reversion SELL, a trade that banked targets, and one
@@ -198,19 +206,24 @@ export default function LandingPage() {
                 : " · CRYPTO & FOREX"}
             </div>
             <h1 className="hero-anim">
-              Trade{" "}
               <span className="hero-rotate">
                 <span key={HERO_MARKETS[marketIdx]} className="grad">
                   {HERO_MARKETS[marketIdx]}
                 </span>
               </span>{" "}
-              with a plan,<br />not a hunch.
+              trading signals<br />
+              with the whole trade plan.
             </h1>
             <p className="hero-sub hero-anim">
-              Live candlestick charts and 11 indicators, plus an always-on engine that
-              posts <strong>entry, stop-loss and three take-profit targets</strong> with
-              the reason behind every call — in the app or straight to your Telegram.
+              An always-on engine scans{" "}
+              {markets ? `${markets.crypto} coins and ${markets.forex} FX pairs` : "crypto and forex"}{" "}
+              on the 1h and 4h, and sends you a buy or sell call the moment several
+              strategies agree — with the exact entry, stop-loss, three targets and the
+              reason it fired.
             </p>
+            <ul className="hero-points hero-anim">
+              {HERO_POINTS.map((t) => <li key={t}>{t}</li>)}
+            </ul>
             <div className="hero-cta hero-anim">
               {isAuthed ? (
                 <Link to="/app" className="btn-primary btn-lg">Open dashboard →</Link>
