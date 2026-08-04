@@ -23,6 +23,42 @@ const PREMIUM_INDICATORS = [
 
 const TIMEFRAMES = ["1m", "5m", "15m", "1h", "4h", "1d"];
 
+// The signal service, itemised. The page led with charting for so long that the
+// thing people actually pay for was never spelled out — these are the parts of a
+// signal, not benefits.
+const SIGNAL_FEATURES = [
+  {
+    icon: "🎯",
+    title: "A complete trade plan",
+    body: "Every call arrives with the entry price, a stop-loss and three take-profit targets at 1R, 2R and 3R — plus the risk and reward as percentages, so you can size the position before you place it.",
+  },
+  {
+    icon: "🤝",
+    title: "Only when strategies agree",
+    body: "Eight strategies scan every coin and pair you watch. A signal is only sent when several of them independently call the same setup, so you get the ones they concur on rather than every twitch.",
+  },
+  {
+    icon: "📈",
+    title: "Trend and mean-reversion",
+    body: "Trend strategies trade breakouts and momentum; mean-reversion strategies fade extremes when markets go quiet. Between them you get signals in trending and ranging markets, not just one.",
+  },
+  {
+    icon: "🧾",
+    title: "The reason, in plain English",
+    body: "Each card shows the indicator readings behind the call and one line on what would invalidate it — so you can judge the setup yourself instead of trusting a black box.",
+  },
+  {
+    icon: "🔔",
+    title: "Followed to the finish",
+    body: "You're told when a target is tagged, when to move the stop to breakeven, and when a setup is invalidated by a trend flip. The trade is tracked after it's sent, not just announced.",
+  },
+  {
+    icon: "📊",
+    title: "Results tracked honestly",
+    body: "Your dashboard shows the realized record of the signals you were sent — wins, losses and average return per trade, including the ones that didn't work.",
+  },
+];
+
 // Rotated through the headline. Visitors told us the page never said WHAT the
 // product is; naming both markets in the first line fixes that before they read
 // a word of the subhead.
@@ -336,6 +372,28 @@ export default function LandingPage() {
       </section>
 
       {/* Feature deep-dive */}
+      {/* The signal service in detail — the product, ahead of the general feature grid. */}
+      <section id="signals" className="signals-section">
+        <h2>Inside the signal service</h2>
+        <p className="section-sub">
+          What actually lands on your screen — and on your phone — every time the
+          engine finds a setup.
+        </p>
+        <div className="sigfeat-grid">
+          {SIGNAL_FEATURES.map((f) => (
+            <div className="sigfeat" key={f.title}>
+              <div className="sigfeat-icon">{f.icon}</div>
+              <h3>{f.title}</h3>
+              <p>{f.body}</p>
+            </div>
+          ))}
+        </div>
+        <p className="sigfeat-note muted">
+          Signals are algorithmic output for information only — not financial advice,
+          and not a recommendation to buy or sell.
+        </p>
+      </section>
+
       <section id="features" className="features">
         <h2>Two markets, one workspace — with a signal engine built in</h2>
         <p className="section-sub">
@@ -551,11 +609,16 @@ export default function LandingPage() {
         <div className="footer-cols">
           <div className="footer-brand">
             <span className="brand"><Logo /></span>
-            <p className="muted">Affordable crypto &amp; forex charting, powered by Hyperliquid and live FX data.</p>
+            <p className="muted">
+              Algorithmic trading signals and live charts for crypto &amp; forex —
+              powered by Hyperliquid and live FX data.
+            </p>
           </div>
           <div className="footer-col">
             <h4>Product</h4>
+            <a href="#signals">Trading signals</a>
             <a href="#features">Features</a>
+            <a href="#indicators">Indicators</a>
             {!ownsLifetime && <a href="#pricing">Pricing</a>}
             <Link to="/app">Open app</Link>
           </div>
@@ -577,8 +640,11 @@ export default function LandingPage() {
           </div>
         </div>
         <div className="footer-bottom muted">
-          PulseCharts is a charting tool for informational purposes only and is not
-          financial advice. © {new Date().getFullYear()} MAILIONDEV TECHNOLOGY LTD (RC 9233525).
+          PulseCharts provides charting and algorithmic trading signals for
+          informational purposes only. Signals are automated output, not
+          recommendations to buy or sell, and nothing here is financial advice.
+          Trading carries risk; you are responsible for your own decisions.
+          © {new Date().getFullYear()} MAILIONDEV TECHNOLOGY LTD (RC 9233525).
         </div>
       </footer>
     </div>
