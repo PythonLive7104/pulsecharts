@@ -238,6 +238,72 @@ class Subscription(models.Model):
         return f"{self.user.email} · {self.tier} · {self.status}"
 
 
+class ReferralCommission(models.Model):
+    """A cash commission owed to a referrer because someone they referred PAID.
+
+    Distinct from `User.referral_credits`, and deliberately so:
+
+      * credits are earned at SIGNUP ($1), live on the user row, and are spent
+        in-app by redeeming them for a plan — they never leave the system as money;
+      * a commission is earned when the referred user actually PAYS, is a share of
+        real revenue, and is settled OUT of band (bank transfer, crypto, whatever)
+        and then marked paid here.
+
+    Mixing the two would let someone redeem a plan with money you still owe them in
+    cash, so they are separate ledgers on purpose.
+
+    One row per payment: `payment_ref` is unique, so a replayed Paystack webhook
+    can never pay a referrer twice for the same charge.
+    """
+
+    class Status(models.TextChoices):
+        PENDING = "PENDING", "Pending payout"
+        PAID = "PAID", "Paid"
+        VOID = "VOID", "Void (refunded/disputed)"
+
+    referrer = models.ForeignKey(
+        "accounts.User", on_delete=models.CASCADE, related_name="referral_commissions"
+    )
+    # The payer. SET_NULL so deleting a user never erases what you owe someone else;
+    # the row keeps `referred_email` for the record.
+    referred_user = models.ForeignKey(
+        "accounts.User", null=True, blank=True, on_delete=models.SET_NULL,
+        related_name="commissions_generated",
+    )
+    referred_email = models.EmailField(blank=True, default="")
+    code = models.CharField(max_length=40, blank=True, default="")
+
+    payment_ref = models.CharField(max_length=128, unique=True)
+    plan = models.CharField(max_length=16)              # starter | pro | lifetime
+    amount_usd = models.DecimalField(max_digits=10, decimal_places=2)   # what they paid
+    rate_pct = models.DecimalField(max_digits=5, decimal_places=2)      # e.g. 20.00
+    commission_usd = models.DecimalField(max_digits=10, decimal_places=2)
+
+    status = models.CharField(
+        max_length=8, choices=Status.choices, default=Status.PENDING, db_index=True
+    )
+    created_at = models.DateTimeField(auto_now_add=True, db_index=True)
+    paid_at = models.DateTimeField(null=True, blank=True)
+    # Free-text payout reference (bank transfer id, tx hash, "paid by hand 5 Aug").
+    payout_note = models.CharField(max_length=200, blank=True, default="")
+
+    class Meta:
+        ordering = ("-created_at",)
+        indexes = [models.Index(fields=["referrer", "status"])]
+
+    def __str__(self):
+        return f"{self.referrer.email} · ${self.commission_usd} · {self.status}"
+
+    def mark_paid(self, note: str = "") -> None:
+        from django.utils import timezone as _tz
+
+        self.status = self.Status.PAID
+        self.paid_at = _tz.now()
+        if note:
+            self.payout_note = note
+        self.save(update_fields=["status", "paid_at", "payout_note"])
+
+
 class ReferralCode(models.Model):
     """A code that grants a temporary plan when used at signup.
 

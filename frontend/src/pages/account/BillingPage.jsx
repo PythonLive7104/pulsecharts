@@ -324,6 +324,73 @@ export default function BillingPage() {
             </div>
           )}
           {refMsg && <p className="muted notice">{refMsg}</p>}
+
+          {/* Commissions: a SECOND, separate ledger. Credits above are the $1 signup
+              reward and are spent in-app; this is a cash share of what referred users
+              actually paid, settled outside the product and marked paid by an admin. */}
+          {ref.commission?.rate_pct > 0 && (
+            <div className="commission">
+              <div className="commission-head">
+                <h3>Subscription commissions</h3>
+                <span className="muted">
+                  {ref.commission.rate_pct}% of every payment made by someone who
+                  signed up with your code
+                </span>
+              </div>
+
+              {ref.commission.items?.length ? (
+                <>
+                  <div className="commission-stats">
+                    <div>
+                      <strong>${ref.commission.pending_usd}</strong>
+                      <span className="muted">awaiting payout</span>
+                    </div>
+                    <div>
+                      <strong>${ref.commission.paid_usd}</strong>
+                      <span className="muted">paid out</span>
+                    </div>
+                    <div>
+                      <strong>{ref.commission.count}</strong>
+                      <span className="muted">paid referrals</span>
+                    </div>
+                  </div>
+                  <div className="commission-rows">
+                    {ref.commission.items.map((c) => (
+                      <div key={c.id} className="cm-row">
+                        <span className="cm-date muted">
+                          {new Date(c.date).toLocaleDateString()}
+                        </span>
+                        <span className="cm-who">{c.email}</span>
+                        <span className="cm-plan muted">{c.plan}</span>
+                        <span className="cm-amt muted">of ${c.amount_usd}</span>
+                        <span className="cm-earn"><b>${c.commission_usd}</b></span>
+                        <span className={`cm-status cm-${c.status.toLowerCase()}`}>
+                          {c.status === "PAID"
+                            ? `Paid${c.paid_at ? ` ${new Date(c.paid_at).toLocaleDateString()}` : ""}`
+                            : c.status === "VOID" ? "Refunded" : "Pending"}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                  <p className="muted commission-note">
+                    Payouts are sent manually and marked here once the money has left.
+                  </p>
+                </>
+              ) : (
+                <div className="commission-empty">
+                  <span className="ce-icon" aria-hidden="true">💸</span>
+                  <p><b>No one you referred has subscribed yet.</b></p>
+                  <p className="muted">
+                    You earn <b>{ref.commission.rate_pct}%</b> of every payment they
+                    make — ${(ref.prices.pro * ref.commission.rate_pct / 100).toFixed(2)} on
+                    a Pro plan, ${(ref.prices.starter * ref.commission.rate_pct / 100).toFixed(2)} on
+                    Starter — for as long as they keep paying. Share your link and keep pushing.
+                  </p>
+                  <button className="btn-ghost" onClick={copyShareLink}>Copy your link</button>
+                </div>
+              )}
+            </div>
+          )}
         </div>
       )}
 

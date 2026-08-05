@@ -205,6 +205,8 @@ class WebhookView(APIView):
 
         sub.status = new_status
         sub.save(update_fields=["status", "updated_at"])
+        # You don't owe a share of revenue that was handed back.
+        self._void_commission(reference, new_status.lower())
         user = sub.user
         logger.warning(
             "Paystack %s: %s on %s (%s) — subscription marked",
@@ -267,6 +269,73 @@ class WebhookView(APIView):
             "Access revoked: %s -> %s (expiry=%s)",
             user.email, user.plan_tier, user.plan_expiry or "never",
         )
+
+    @staticmethod
+    def _record_commission(user, reference: str, plan: str, paid_cents: int) -> None:
+        """Record the referrer's cut of a verified payment.
+
+        No-op unless the payer signed up with someone's code and the rate is set.
+        `get_or_create` on the payment reference makes a replayed webhook harmless —
+        the same charge can never pay a referrer twice.
+        """
+        from decimal import Decimal
+
+        from apps.accounts.models import ReferralCode, ReferralCommission
+
+        rate = Decimal(str(getattr(settings, "REFERRAL_COMMISSION_PCT", 0) or 0))
+        code_str = (user.referred_by_code or "").strip()
+        if rate <= 0 or not code_str:
+            return
+        code = ReferralCode.objects.filter(code=code_str.upper()).select_related("owner").first()
+        # No owner = an admin promo code, not somebody's referral link. And nobody
+        # earns a commission on their own payment.
+        if code is None or code.owner_id is None or code.owner_id == user.id:
+            return
+
+        amount = (Decimal(paid_cents) / Decimal(100)).quantize(Decimal("0.01"))
+        commission = (amount * rate / Decimal(100)).quantize(Decimal("0.01"))
+        if commission <= 0:
+            return
+        _, created = ReferralCommission.objects.get_or_create(
+            payment_ref=reference,
+            defaults={
+                "referrer": code.owner,
+                "referred_user": user,
+                "referred_email": user.email,
+                "code": code.code,
+                "plan": plan,
+                "amount_usd": amount,
+                "rate_pct": rate,
+                "commission_usd": commission,
+            },
+        )
+        if created:
+            logger.info(
+                "Referral commission: %s earns $%s (%s%% of $%s) from %s [%s]",
+                code.owner.email, commission, rate, amount, user.email, reference,
+            )
+
+    @staticmethod
+    def _void_commission(reference: str, reason: str) -> None:
+        """Void the commission attached to a refunded/disputed charge — you don't owe
+        a share of revenue you had to give back. Paid-out rows are left alone and
+        logged loudly: that money is already gone and needs a human decision."""
+        from apps.accounts.models import ReferralCommission
+
+        row = ReferralCommission.objects.filter(payment_ref=reference).first()
+        if row is None:
+            return
+        if row.status == ReferralCommission.Status.PAID:
+            logger.warning(
+                "Commission on %s was ALREADY PAID OUT ($%s to %s) but the charge was "
+                "%s — recover it manually.", reference, row.commission_usd,
+                row.referrer.email, reason,
+            )
+            return
+        row.status = ReferralCommission.Status.VOID
+        row.payout_note = (f"{row.payout_note} · voided: {reason}").strip(" ·")
+        row.save(update_fields=["status", "payout_note"])
+        logger.info("Commission voided on %s (%s)", reference, reason)
 
     def _grant(self, data: dict) -> None:
         """Grant access on a verified successful charge. Idempotent on the payment
@@ -343,6 +412,14 @@ class WebhookView(APIView):
             "Paystack charge.success: %s -> %s (expiry=%s)",
             user.email, tier, renewal or "never (lifetime)",
         )
+
+        # Credit whoever referred this user, if anyone. Never let a commission
+        # failure break the grant — the customer's access matters more, and the row
+        # can be reconstructed from the payment later.
+        try:
+            self._record_commission(user, reference, plan, paid)
+        except Exception:
+            logger.exception("Referral commission failed for %s (%s)", user.email, reference)
 
         # Top the user's watchlist + followed strategies up to the new plan's
         # defaults (idempotent). Never let it break webhook processing.

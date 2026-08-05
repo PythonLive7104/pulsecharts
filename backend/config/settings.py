@@ -188,6 +188,15 @@ FOREX_ENABLED = env.bool("FOREX_ENABLED", default=True)
 # keeps request volume low against the public endpoint.
 FOREX_POLL_INTERVAL = env.float("FOREX_POLL_INTERVAL", default=15.0)
 
+# --- Referral commission --------------------------------------------------
+# Percentage of a payment credited to whoever referred the payer. Earned on a
+# VERIFIED charge, tracked as a ReferralCommission row, and settled out of band —
+# you mark it paid in the admin once the money has actually left. 0 disables it.
+#
+# Deliberately separate from the $1 signup credit (User.referral_credits), which is
+# spent in-app: this is real revenue share and must not be redeemable for a plan.
+REFERRAL_COMMISSION_PCT = env.float("REFERRAL_COMMISSION_PCT", default=20.0)
+
 # --- Paystack (payment provider) ------------------------------------------
 # One-time payments in USD that grant 30 days of access (see apps/billing/paystack.py).
 # Test keys never move real money; flip PAYSTACK_MODE=live once verified.

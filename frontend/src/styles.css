@@ -2092,3 +2092,42 @@ a.brand:hover { text-decoration: none; }
 @media (max-width: 560px) {
   .card .auth-form.at-grid { grid-template-columns: 1fr; }
 }
+
+/* --- Referral commissions (Plan & Billing) -------------------------------
+   Visually separated from the credits block above: they are different ledgers
+   (credits are spent in-app, commissions are cash paid out), and conflating them
+   would have people expecting to redeem money you still owe them. */
+.commission { margin-top: 22px; border-top: 1px solid var(--border); padding-top: 18px; }
+.commission-head h3 { margin: 0 0 2px; font-size: 15px; color: var(--text-strong); }
+.commission-head span { font-size: 13px; }
+.commission-stats { display: flex; gap: 28px; flex-wrap: wrap; margin: 14px 0 12px; }
+.commission-stats div { display: flex; flex-direction: column; }
+.commission-stats strong { font-size: 20px; color: var(--text-strong); }
+.commission-stats span { font-size: 12px; }
+.commission-rows { display: grid; gap: 6px; }
+.cm-row {
+  display: grid;
+  grid-template-columns: 88px 1fr 64px 84px 70px 100px;
+  align-items: center; gap: 10px;
+  padding: 8px 10px; border-radius: 8px; background: var(--bg); font-size: 13px;
+}
+.cm-earn { text-align: right; }
+.cm-status { font-size: 11px; font-weight: 700; text-align: right; }
+.cm-pending { color: #e0a106; }
+.cm-paid { color: var(--green); }
+.cm-void { color: var(--muted); text-decoration: line-through; }
+.commission-note { margin: 10px 0 0; font-size: 12px; }
+@media (max-width: 720px) {
+  .cm-row { grid-template-columns: 1fr auto; row-gap: 2px; }
+  .cm-date, .cm-plan, .cm-amt { display: none; }
+}
+
+/* Empty state — the common case for a new referrer, so it should read as
+   encouragement with the actual numbers, not as an error. */
+.commission-empty {
+  margin-top: 14px; padding: 22px 18px; text-align: center;
+  border: 1px dashed var(--border); border-radius: 12px;
+}
+.commission-empty .ce-icon { font-size: 26px; display: block; margin-bottom: 6px; }
+.commission-empty p { margin: 0 0 8px; font-size: 14px; }
+.commission-empty .btn-ghost { margin-top: 6px; }

@@ -3,7 +3,7 @@ from django.contrib.auth.admin import UserAdmin as BaseUserAdmin
 from django.db.models import Q
 from django.utils import timezone
 
-from .models import ReferralCode, Subscription, User
+from .models import ReferralCode, ReferralCommission, Subscription, User
 from .plans import PAID_TIER_VALUES, PAID_TIERS, PLANS, plan_key
 from .tasks import trim_to_plan_limits
 
@@ -139,3 +139,40 @@ class ReferralCodeAdmin(admin.ModelAdmin):
     search_fields = ("code", "note", "owner__email")
     raw_id_fields = ("owner",)
     readonly_fields = ("used_count", "created_at")
+
+
+@admin.register(ReferralCommission)
+class ReferralCommissionAdmin(admin.ModelAdmin):
+    """The payout ledger. Rows are created by the Paystack webhook on a verified
+    charge; you mark them paid here once the money has actually been sent."""
+
+    list_display = ("created_at", "referrer", "referred_email", "plan", "amount_usd",
+                    "rate_pct", "commission_usd", "status", "paid_at", "payout_note")
+    list_filter = ("status", "plan", "created_at")
+    search_fields = ("referrer__email", "referred_email", "payment_ref", "code")
+    # Everything except the payout fields is a record of what happened — editing it
+    # would rewrite history rather than correct it.
+    readonly_fields = ("referrer", "referred_user", "referred_email", "code",
+                       "payment_ref", "plan", "amount_usd", "rate_pct",
+                       "commission_usd", "created_at")
+    list_editable = ("status", "payout_note")
+    date_hierarchy = "created_at"
+    actions = ["mark_paid", "mark_pending"]
+
+    @admin.action(description="Mark selected commissions as PAID (payout sent)")
+    def mark_paid(self, request, queryset):
+        from django.utils import timezone
+
+        n = queryset.exclude(status=ReferralCommission.Status.PAID).update(
+            status=ReferralCommission.Status.PAID, paid_at=timezone.now()
+        )
+        total = sum(
+            (c.commission_usd for c in queryset.filter(status=ReferralCommission.Status.PAID)),
+            0,
+        )
+        self.message_user(request, f"Marked {n} commission(s) paid (${total} total).")
+
+    @admin.action(description="Move back to PENDING (payout not sent after all)")
+    def mark_pending(self, request, queryset):
+        n = queryset.update(status=ReferralCommission.Status.PENDING, paid_at=None)
+        self.message_user(request, f"Moved {n} commission(s) back to pending.")

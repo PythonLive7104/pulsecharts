@@ -114,7 +114,59 @@ class ReferralView(APIView):
             "prices": {"starter": starter_price, "pro": pro_price},
             "can_redeem_starter": credits >= starter_price,
             "can_redeem_pro": credits >= pro_price,
+            "commission": self._commission_summary(user),
         })
+
+    @staticmethod
+    def _mask_email(email: str) -> str:
+        """j***n@gmail.com — enough for a referrer to recognise their own invite
+        without handing them another user's contact details."""
+        if not email or "@" not in email:
+            return "—"
+        name, domain = email.split("@", 1)
+        if len(name) <= 2:
+            return f"{name[0]}***@{domain}"
+        return f"{name[0]}***{name[-1]}@{domain}"
+
+    @classmethod
+    def _commission_summary(cls, user) -> dict:
+        """Cash owed / already paid to this user from referred subscriptions.
+
+        Separate ledger from `credits`: credits are the $1 signup reward and are
+        spent in-app, this is a share of real revenue settled outside the product.
+        """
+        from decimal import Decimal
+
+        from django.db.models import Sum
+
+        from apps.accounts.models import ReferralCommission
+
+        qs = ReferralCommission.objects.filter(referrer=user)
+
+        def total(status):
+            v = qs.filter(status=status).aggregate(t=Sum("commission_usd"))["t"]
+            return str(v or Decimal("0.00"))
+
+        items = [
+            {
+                "id": c.id,
+                "date": c.created_at,
+                "email": cls._mask_email(c.referred_email),
+                "plan": c.plan,
+                "amount_usd": str(c.amount_usd),
+                "commission_usd": str(c.commission_usd),
+                "status": c.status,
+                "paid_at": c.paid_at,
+            }
+            for c in qs[:50]
+        ]
+        return {
+            "rate_pct": float(getattr(settings, "REFERRAL_COMMISSION_PCT", 0) or 0),
+            "pending_usd": total(ReferralCommission.Status.PENDING),
+            "paid_usd": total(ReferralCommission.Status.PAID),
+            "count": qs.exclude(status=ReferralCommission.Status.VOID).count(),
+            "items": items,
+        }
 
 
 class ReferralSetCodeView(APIView):
