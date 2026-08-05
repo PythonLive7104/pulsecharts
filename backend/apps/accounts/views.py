@@ -160,13 +160,117 @@ class ReferralView(APIView):
             }
             for c in qs[:50]
         ]
+        from apps.accounts.models import WithdrawalRequest
+
+        # Withdrawable = pending commissions NOT already claimed by an open request.
+        available = qs.filter(
+            status=ReferralCommission.Status.PENDING, withdrawal__isnull=True
+        ).aggregate(t=Sum("commission_usd"))["t"] or Decimal("0.00")
+        minimum = Decimal(str(getattr(settings, "REFERRAL_MIN_WITHDRAWAL_USD", 0) or 0))
+        open_req = (
+            WithdrawalRequest.objects.filter(
+                user=user, status=WithdrawalRequest.Status.REQUESTED
+            ).first()
+        )
         return {
             "rate_pct": float(getattr(settings, "REFERRAL_COMMISSION_PCT", 0) or 0),
             "pending_usd": total(ReferralCommission.Status.PENDING),
             "paid_usd": total(ReferralCommission.Status.PAID),
             "count": qs.exclude(status=ReferralCommission.Status.VOID).count(),
             "items": items,
+            "available_usd": str(available),
+            "min_withdrawal_usd": str(minimum),
+            "can_withdraw": bool(available >= minimum and minimum > 0 and not open_req),
+            "network": WithdrawalRequest.NETWORK,
+            "open_request": (
+                {
+                    "id": open_req.id,
+                    "amount_usd": str(open_req.amount_usd),
+                    "wallet_address": open_req.wallet_address,
+                    "created_at": open_req.created_at,
+                }
+                if open_req else None
+            ),
+            "withdrawals": [
+                {
+                    "id": w.id,
+                    "amount_usd": str(w.amount_usd),
+                    "wallet_address": w.wallet_address,
+                    "status": w.status,
+                    "created_at": w.created_at,
+                    "paid_at": w.paid_at,
+                    "tx_hash": w.tx_hash,
+                    "admin_note": w.admin_note,
+                }
+                for w in WithdrawalRequest.objects.filter(user=user)[:20]
+            ],
         }
+
+
+class ReferralWithdrawView(APIView):
+    """POST /api/me/referral/withdraw/ {wallet_address} — request a USDT payout.
+
+    Claims every unclaimed PENDING commission for this user, so the amount is
+    whatever they had earned at this moment and the same money can't be requested
+    twice. Payment itself is manual: you see the request in Django admin, send the
+    USDT, then mark it paid (which settles the attached commissions).
+    """
+
+    def post(self, request):
+        import re
+        from decimal import Decimal
+
+        from django.db import transaction
+        from django.db.models import Sum
+
+        from .models import ReferralCommission, WithdrawalRequest
+
+        user = request.user
+        wallet = (request.data.get("wallet_address") or "").strip()
+        # TRON base58: 'T' + 33 chars from the base58 alphabet (no 0, O, I, l).
+        if not re.fullmatch(r"T[1-9A-HJ-NP-Za-km-z]{33}", wallet):
+            return Response(
+                {"detail": "Enter a valid USDT TRC20 wallet address (starts with T, 34 characters)."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        minimum = Decimal(str(getattr(settings, "REFERRAL_MIN_WITHDRAWAL_USD", 0) or 0))
+        with transaction.atomic():
+            if WithdrawalRequest.objects.filter(
+                user=user, status=WithdrawalRequest.Status.REQUESTED
+            ).exists():
+                return Response(
+                    {"detail": "You already have a withdrawal awaiting payment."},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            # select_for_update: two rapid requests must not both claim the same rows.
+            claimable = ReferralCommission.objects.select_for_update().filter(
+                referrer=user,
+                status=ReferralCommission.Status.PENDING,
+                withdrawal__isnull=True,
+            )
+            total = claimable.aggregate(t=Sum("commission_usd"))["t"] or Decimal("0.00")
+            if total < minimum:
+                return Response(
+                    {"detail": f"You need at least ${minimum} to withdraw. Your balance is ${total}."},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            req = WithdrawalRequest.objects.create(
+                user=user, amount_usd=total, wallet_address=wallet
+            )
+            claimable.update(withdrawal=req)
+
+        logger.info("Withdrawal requested: %s $%s -> %s", user.email, total, wallet)
+        return Response(
+            {
+                "id": req.id,
+                "amount_usd": str(req.amount_usd),
+                "wallet_address": req.wallet_address,
+                "network": WithdrawalRequest.NETWORK,
+                "status": req.status,
+            },
+            status=status.HTTP_201_CREATED,
+        )
 
 
 class ReferralSetCodeView(APIView):

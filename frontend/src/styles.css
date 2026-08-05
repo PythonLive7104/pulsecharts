@@ -2131,3 +2131,39 @@ a.brand:hover { text-decoration: none; }
 .commission-empty .ce-icon { font-size: 26px; display: block; margin-bottom: 6px; }
 .commission-empty p { margin: 0 0 8px; font-size: 14px; }
 .commission-empty .btn-ghost { margin-top: 6px; }
+
+/* --- Withdrawals --------------------------------------------------------- */
+.withdraw {
+  margin-top: 14px; padding: 14px; border-radius: 10px;
+  background: var(--bg); border: 1px solid var(--border);
+}
+.withdraw-bal { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; }
+.withdraw-bal strong { font-size: 22px; color: var(--text-strong); }
+.withdraw-bal span { font-size: 12px; }
+.withdraw-form { display: flex; gap: 8px; margin-top: 10px; flex-wrap: wrap; }
+.withdraw-form input {
+  flex: 1 1 320px; min-width: 0; padding: 9px 11px;
+  border: 1px solid var(--border); border-radius: 8px;
+  background: var(--bg-elev); color: var(--text); font-size: 13px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+.withdraw-open { margin-top: 10px; display: flex; flex-direction: column; gap: 2px; font-size: 13px; }
+.withdraw-open span { font-size: 12px; word-break: break-all; }
+.withdraw-hint { margin: 8px 0 0; font-size: 13px; }
+.withdraw-history { margin-top: 14px; display: grid; gap: 6px; }
+.withdraw-history > span { font-size: 12px; }
+.wd-row {
+  display: grid; grid-template-columns: 88px 70px 1fr 130px;
+  gap: 10px; align-items: center; font-size: 13px;
+  padding: 7px 10px; border-radius: 8px; background: var(--bg);
+}
+.wd-addr { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 11px;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.wd-status { text-align: right; font-size: 11px; font-weight: 700; }
+.wd-requested { color: #e0a106; }
+.wd-paid { color: var(--green); }
+.wd-rejected { color: var(--red); }
+@media (max-width: 720px) {
+  .wd-row { grid-template-columns: 1fr auto; }
+  .wd-addr { display: none; }
+}

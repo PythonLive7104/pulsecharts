@@ -238,6 +238,69 @@ class Subscription(models.Model):
         return f"{self.user.email} · {self.tier} · {self.status}"
 
 
+class WithdrawalRequest(models.Model):
+    """A referrer asking to be paid out their commission balance in USDT (TRC20).
+
+    Accounting rule that makes this safe: creating a request ATTACHES the pending
+    commissions it covers (ReferralCommission.withdrawal). Those rows are then spoken
+    for, so a second request can't claim the same money and commissions earned after
+    the request roll into the next one. Rejecting a request detaches them again.
+    """
+
+    class Status(models.TextChoices):
+        REQUESTED = "REQUESTED", "Requested"
+        PAID = "PAID", "Paid"
+        REJECTED = "REJECTED", "Rejected"
+
+    NETWORK = "USDT-TRC20"
+
+    user = models.ForeignKey(
+        "accounts.User", on_delete=models.CASCADE, related_name="withdrawals"
+    )
+    amount_usd = models.DecimalField(max_digits=10, decimal_places=2)
+    wallet_address = models.CharField(max_length=64)
+    network = models.CharField(max_length=32, default=NETWORK)
+
+    status = models.CharField(
+        max_length=10, choices=Status.choices, default=Status.REQUESTED, db_index=True
+    )
+    created_at = models.DateTimeField(auto_now_add=True, db_index=True)
+    paid_at = models.DateTimeField(null=True, blank=True)
+    tx_hash = models.CharField(max_length=128, blank=True, default="")
+    admin_note = models.CharField(max_length=300, blank=True, default="")
+
+    class Meta:
+        ordering = ("-created_at",)
+
+    def __str__(self):
+        return f"{self.user.email} · ${self.amount_usd} · {self.status}"
+
+    def mark_paid(self, tx_hash: str = "") -> int:
+        """Settle the request AND the commissions behind it, in one step.
+
+        Marking only the request paid would leave its commissions PENDING, so the
+        same money would be offered for withdrawal again next time.
+        """
+        from django.utils import timezone as _tz
+
+        if tx_hash:
+            self.tx_hash = tx_hash
+        self.status = self.Status.PAID
+        self.paid_at = _tz.now()
+        self.save(update_fields=["status", "paid_at", "tx_hash"])
+        return self.commissions.update(
+            status=ReferralCommission.Status.PAID, paid_at=self.paid_at
+        )
+
+    def reject(self, note: str = "") -> int:
+        """Release the commissions so the balance is withdrawable again."""
+        self.status = self.Status.REJECTED
+        if note:
+            self.admin_note = note
+        self.save(update_fields=["status", "admin_note"])
+        return self.commissions.update(withdrawal=None)
+
+
 class ReferralCommission(models.Model):
     """A cash commission owed to a referrer because someone they referred PAID.
 
@@ -282,6 +345,13 @@ class ReferralCommission(models.Model):
     status = models.CharField(
         max_length=8, choices=Status.choices, default=Status.PENDING, db_index=True
     )
+    # The payout request this commission was rolled into, if any. Set when a
+    # withdrawal is requested so the same earnings can't be claimed twice; cleared
+    # again if that request is rejected.
+    withdrawal = models.ForeignKey(
+        "accounts.WithdrawalRequest", null=True, blank=True,
+        on_delete=models.SET_NULL, related_name="commissions",
+    )
     created_at = models.DateTimeField(auto_now_add=True, db_index=True)
     paid_at = models.DateTimeField(null=True, blank=True)
     # Free-text payout reference (bank transfer id, tx hash, "paid by hand 5 Aug").
@@ -314,11 +384,15 @@ class ReferralCode(models.Model):
 
     code = models.CharField(max_length=40, unique=True)
     is_active = models.BooleanField(default=True)
-    # When True, a new user signing up with this code gets the grant plan for
-    # grant_days (e.g. MAILIONDEV_7788 → 30-day Starter). When False (the default
-    # for ordinary personal codes) the code still credits the owner $1, but the
-    # new user stays on Free.
-    grants_signup_plan = models.BooleanField(default=False)
+    # When True, a new user signing up with this code gets `grant_tier` for
+    # `grant_days`. Default flipped to True on 2026-08-05 (migration 0015, which
+    # also backfilled every existing code): EVERY referral link now hands the new
+    # user 30 days of Starter, not just the admin code.
+    #
+    # It stays a per-code flag rather than a global setting so a single code can be
+    # switched off — e.g. one being abused for repeat free trials — without turning
+    # the offer off for everyone.
+    grants_signup_plan = models.BooleanField(default=True)
     grant_tier = models.CharField(
         max_length=16, choices=PlanTier.choices, default=PlanTier.STARTER
     )
@@ -358,9 +432,15 @@ class ReferralCode(models.Model):
         from django.db.models import F
         from django.utils import timezone
 
+        from django.conf import settings
+
         user.referred_by_code = self.code
         fields = ["referred_by_code"]
-        if self.grants_signup_plan:
+        # Attribution (and the owner's $1) always applies; only the PLAN GRANT is
+        # switchable. REFERRAL_SIGNUP_GRANT_ENABLED ends the promo globally without
+        # rewriting any code's flag, so it can be turned back on unchanged.
+        grant_on = getattr(settings, "REFERRAL_SIGNUP_GRANT_ENABLED", True)
+        if self.grants_signup_plan and grant_on:
             # Never shorten access the user somehow already has: a null expiry on a
             # paid tier means "never expires", and a longer expiry outranks this
             # grant. Normally a no-op at signup — this only guards the case where

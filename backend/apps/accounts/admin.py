@@ -3,7 +3,13 @@ from django.contrib.auth.admin import UserAdmin as BaseUserAdmin
 from django.db.models import Q
 from django.utils import timezone
 
-from .models import ReferralCode, ReferralCommission, Subscription, User
+from .models import (
+    ReferralCode,
+    ReferralCommission,
+    Subscription,
+    User,
+    WithdrawalRequest,
+)
 from .plans import PAID_TIER_VALUES, PAID_TIERS, PLANS, plan_key
 from .tasks import trim_to_plan_limits
 
@@ -176,3 +182,49 @@ class ReferralCommissionAdmin(admin.ModelAdmin):
     def mark_pending(self, request, queryset):
         n = queryset.update(status=ReferralCommission.Status.PENDING, paid_at=None)
         self.message_user(request, f"Moved {n} commission(s) back to pending.")
+
+
+@admin.register(WithdrawalRequest)
+class WithdrawalRequestAdmin(admin.ModelAdmin):
+    """Payout queue. A request claims the commissions behind it, so marking one paid
+    settles those rows too — never mark a commission paid separately for a request,
+    or the ledger and the payout disagree."""
+
+    list_display = ("created_at", "user", "amount_usd", "network", "wallet_address",
+                    "status", "paid_at", "tx_hash")
+    list_filter = ("status", "network", "created_at")
+    search_fields = ("user__email", "wallet_address", "tx_hash")
+    readonly_fields = ("user", "amount_usd", "wallet_address", "network", "created_at",
+                       "paid_at", "commissions_covered")
+    list_editable = ("tx_hash",)
+    date_hierarchy = "created_at"
+    actions = ["mark_paid", "reject"]
+
+    @admin.display(description="Commissions covered")
+    def commissions_covered(self, obj):
+        rows = obj.commissions.all()
+        if not rows:
+            return "—"
+        return ", ".join(f"${c.commission_usd} from {c.referred_email}" for c in rows)
+
+    @admin.action(description="Mark PAID (USDT sent) — also settles the commissions")
+    def mark_paid(self, request, queryset):
+        paid = settled = 0
+        for req in queryset.exclude(status=WithdrawalRequest.Status.PAID):
+            settled += req.mark_paid()
+            paid += 1
+        self.message_user(
+            request,
+            f"Marked {paid} withdrawal(s) paid and settled {settled} commission(s). "
+            "Add the tx hash inline if you haven't already."
+        )
+
+    @admin.action(description="Reject — releases the balance back to the user")
+    def reject(self, request, queryset):
+        n = released = 0
+        for req in queryset.filter(status=WithdrawalRequest.Status.REQUESTED):
+            released += req.reject("Rejected in admin")
+            n += 1
+        self.message_user(
+            request, f"Rejected {n} request(s); {released} commission(s) are withdrawable again."
+        )

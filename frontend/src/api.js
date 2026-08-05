@@ -161,6 +161,8 @@ export const api = {
   referral: () => request("/me/referral/"),
   referralSetCode: (code) => request("/me/referral/code/", { method: "POST", body: { code } }),
   referralRedeem: (plan) => request("/me/referral/redeem/", { method: "POST", body: { plan } }),
+  referralWithdraw: (wallet_address) =>
+    request("/me/referral/withdraw/", { method: "POST", body: { wallet_address } }),
   redeemPromoCode: (code) =>
     request("/me/referral/redeem-code/", { method: "POST", body: { code } }),
 

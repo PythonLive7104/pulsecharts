@@ -197,6 +197,17 @@ FOREX_POLL_INTERVAL = env.float("FOREX_POLL_INTERVAL", default=15.0)
 # spent in-app: this is real revenue share and must not be redeemable for a plan.
 REFERRAL_COMMISSION_PCT = env.float("REFERRAL_COMMISSION_PCT", default=20.0)
 
+# Master switch for the "every referral link grants 30 days of Starter" promo.
+# The per-code `grants_signup_plan` flag still decides which codes CAN grant; this
+# turns the whole offer off without touching a single code, so ending the promo is
+# one env line and a restart rather than a migration. Flags stay intact, so flipping
+# it back on resumes exactly where you left off.
+REFERRAL_SIGNUP_GRANT_ENABLED = env.bool("REFERRAL_SIGNUP_GRANT_ENABLED", default=True)
+
+# Minimum commission balance before a referrer can request a USDT (TRC20) payout.
+# A floor keeps you from paying network fees and doing manual transfers for cents.
+REFERRAL_MIN_WITHDRAWAL_USD = env.float("REFERRAL_MIN_WITHDRAWAL_USD", default=10.0)
+
 # --- Paystack (payment provider) ------------------------------------------
 # One-time payments in USD that grant 30 days of access (see apps/billing/paystack.py).
 # Test keys never move real money; flip PAYSTACK_MODE=live once verified.

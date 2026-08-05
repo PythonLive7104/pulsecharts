@@ -31,6 +31,9 @@ export default function BillingPage() {
   const [refMsg, setRefMsg] = useState(null);
   const [editingCode, setEditingCode] = useState(false);
   const [newCode, setNewCode] = useState("");
+  const [wallet, setWallet] = useState("");
+  const [wdBusy, setWdBusy] = useState(false);
+  const [wdMsg, setWdMsg] = useState(null);
 
   // Admin Pro promo code (self-upgrade to Pro to trial premium)
   const [promoCode, setPromoCode] = useState("");
@@ -86,6 +89,21 @@ export default function BillingPage() {
       setRefMsg(`Redeemed — ${plan === "pro" ? "Pro" : "Starter"} is active for 30 days.`);
     } catch (e) {
       setRefMsg(e.message);
+    }
+  }
+
+  async function requestWithdrawal() {
+    setWdMsg(null);
+    setWdBusy(true);
+    try {
+      const r = await api.referralWithdraw(wallet.trim());
+      setWallet("");
+      loadRef();
+      setWdMsg({ ok: true, text: `Withdrawal requested — $${r.amount_usd} to ${r.wallet_address}. We'll send it shortly.` });
+    } catch (e) {
+      setWdMsg({ ok: false, text: e.message });
+    } finally {
+      setWdBusy(false);
     }
   }
 
@@ -270,10 +288,14 @@ export default function BillingPage() {
         <div className="card">
           <h2>Refer &amp; earn</h2>
           <p className="muted">
-            Share your code — you earn ${ref.reward_per_referral} every time someone signs up with it.
+            Share your code — <strong>they get 30 days of Starter free</strong>, you earn
+            ${ref.reward_per_referral} the moment they sign up
+            {ref.commission?.rate_pct > 0 && (
+              <> plus <strong>{ref.commission.rate_pct}% of everything they pay</strong> afterwards</>
+            )}.
             {neverExpires
               ? " Your access never expires, so there's no plan left to redeem — your balance just keeps growing."
-              : ` Cash your balance in for a plan: $${ref.prices.starter} → Starter, $${ref.prices.pro} → Pro (30 days each).`}
+              : ` Cash your $ balance in for a plan: $${ref.prices.starter} → Starter, $${ref.prices.pro} → Pro (30 days each).`}
           </p>
 
           <div className="referral-grid">
@@ -372,8 +394,66 @@ export default function BillingPage() {
                       </div>
                     ))}
                   </div>
+                  <div className="withdraw">
+                    <div className="withdraw-bal">
+                      <span className="muted">Available to withdraw</span>
+                      <strong>${ref.commission.available_usd}</strong>
+                      <span className="muted">
+                        minimum ${ref.commission.min_withdrawal_usd} · paid in{" "}
+                        {ref.commission.network}
+                      </span>
+                    </div>
+
+                    {ref.commission.open_request ? (
+                      <div className="withdraw-open">
+                        <b>${ref.commission.open_request.amount_usd} awaiting payment</b>
+                        <span className="muted">
+                          requested {new Date(ref.commission.open_request.created_at).toLocaleDateString()} →{" "}
+                          {ref.commission.open_request.wallet_address}
+                        </span>
+                      </div>
+                    ) : ref.commission.can_withdraw ? (
+                      <div className="withdraw-form">
+                        <input
+                          type="text"
+                          placeholder="Your USDT TRC20 wallet address (starts with T)"
+                          value={wallet}
+                          spellCheck="false"
+                          onChange={(e) => { setWallet(e.target.value); setWdMsg(null); }}
+                        />
+                        <button className="btn-primary" disabled={wdBusy || !wallet.trim()}
+                          onClick={requestWithdrawal}>
+                          {wdBusy ? "Requesting…" : `Withdraw $${ref.commission.available_usd}`}
+                        </button>
+                      </div>
+                    ) : (
+                      <p className="muted withdraw-hint">
+                        You can withdraw once your balance reaches
+                        ${ref.commission.min_withdrawal_usd}.
+                      </p>
+                    )}
+                    {wdMsg && <p className={wdMsg.ok ? "success" : "error"}>{wdMsg.text}</p>}
+                  </div>
+
+                  {ref.commission.withdrawals?.length > 0 && (
+                    <div className="withdraw-history">
+                      <span className="muted">Payout history</span>
+                      {ref.commission.withdrawals.map((w) => (
+                        <div key={w.id} className="wd-row">
+                          <span className="muted">{new Date(w.created_at).toLocaleDateString()}</span>
+                          <span><b>${w.amount_usd}</b></span>
+                          <span className="wd-addr muted">{w.wallet_address}</span>
+                          <span className={`wd-status wd-${w.status.toLowerCase()}`}>
+                            {w.status === "PAID" ? "Paid" : w.status === "REJECTED" ? "Rejected" : "Awaiting payment"}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
                   <p className="muted commission-note">
-                    Payouts are sent manually and marked here once the money has left.
+                    Payouts are sent manually in {ref.commission.network} and marked
+                    here once the transfer has left.
                   </p>
                 </>
               ) : (
