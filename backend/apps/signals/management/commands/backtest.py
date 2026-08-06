@@ -32,7 +32,12 @@ from apps.signals.indicators import compute_indicators, _ema, _market_structure
 from apps.signals.levels import TP_MULTIPLES, compute_levels
 from apps.signals.models import SignalService
 from apps.signals import pregate
-from apps.signals.pregate import EMA_STACK_EXEMPT, candidate_direction, passes_pregate
+from apps.signals.pregate import (
+    EMA_STACK_EXEMPT,
+    candidate_direction,
+    confidence_score,
+    passes_pregate,
+)
 from apps.signals.tasks import _HTF_MAP
 
 MIN_CANDLES = 210  # enough history for the 200 EMA / swing windows (matches tasks.py)
@@ -202,7 +207,8 @@ def _replay_exits(direction, entry, stop0, tps, future, atr):
     return [st["r"] for st in state]
 
 
-def _outcome(direction, snap, future, asset_class="crypto", strategy_slug=None):
+def _outcome(direction, snap, future, asset_class="crypto", strategy_slug=None,
+             atr_floor=None, atr_cap=None):
     """Deterministic levels + walk for a setup; None if degenerate or unresolved.
 
     Mean-reversion setups get their own (much tighter) ATR stop band — with the trend
@@ -213,8 +219,12 @@ def _outcome(direction, snap, future, asset_class="crypto", strategy_slug=None):
         floor = settings.SIGNAL_ATR_FLOOR_REVERSION
         cap = settings.SIGNAL_ATR_CAP_REVERSION
     else:
-        floor = settings.SIGNAL_ATR_STOP_FLOOR.get(asset_class) or settings.SIGNAL_ATR_STOP_FLOOR["crypto"]
-        cap = settings.SIGNAL_ATR_STOP_CAP.get(asset_class) or settings.SIGNAL_ATR_STOP_CAP["crypto"]
+        # --atr-floor/--atr-cap sweep the TREND band only; reversion keeps its own
+        # (a fade with a trend-width stop can't reach TP1 by construction).
+        floor = atr_floor if atr_floor is not None else (
+            settings.SIGNAL_ATR_STOP_FLOOR.get(asset_class) or settings.SIGNAL_ATR_STOP_FLOOR["crypto"])
+        cap = atr_cap if atr_cap is not None else (
+            settings.SIGNAL_ATR_STOP_CAP.get(asset_class) or settings.SIGNAL_ATR_STOP_CAP["crypto"])
     levels = compute_levels(
         direction, float(snap["close"]), float(snap["atr"]),
         float(snap["swing_high"]), float(snap["swing_low"]),
@@ -310,6 +320,19 @@ class Command(BaseCommand):
                                  "fade must agree with the higher frame's trend, so it buys "
                                  "dips in an uptrend rather than catching a falling knife. "
                                  "Unlike --htf-bias this leaves trend strategies untouched.")
+        parser.add_argument("--min-confidence", type=int, default=None,
+                            help="Apply the delivery CONFIDENCE floor (pregate.confidence_score), "
+                                 "which the plain backtest otherwise skips entirely — so a run "
+                                 "without this models a feed with no conviction gate at all. "
+                                 "Live value is SIGNAL_MIN_CONFIDENCE.")
+        parser.add_argument("--atr-floor", type=float, default=None,
+                            help="Override the TREND stop's minimum ATR multiple (live: 3.0 "
+                                 "crypto / 2.0 forex). Tighter = smaller R, so every TP sits "
+                                 "closer in %% terms — more stop-outs, but a reachable ladder.")
+        parser.add_argument("--atr-cap", type=float, default=None,
+                            help="Override the TREND stop's maximum ATR multiple (live: 4.5 "
+                                 "crypto / 3.0 forex). Mean-reversion strategies keep their own "
+                                 "tighter band either way.")
         parser.add_argument("--overext", type=float, default=None,
                             help="Override the overextension guard (ATR stretch beyond EMA21 "
                                  "that blocks a chase entry). 0 disables; live default is 2.0. "
@@ -353,6 +376,13 @@ class Command(BaseCommand):
         if htf_structure_on:
             self.stdout.write(self.style.WARNING(
                 "HTF structure confluence ON (higher timeframe must agree; breakouts exempt)."))
+        if opts.get("min_confidence") is not None:
+            self.stdout.write(self.style.WARNING(
+                f"Confidence floor ON: only setups scoring >= {opts['min_confidence']}."))
+        if opts.get("atr_floor") is not None or opts.get("atr_cap") is not None:
+            self.stdout.write(self.style.WARNING(
+                f"TREND stop band override: {opts.get('atr_floor')}-{opts.get('atr_cap')} xATR "
+                "(reversion unchanged)."))
         htf_bias_on = bool(opts.get("htf_bias"))
         if htf_bias_on:
             self.stdout.write(self.style.WARNING(
@@ -382,6 +412,9 @@ class Command(BaseCommand):
                              if pregate.FIB_PULLBACK_MIN else "OFF"),
             ("overext guard", f"{pregate.OVEREXT_ATR_MULT}xATR"
                               if pregate.OVEREXT_ATR_MULT else "OFF"),
+            ("confidence floor", opts.get("min_confidence")
+                                 if opts.get("min_confidence") is not None
+                                 else "OFF (backtest skips the live gate)"),
             ("ADX floor", opts.get("adx_min") if opts.get("adx_min") is not None
                           else "OFF (backtest skips the live regime filter)"),
             ("timeframes", ",".join(timeframes)),
@@ -434,7 +467,8 @@ class Command(BaseCommand):
                 self._run_series(sym, tf, candles, services, rb, llm, budget,
                                  sym.asset_class, htf_structure_on, opts["candles"],
                                  opts.get("adx_min"), htf_bias_on, exit_lab,
-                                 reversion_htf_on)
+                                 reversion_htf_on, opts.get("min_confidence"),
+                                 opts.get("atr_floor"), opts.get("atr_cap"))
                 series += 1
                 self.stdout.write(f"  · {sym.ticker} {tf}", ending="\r")
             if llm_on and budget["left"] <= 0:
@@ -507,7 +541,8 @@ class Command(BaseCommand):
     def _run_series(self, sym, tf, candles, services, rb, llm, budget,
                     asset_class="crypto", htf_structure_on=False, htf_limit=500,
                     adx_min=None, htf_bias_on=False, exit_lab=None,
-                    reversion_htf_on=False):
+                    reversion_htf_on=False, min_confidence=None,
+                    atr_floor=None, atr_cap=None):
         ticker = sym.ticker
         n = len(candles)
         threshold = settings.SIGNAL_MIN_CONFIDENCE
@@ -591,7 +626,13 @@ class Command(BaseCommand):
                     if htf_struct_now != want:  # opposite trend or choppy (None) → skip
                         continue
 
-                res = _outcome(direction, snap, future, asset_class, svc.slug)
+                # Conviction floor — the same score the live feed gates on.
+                if min_confidence is not None:
+                    if confidence_score(direction, snap, svc.slug) < min_confidence:
+                        continue
+
+                res = _outcome(direction, snap, future, asset_class, svc.slug,
+                               atr_floor, atr_cap)
                 if res is None:
                     free_at[svc.slug] = i + 1
                     continue

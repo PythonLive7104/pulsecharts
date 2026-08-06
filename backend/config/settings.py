@@ -510,18 +510,28 @@ SIGNAL_FIB_PULLBACK_MAX = env.float("SIGNAL_FIB_PULLBACK_MAX", default=0.786)
 SIGNAL_REENTRY_COOLDOWN_BARS = env.int("SIGNAL_REENTRY_COOLDOWN_BARS", default=3)
 
 # Stop-loss width as ATR multiples, PER ASSET CLASS. The stop is clamped to
-# [floor, cap]×ATR (anchored to the nearest swing pivot in between). Crypto is much
-# more volatile than forex, so a 2×ATR stop was getting wicked out on crypto before
-# setups resolved — crypto gets a WIDER band. Forex keeps the tighter band (its
-# original problem was stops that were too WIDE, now fixed). Wider stop ⇒ larger R
-# ⇒ TPs are a bigger % move, so TP2 becomes the realistic target and TP3 fills less
-# — an accepted trade-off for fewer premature stop-outs. Tune live via env.
+# [floor, cap]×ATR (anchored to the nearest swing pivot in between).
+#
+# Crypto NARROWED back to 2.0-3.0 on 2026-08-06, reversing the June widening to
+# 3.0-4.5. That change was made on stop-outs alone — trades were being wicked out —
+# but nobody measured what it cost on the TARGET side, and it cost more than it
+# saved. Head-to-head over 20 symbols / 1200 candles / 1h+4h, the only difference
+# being this band:
+#     3.0-4.5 : n=4088  49.9% win  exp(scale) +0.03R  TP3 hits 754  avgMAE -4.4%
+#     2.0-3.0 : n=4940  49.4% win  exp(scale) +0.05R  TP3 hits 988  avgMAE -3.6%
+# Every trend strategy improved; not one got worse. The mechanism is the one the
+# mean-reversion strategies already demonstrate: a tighter stop makes 1R a smaller
+# move, so TP2/TP3 come into REACH instead of the trade stalling at TP1. You give up
+# a little win rate (more noise stop-outs) and gain more in winner size.
+#
+# Forex is untouched — measured on crypto only, and its band was already tight.
+# Mean-reversion strategies ignore both bands (SIGNAL_ATR_*_REVERSION).
 SIGNAL_ATR_STOP_FLOOR = {
-    "crypto": env.float("SIGNAL_ATR_FLOOR_CRYPTO", default=3.0),  # was 2.0
+    "crypto": env.float("SIGNAL_ATR_FLOOR_CRYPTO", default=2.0),  # 3.0 Jun-Aug 2026
     "forex": env.float("SIGNAL_ATR_FLOOR_FOREX", default=2.0),
 }
 SIGNAL_ATR_STOP_CAP = {
-    "crypto": env.float("SIGNAL_ATR_CAP_CRYPTO", default=4.5),  # was 3.0
+    "crypto": env.float("SIGNAL_ATR_CAP_CRYPTO", default=3.0),  # 4.5 Jun-Aug 2026
     "forex": env.float("SIGNAL_ATR_CAP_FOREX", default=3.0),
 }
 
