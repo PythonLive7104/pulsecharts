@@ -2167,3 +2167,11 @@ a.brand:hover { text-decoration: none; }
   .wd-row { grid-template-columns: 1fr auto; }
   .wd-addr { display: none; }
 }
+
+/* Winners-by-target line on the accuracy panel. The win rate treats a TP3 the same
+   as a TP1; this is where the difference is visible. */
+.acc-tps { display: flex; flex-wrap: wrap; align-items: baseline; gap: 10px; margin-top: 6px; font-size: 13px; }
+.acc-tp { padding: 2px 9px; border-radius: 999px; border: 1px solid var(--border); white-space: nowrap; }
+.acc-tp1 { color: var(--muted); }
+.acc-tp2 { color: var(--green); border-color: color-mix(in srgb, var(--green) 40%, var(--border)); }
+.acc-tp3 { color: var(--green); border-color: var(--green); font-weight: 600; }

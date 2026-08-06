@@ -455,6 +455,26 @@ export default function SignalsPage() {
                         <> · <b>{accuracy.overall.avg_r > 0 ? "+" : ""}{accuracy.overall.avg_r}R</b> avg / trade</>
                       )}
                     </span>
+                    {/* How far the winners actually ran. The win RATE can't show this —
+                        a trade that reached TP3 counts as exactly one win, same as one
+                        that stalled at TP1 — so the depth only shows up inside avg_r,
+                        where nobody can see it. TP2 pays 2x a TP1-only trade and TP3
+                        pays 3.5x, so this line is where the ladder proves its worth. */}
+                    {accuracy.overall.by_outcome && accuracy.overall.wins > 0 && (
+                      <span className="muted acc-tps">
+                        Winners ran to:{" "}
+                        {[1, 2, 3].map((n) => {
+                          const c = accuracy.overall.by_outcome[`TP${n}`] || 0;
+                          if (!c) return null;
+                          const pct = Math.round((c / accuracy.overall.wins) * 100);
+                          return (
+                            <span key={n} className={`acc-tp acc-tp${n}`}>
+                              <b>TP{n}</b> {c} <span className="muted">({pct}%)</span>
+                            </span>
+                          );
+                        })}
+                      </span>
+                    )}
                     {/* The headline leans on open positions, so the settled record and
                         the undecided pile both stay visible next to it. Without the
                         undecided count the figure would be the open WINNERS only. */}
