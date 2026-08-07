@@ -370,73 +370,29 @@ class RedeemPromoCodeView(APIView):
 
         from apps.accounts.plans import PRO, STARTER, has_perpetual_access, plan_key, plan_rank
 
-        # Each configured code maps to (plan tier, grant days, the model field that
-        # records prior redemption of THAT code). Ordered Pro-first so a value that
-        # somehow matched both is treated as the higher grant.
-        code_map = [
-            (settings.ADMIN_PRO_CODE, PRO, settings.ADMIN_PRO_DAYS,
-             "pro_promo_code_used", "Pro"),
-            (settings.ADMIN_STARTER_CODE, STARTER, settings.ADMIN_STARTER_DAYS,
-             "starter_promo_code_used", "Starter"),
-        ]
-        active = [(c.strip(), tier, days, field, label)
-                  for c, tier, days, field, label in code_map if (c or "").strip()]
-        if not active:
+        from . import promo
+
+        if not promo.active_codes():
             return Response(
                 {"detail": "No promo code is active right now."},
                 status=status.HTTP_400_BAD_REQUEST,
             )
-
         entered = (request.data.get("code") or "").strip()
         if not entered:
             return Response({"detail": "Enter a code."}, status=status.HTTP_400_BAD_REQUEST)
-
-        match = next((m for m in active if entered.upper() == m[0].upper()), None)
-        if match is None:
+        matched = promo.match(entered)
+        if matched is None:
             return Response({"detail": "That code isn't valid."}, status=status.HTTP_400_BAD_REQUEST)
-        code, tier, days, field, label = match
 
         user = request.user
-        # One access code per account, full stop. Checking BOTH fields (not just the
-        # one this code writes) is what makes that true: the old per-field check let
-        # the same person redeem the Starter code and then the Pro code, and let
-        # anyone redeem again the moment a code value was rotated.
-        already = (user.pro_promo_code_used or "").strip() or (
-            user.starter_promo_code_used or ""
-        ).strip()
-        if already:
-            return Response(
-                {"detail": "You've already redeemed an access code."},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
-        # Never downgrade: a user on an active higher tier redeeming a lower-tier
-        # code (e.g. a Pro user entering the Starter code) keeps their plan. A
-        # never-expiring plan outranks every timed grant, including an equal-tier
-        # one, since applying it would swap a null expiry for a dated one.
-        if has_perpetual_access(user):
-            return Response(
-                {"detail": "Your plan doesn't expire — no code needed."},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
-        if plan_rank(plan_key(user)) > plan_rank(tier):
-            return Response(
-                {"detail": f"You're already on a higher plan than {label}."},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
-
-        now = timezone.now()
-        # A trial grant gives exactly its own window, measured from today — it does
-        # NOT stack onto time the user already has. Stacking made a "30-day" code land
-        # 45 days out for anyone with time left, which reads as a bug to the redeemer
-        # and quietly hands out more than the code advertises. It still never
-        # SHORTENS a longer plan (max), so a user with 6 months left keeps them.
-        granted_until = now + timedelta(days=days)
-        user.plan_tier = tier
-        user.plan_expiry = (
-            max(user.plan_expiry, granted_until) if user.plan_expiry else granted_until
-        )
-        setattr(user, field, code)
-        user.save(update_fields=["plan_tier", "plan_expiry", field])
+        # Rules live in apps.accounts.promo so signup and this endpoint enforce the
+        # SAME ones — one code per account, never shorten, never downgrade.
+        try:
+            promo.check_redeemable(user, matched)
+        except promo.PromoError as exc:
+            return Response({"detail": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        result = promo.apply_grant(user, matched)
+        tier, days, label = result["tier"], result["days"], matched[4]
 
         # Top watchlist + followed strategies up to the new plan's defaults (idempotent).
         try:

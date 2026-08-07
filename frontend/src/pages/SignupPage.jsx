@@ -110,9 +110,13 @@ export default function SignupPage() {
             onChange={(e) => setConfirm(e.target.value)} />
         </label>
         <label>
-          Referral code <span className="label-optional">— optional</span>
+          {/* One box, two registries: a friend's referral code (grants Starter and
+              credits them) or an admin access code (grants the plan directly). Users
+              are handed "a code" and don't know the difference, so the label mustn't
+              name only one of them. */}
+          Referral or access code <span className="label-optional">— optional</span>
           <input type="text" value={referral} autoComplete="off"
-            placeholder="Have a code? Get 30 days of Starter free"
+            placeholder="Have a code? Unlock 30 days free"
             onChange={(e) => setReferral(e.target.value)} />
         </label>
         <p className="auth-hint">Use at least 8 characters. No card required to start.</p>
