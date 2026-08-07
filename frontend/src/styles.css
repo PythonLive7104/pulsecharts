@@ -2175,3 +2175,17 @@ a.brand:hover { text-decoration: none; }
 .acc-tp1 { color: var(--muted); }
 .acc-tp2 { color: var(--green); border-color: color-mix(in srgb, var(--green) 40%, var(--border)); }
 .acc-tp3 { color: var(--green); border-color: var(--green); font-weight: 600; }
+
+/* Strategy-builder error: multi-paragraph guidance, not a one-line failure. */
+.sb-error {
+  white-space: pre-line;
+  text-align: left;
+  max-height: 40vh;
+  overflow-y: auto;
+  line-height: 1.5;
+  font-size: 13px;
+  padding: 10px 12px;
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--red) 8%, transparent);
+  border: 1px solid color-mix(in srgb, var(--red) 30%, transparent);
+}

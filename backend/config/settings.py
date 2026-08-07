@@ -546,7 +546,18 @@ SIGNAL_ATR_CAP_REVERSION = env.float("SIGNAL_ATR_CAP_REVERSION", default=1.5)
 # Mean reversion is only sane in a RANGE, so the regime filter inverts for it: instead
 # of ADX >= SIGNAL_ADX_MIN (trend strength), a fade needs ADX <= this (no strong trend
 # to fight). Above it, a "reversion" is just standing in front of a trend.
-SIGNAL_ADX_MAX_REVERSION = env.float("SIGNAL_ADX_MAX_REVERSION", default=20.0)
+#
+# Set to MATCH SIGNAL_ADX_MIN (25) on 2026-08-06, raised from an untested default of
+# 20. At 20 there was a dead band at ADX 20-25 where neither family could fire —
+# trend needed >= 25, fades needed <= 20 — and it was costing real signals. Measured
+# head-to-head (20 syms / 1200 candles, only this value differing):
+#     ceiling 20 : BB Fade n=408 +0.26R | VWAP Stretch n=150 +0.22R | ALL n=4907 +0.05R
+#     ceiling 25 : BB Fade n=731 +0.28R | VWAP Stretch n=271 +0.30R | ALL n=5803 +0.09R
+# Two of three fades improved WHILE nearly doubling volume — the 20-25 band wasn't
+# marginal, it was better than their average. RSI(2) slipped slightly (+0.19 -> +0.17R)
+# and was outvoted. Keep this equal to SIGNAL_ADX_MIN: the two families should meet
+# exactly, with no gap and no overlap.
+SIGNAL_ADX_MAX_REVERSION = env.float("SIGNAL_ADX_MAX_REVERSION", default=25.0)
 
 # Higher-timeframe guard for MEAN REVERSION (tasks._regime_ok): require a fade to
 # agree with the higher frame's 200-EMA bias (buy dips in an uptrend, sell rallies in

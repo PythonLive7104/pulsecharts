@@ -75,6 +75,29 @@ class StrategyBuildError(ValueError):
     """Raised when a user's description can't be turned into a valid rule."""
 
 
+# Shown when the description can't be represented. The old message just re-listed the
+# indicator names, which reads as "you used the wrong words" — so users rephrased the
+# same unsupported idea and hit the same wall. Most failures aren't vocabulary, they're
+# SHAPE: the builder compares indicator VALUES on ONE candle of ONE timeframe, so chart
+# patterns (fair value gaps, stop hunts, break of structure, candlestick formations)
+# and multi-timeframe rules have nothing to compare and can't be expressed at all.
+# Saying so plainly is kinder than letting someone try five more phrasings.
+UNSUPPORTED_HELP = (
+    "I couldn't turn that into a rule.\n\n"
+    "Strategies are built from comparisons between indicator values on a single "
+    "timeframe — for example: \"buy when RSI drops below 30 while price is above the "
+    "200 EMA\", or \"sell when price closes above the upper Bollinger band and ADX is "
+    "under 20\".\n\n"
+    "You can use: price (open/high/low/close), EMA 9/21/50/200, RSI, MACD, Bollinger "
+    "Bands, ATR, ADX, Stochastic, VWAP, volume, recent swing high/low, and Fibonacci "
+    "retracement.\n\n"
+    "Not supported yet: chart patterns (fair value gaps, order blocks, stop hunts, "
+    "break of structure, candlestick patterns), rules that combine two timeframes, and "
+    "timeframes outside 1h and 4h. Some of these — stop hunts and market structure — "
+    "are already built into our own strategies, so follow those instead."
+)
+
+
 # --- LLM: natural language -> raw rule JSON ---------------------------------
 
 _CONDITION_SCHEMA = {
@@ -185,10 +208,7 @@ def build_rule_from_text(text: str) -> dict:
         raise StrategyBuildError("Couldn't interpret that strategy. Try rephrasing it.")
 
     if not raw.get("understood", False):
-        raise StrategyBuildError(
-            "I couldn't express that with the available indicators. Try describing it in "
-            "terms of price, EMAs, RSI, MACD, Bollinger Bands, ADX, volume or VWAP."
-        )
+        raise StrategyBuildError(UNSUPPORTED_HELP)
 
     rule_config = validate_rule_config(
         {

@@ -314,6 +314,11 @@ class Command(BaseCommand):
                                  "(later breakeven, no breakeven, ATR trails) and report each "
                                  "one's expectancy on the SAME trades. Costs one extra pass "
                                  "over the forward candles per trade.")
+        parser.add_argument("--reversion-adx-max", type=float, default=None,
+                            help="ADX CEILING for mean-reversion strategies (live: "
+                                 "SIGNAL_ADX_MAX_REVERSION, default 20). Fades only fire at or "
+                                 "below it. Raising it toward the trend floor (SIGNAL_ADX_MIN) "
+                                 "closes the band where neither family can fire.")
         parser.add_argument("--reversion-htf", action="store_true",
                             help="Apply the higher-timeframe 200-EMA bias to MEAN-REVERSION "
                                  "strategies only (the live SIGNAL_REVERSION_HTF_GUARD): a "
@@ -412,6 +417,9 @@ class Command(BaseCommand):
                              if pregate.FIB_PULLBACK_MIN else "OFF"),
             ("overext guard", f"{pregate.OVEREXT_ATR_MULT}xATR"
                               if pregate.OVEREXT_ATR_MULT else "OFF"),
+            ("reversion ADX ceiling", opts.get("reversion_adx_max")
+                                      if opts.get("reversion_adx_max") is not None
+                                      else settings.SIGNAL_ADX_MAX_REVERSION),
             ("confidence floor", opts.get("min_confidence")
                                  if opts.get("min_confidence") is not None
                                  else "OFF (backtest skips the live gate)"),
@@ -468,7 +476,8 @@ class Command(BaseCommand):
                                  sym.asset_class, htf_structure_on, opts["candles"],
                                  opts.get("adx_min"), htf_bias_on, exit_lab,
                                  reversion_htf_on, opts.get("min_confidence"),
-                                 opts.get("atr_floor"), opts.get("atr_cap"))
+                                 opts.get("atr_floor"), opts.get("atr_cap"),
+                                 opts.get("reversion_adx_max"))
                 series += 1
                 self.stdout.write(f"  · {sym.ticker} {tf}", ending="\r")
             if llm_on and budget["left"] <= 0:
@@ -542,7 +551,7 @@ class Command(BaseCommand):
                     asset_class="crypto", htf_structure_on=False, htf_limit=500,
                     adx_min=None, htf_bias_on=False, exit_lab=None,
                     reversion_htf_on=False, min_confidence=None,
-                    atr_floor=None, atr_cap=None):
+                    atr_floor=None, atr_cap=None, rev_adx_max=None):
         ticker = sym.ticker
         n = len(candles)
         threshold = settings.SIGNAL_MIN_CONFIDENCE
@@ -602,7 +611,9 @@ class Command(BaseCommand):
                 # only sane when no strong trend is running).
                 if adx_min is not None:
                     if pregate.kind_of(svc.slug) == pregate.KIND_REVERSION:
-                        if bar_adx is None or bar_adx > settings.SIGNAL_ADX_MAX_REVERSION:
+                        ceiling = (rev_adx_max if rev_adx_max is not None
+                                   else settings.SIGNAL_ADX_MAX_REVERSION)
+                        if bar_adx is None or bar_adx > ceiling:
                             continue
                     elif bar_adx is None or bar_adx < adx_min:
                         continue

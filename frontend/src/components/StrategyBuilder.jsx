@@ -59,7 +59,11 @@ export default function StrategyBuilder({ quota, onCreated, onClose }) {
           maxLength={500}
         />
 
-        {error && <p className="error">{error}</p>}
+        {/* The unsupported-input help is multi-paragraph on purpose (what the
+            builder CAN express, then what it can't) — pre-line keeps those breaks,
+            and the scroll cap stops a long explanation pushing the buttons off a
+            phone screen. */}
+        {error && <p className="error sb-error">{error}</p>}
 
         {preview && (
           <div className="sb-preview">
