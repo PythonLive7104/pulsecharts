@@ -1,0 +1,81 @@
+<!doctype html>
+<html>
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
+<body style="margin:0;padding:0;background:#f4f6f8;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;">
+
+<!-- Preheader: the grey line inbox clients show next to the subject. Hidden in the
+     body itself. Without one, clients pull the first visible words instead. -->
+<div style="display:none;max-height:0;overflow:hidden;opacity:0;">
+  Pro Lifetime is {{price}}, once. No renewal, no expiry — 25% off the usual $89.
+</div>
+
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f4f6f8;padding:28px 12px;">
+<tr><td align="center">
+  <table role="presentation" width="600" cellpadding="0" cellspacing="0" style="max-width:600px;width:100%;background:#ffffff;border-radius:14px;overflow:hidden;border:1px solid #e6e9ee;">
+
+    <tr><td style="padding:22px 32px;border-bottom:1px solid #eef1f4;">
+      <span style="font-size:18px;font-weight:700;color:#0f172a;">📈 PulseCharts</span>
+    </td></tr>
+
+    <tr><td style="padding:34px 32px 8px;">
+      <h1 style="margin:0 0 14px;font-size:26px;line-height:1.25;color:#0f172a;">
+        You're paying monthly.<br>This is {{price}}, once.
+      </h1>
+      <p style="margin:0 0 18px;font-size:16px;line-height:1.6;color:#475569;">
+        Hi {{name}} — quick bit of maths.
+      </p>
+      <p style="margin:0 0 18px;font-size:16px;line-height:1.6;color:#475569;">
+        Pro is <b>$19 a month</b>. Twelve months of that is <b>$228</b>.
+        <b style="color:#0f172a;">Pro Lifetime is {{price}}.</b> Paid once. It never
+        expires and it never renews — there's nothing left to cancel.
+      </p>
+    </td></tr>
+
+    <tr><td style="padding:8px 32px 4px;">
+      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f8fafc;border:1px solid #e6e9ee;border-radius:12px;">
+        <tr><td style="padding:18px 20px;">
+          <p style="margin:0 0 10px;font-size:13px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:#64748b;">What you keep, for life</p>
+          <p style="margin:0 0 8px;font-size:15px;line-height:1.55;color:#334155;">✓ &nbsp;Unlimited trading signals on crypto <b>and</b> forex</p>
+          <p style="margin:0 0 8px;font-size:15px;line-height:1.55;color:#334155;">✓ &nbsp;Every signal with entry, stop-loss, three targets and the reasoning</p>
+          <p style="margin:0 0 8px;font-size:15px;line-height:1.55;color:#334155;">✓ &nbsp;Telegram alerts, including when a target or stop is hit</p>
+          <p style="margin:0 0 8px;font-size:15px;line-height:1.55;color:#334155;">✓ &nbsp;Every indicator — RSI, MACD, Bollinger, Stochastic, ATR, Fibonacci, VWAP, Ichimoku</p>
+          <p style="margin:0 0 8px;font-size:15px;line-height:1.55;color:#334155;">✓ &nbsp;Build your own strategy by describing it to our AI</p>
+          <p style="margin:0;font-size:15px;line-height:1.55;color:#334155;">✓ &nbsp;A watchlist of every coin and FX pair we track, and 50 saved layouts</p>
+        </td></tr>
+      </table>
+    </td></tr>
+
+    <tr><td align="center" style="padding:26px 32px 6px;">
+      <!-- Table-wrapped button: <a> with padding collapses in Outlook. -->
+      <table role="presentation" cellpadding="0" cellspacing="0"><tr>
+        <td align="center" bgcolor="#2563eb" style="border-radius:10px;">
+          <a href="{{lifetime_url}}" style="display:inline-block;padding:15px 34px;font-size:17px;font-weight:700;color:#ffffff;text-decoration:none;border-radius:10px;">
+            Get Pro Lifetime for {{price}} →
+          </a>
+        </td>
+      </tr></table>
+      <p style="margin:12px 0 0;font-size:13px;color:#94a3b8;">
+        25% off the usual $89 · one payment · no card kept on file
+      </p>
+    </td></tr>
+
+    <tr><td style="padding:22px 32px 30px;">
+      <p style="margin:0;font-size:14px;line-height:1.6;color:#64748b;">
+        If you'd rather keep paying monthly, that's completely fine — nothing changes.
+        This is only worth it if you plan to be here in four months' time.
+      </p>
+    </td></tr>
+
+    <tr><td style="padding:18px 32px;border-top:1px solid #eef1f4;color:#94a3b8;font-size:12px;line-height:1.6;">
+      PulseCharts is a charting and signal tool. Signals are algorithmic output for
+      information only — not financial advice and not a recommendation to buy or sell.
+      Trading carries risk.<br><br>
+      You're receiving this because you have a PulseCharts account ({{email}}).
+      <a href="{{unsubscribe_url}}" style="color:#64748b;">Unsubscribe from offers</a>.
+    </td></tr>
+
+  </table>
+</td></tr>
+</table>
+</body>
+</html>

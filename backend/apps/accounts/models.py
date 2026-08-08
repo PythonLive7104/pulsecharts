@@ -100,6 +100,11 @@ class User(AbstractUser):
 
     # Referral code used at signup (attribution); the grant itself is applied to
     # plan_tier/plan_expiry at registration time.
+    # Opted out of MARKETING email (campaigns). Never gates transactional mail —
+    # verification, password resets and payment receipts are sent because the user
+    # asked for them, and suppressing those would break the product.
+    marketing_opt_out = models.BooleanField(default=False)
+
     referred_by_code = models.CharField(max_length=40, blank=True, default="")
     # Earnings (whole USD) from people who signed up with this user's own code;
     # redeemable toward a plan once it reaches the plan's price.

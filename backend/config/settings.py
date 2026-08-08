@@ -56,6 +56,7 @@ LOCAL_APPS = [
     "apps.signals",  # v2 — trading signals (Section 13, 19, 20)
     "apps.alerts",   # v2 — price alerts (Section 12)
     "apps.execution",  # v2 — Bybit auto-trade executor (OFF unless AUTO_TRADE_ENABLED)
+    "apps.campaigns",  # marketing email campaigns (throttled, opt-out-able)
 ]
 
 INSTALLED_APPS = DJANGO_APPS + THIRD_PARTY_APPS + LOCAL_APPS
@@ -187,6 +188,15 @@ FOREX_ENABLED = env.bool("FOREX_ENABLED", default=True)
 # charts. Forex moves slower intrabar than crypto, so a 15s tail is fine — and
 # keeps request volume low against the public endpoint.
 FOREX_POLL_INTERVAL = env.float("FOREX_POLL_INTERVAL", default=15.0)
+
+# --- Marketing email campaigns ---------------------------------------------
+# Hard ceiling on MARKETING emails per calendar day, across every campaign. This is a
+# deliverability guard, not a preference: a young sending domain that suddenly emits
+# hundreds of promotional messages gets throttled or blocklisted, which then breaks
+# password resets and payment receipts too. 0 disables campaign sending entirely.
+CAMPAIGN_DAILY_CAP = env.int("CAMPAIGN_DAILY_CAP", default=40)
+# Minimum days between marketing emails to the SAME user, across all campaigns.
+CAMPAIGN_MIN_DAYS_BETWEEN = env.int("CAMPAIGN_MIN_DAYS_BETWEEN", default=7)
 
 # --- Referral commission --------------------------------------------------
 # Percentage of a payment credited to whoever referred the payer. Earned on a
@@ -693,6 +703,12 @@ CELERY_BEAT_SCHEDULE = {
     # Recurring "upgrade to get signals" nudge for Telegram-linked users with no
     # signal access. Runs daily; the per-user interval (SIGNAL_UPGRADE_NUDGE_DAYS)
     # is what stops it becoming spam.
+    # Drains queued campaign emails within CAMPAIGN_DAILY_CAP. Runs daily; the cap
+    # and the per-user cooldown do the pacing, not the schedule.
+    "send-campaign-emails": {
+        "task": "apps.campaigns.tasks.send_campaign_emails",
+        "schedule": env.float("CAMPAIGN_SEND_INTERVAL", default=86400.0),
+    },
     "send-upgrade-nudges": {
         "task": "apps.accounts.tasks.send_upgrade_nudges",
         "schedule": env.float("UPGRADE_NUDGE_INTERVAL", default=86400.0),  # once a day

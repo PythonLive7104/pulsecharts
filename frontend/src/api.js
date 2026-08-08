@@ -161,6 +161,10 @@ export const api = {
   referral: () => request("/me/referral/"),
   referralSetCode: (code) => request("/me/referral/code/", { method: "POST", body: { code } }),
   referralRedeem: (plan) => request("/me/referral/redeem/", { method: "POST", body: { plan } }),
+  // Public: no auth — the whole point of an unsubscribe link is that it works
+  // without signing in.
+  unsubscribe: (token) =>
+    request(`/campaigns/unsubscribe/${token}/`, { method: "POST", auth: false }),
   referralWithdraw: (wallet_address) =>
     request("/me/referral/withdraw/", { method: "POST", body: { wallet_address } }),
   redeemPromoCode: (code) =>

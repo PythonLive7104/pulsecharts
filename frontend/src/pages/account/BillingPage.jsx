@@ -21,7 +21,13 @@ export default function BillingPage() {
 
   const [plans, setPlans] = useState(PLAN_FALLBACK);
   const [lifetime, setLifetime] = useState(LIFETIME_FALLBACK);
-  const [billing, setBilling] = useState("monthly"); // "monthly" | "lifetime"
+  // ?plan=lifetime preselects the lifetime tab. Campaign emails advertise lifetime
+  // specifically, so the click has to land on that offer rather than a pricing table
+  // the reader then has to navigate.
+  const [billing, setBilling] = useState(
+    () => (new URLSearchParams(window.location.search).get("plan") === "lifetime"
+      ? "lifetime" : "monthly")
+  ); // "monthly" | "lifetime"
   const [notice, setNotice] = useState(null);
   const [busy, setBusy] = useState(false);
   const [history, setHistory] = useState(null);
