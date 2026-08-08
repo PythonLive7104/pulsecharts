@@ -36,13 +36,15 @@ class EmailCampaignAdmin(admin.ModelAdmin):
     list_display = ("name", "status", "subject", "daily_cap", "progress", "preview_link", "created_at")
     list_filter = ("status", "created_at")
     search_fields = ("name", "subject")
-    readonly_fields = ("created_at", "created_by", "progress", "placeholder_help")
+    readonly_fields = ("created_at", "created_by", "progress", "placeholder_help",
+                       "recipients_help")
     inlines = [RecipientInline]
-    actions = ["start_sending", "pause_sending"]
+    actions = ["add_recipients", "start_sending", "pause_sending"]
     fieldsets = (
         (None, {"fields": ("name", "subject", "status", "daily_cap")}),
         ("Content", {"fields": ("placeholder_help", "html_body")}),
-        ("Meta", {"fields": ("progress", "created_by", "created_at")}),
+        ("Recipients", {"fields": ("recipients_help", "progress")}),
+        ("Meta", {"fields": ("created_by", "created_at")}),
     )
 
     @admin.display(description="Available placeholders")
@@ -52,6 +54,25 @@ class EmailCampaignAdmin(admin.ModelAdmin):
             "sent. Include <code>{{{{unsubscribe_url}}}}</code> — bulk mail without "
             "a working unsubscribe is what gets a sending domain blocked.</small>",
             "  ".join(PLACEHOLDERS),
+        )
+
+    @admin.display(description="How to add recipients")
+    def recipients_help(self, obj):
+        if not obj.pk:
+            return format_html(
+                "<b>Save this campaign first</b>, then add recipients one of two ways:"
+                "<ul style='margin:6px 0 0 16px'>"
+                "<li>Campaigns → Email campaigns → tick this campaign → action "
+                "<b>“Add recipients…”</b> (whole audiences, e.g. everyone on Free)</li>"
+                "<li>Accounts → Users → tick specific users → action "
+                "<b>“Add selected users to an email campaign”</b></li></ul>"
+            )
+        url = reverse("admin:campaigns_emailcampaign_changelist")
+        return format_html(
+            "Use the <b>“Add recipients…”</b> action on the "
+            "<a href='{}'>campaign list</a> to add a whole audience, or pick "
+            "individuals in Accounts → Users → <b>“Add selected users to an email "
+            "campaign”</b>.", url,
         )
 
     @admin.display(description="Progress")
@@ -94,6 +115,75 @@ class EmailCampaignAdmin(admin.ModelAdmin):
         if not obj.pk and not obj.created_by_id:
             obj.created_by = request.user
         super().save_model(request, obj, form, change)
+
+    @admin.action(description="Add recipients… (choose an audience)")
+    def add_recipients(self, request, queryset):
+        """Bulk-add an audience. The per-user action on the Users list stays for
+        hand-picking; this is for "everyone on Free" without paging a changelist."""
+        from apps.accounts.plans import plan_key
+
+        if queryset.count() != 1:
+            self.message_user(
+                request, "Pick exactly one campaign to add recipients to.",
+                level=messages.ERROR,
+            )
+            return
+        campaign = queryset.first()
+
+        # Only users who could actually receive it — the send task would skip the
+        # rest anyway, and queueing them just fills the list with SKIPPED rows.
+        from .tasks import _skip_reason
+
+        eligible = [u for u in User.objects.all() if _skip_reason(u) is None]
+        buckets = {
+            "all": eligible,
+            "free": [u for u in eligible if plan_key(u) == "free"],
+            "starter": [u for u in eligible if plan_key(u) == "starter"],
+            "pro": [u for u in eligible if plan_key(u) == "pro"],
+        }
+
+        chosen = request.POST.get("audience")
+        if chosen in buckets:
+            users = buckets[chosen]
+            rows = [CampaignRecipient(campaign=campaign, user=u) for u in users]
+            created = CampaignRecipient.objects.bulk_create(rows, ignore_conflicts=True)
+            self.message_user(
+                request,
+                f"Added {len(users)} user(s) to “{campaign.name}” ({len(created)} new). "
+                "Nothing sends until the campaign status is Sending.",
+            )
+            return redirect(request.get_full_path())
+
+        labels = {
+            "all": "Everyone eligible",
+            "free": "Free users only",
+            "starter": "Starter users only",
+            "pro": "Pro users only (excludes lifetime owners)",
+        }
+        opts = "".join(
+            f"<label style='display:block;margin:8px 0;'>"
+            f"<input type='radio' name='audience' value='{k}'{' checked' if k == 'all' else ''}> "
+            f"{labels[k]} — <b>{len(v)}</b> user(s)</label>"
+            for k, v in buckets.items()
+        )
+        selected = f"<input type='hidden' name='_selected_action' value='{campaign.pk}'>"
+        return HttpResponse(f"""
+<!doctype html><meta charset="utf-8">
+<body style="font-family:system-ui,sans-serif;max-width:640px;margin:40px auto;padding:0 16px;">
+  <h2>Add recipients to “{escape(campaign.name)}”</h2>
+  <p style="color:#555">Already unsubscribed, unverified or lifetime-owning users are
+     excluded — the sender would skip them anyway.</p>
+  <form method="post">
+    <input type="hidden" name="csrfmiddlewaretoken" value="{request.COOKIES.get('csrftoken', '')}">
+    <input type="hidden" name="action" value="add_recipients">
+    {selected}
+    {opts}
+    <p style="margin-top:18px;">
+      <button type="submit" style="padding:9px 18px;font-weight:600;">Add to campaign</button>
+      <a href="{escape(request.get_full_path())}" style="margin-left:12px;">Cancel</a>
+    </p>
+  </form>
+</body>""")
 
     @admin.action(description="Start sending (queued, capped per day)")
     def start_sending(self, request, queryset):
