@@ -26,7 +26,8 @@ _RESEND_ENDPOINT = "https://api.resend.com/emails"
 EMAIL_ENABLED = bool(settings.RESEND_API_KEY)
 
 
-def send_email(*, to, subject: str, html: str, text: str = "", reply_to: str = "") -> bool:
+def send_email(*, to, subject: str, html: str, text: str = "", reply_to: str = "",
+               headers: dict | None = None) -> bool:
     """Send one transactional email. Returns True on success, False otherwise
     (including when email is not configured). Never raises."""
     if not EMAIL_ENABLED:
@@ -43,6 +44,12 @@ def send_email(*, to, subject: str, html: str, text: str = "", reply_to: str = "
         payload["text"] = text
     if reply_to:
         payload["reply_to"] = reply_to
+    # Custom headers — notably List-Unsubscribe / List-Unsubscribe-Post, which
+    # Gmail and Yahoo expect from anything that looks like bulk mail. Without them a
+    # promotional send is materially more likely to be filtered, however clean the
+    # content is.
+    if headers:
+        payload["headers"] = headers
 
     try:
         resp = requests.post(

@@ -80,3 +80,27 @@ def preview_html(html: str, user=None) -> str:
     for key, value in sample.items():
         out = out.replace(key, value)
     return out
+
+
+def html_to_text(html: str) -> str:
+    """Plain-text alternative for the multipart email.
+
+    A promotional message sent as HTML *only* is a long-standing spam signal — real
+    senders ship both parts. This is deliberately crude (no parser dependency): strip
+    scripts and styles, keep link targets so the offer is still actionable in a
+    text-only client, drop the rest of the markup.
+    """
+    import re
+
+    text = re.sub(r"(?is)<(script|style|head)[^>]*>.*?</\1>", " ", html)
+    # Keep the destination of links: "Buy now (https://…)"
+    text = re.sub(r'(?is)<a[^>]+href=["\']([^"\']+)["\'][^>]*>(.*?)</a>',
+                  lambda m: f"{re.sub(r'<[^>]+>', '', m.group(2)).strip()} ({m.group(1)})",
+                  text)
+    text = re.sub(r"(?i)<br\s*/?>|</p>|</div>|</tr>|</h[1-6]>", "\n", text)
+    text = re.sub(r"<[^>]+>", " ", text)
+    text = (text.replace("&nbsp;", " ").replace("&amp;", "&")
+                .replace("&lt;", "<").replace("&gt;", ">").replace("&#39;", "'"))
+    text = re.sub(r"[ \t]+", " ", text)
+    text = re.sub(r"\n\s*\n\s*\n+", "\n\n", text)
+    return text.strip()

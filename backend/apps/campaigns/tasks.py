@@ -60,7 +60,7 @@ def run_campaign_sends() -> dict:
     from apps.common.email import send_email
 
     from .models import CampaignRecipient, EmailCampaign
-    from .render import render_html
+    from .render import context_for, html_to_text, render_html
 
     global_cap = int(getattr(settings, "CAMPAIGN_DAILY_CAP", 40) or 0)
     if global_cap <= 0:
@@ -116,10 +116,24 @@ def run_campaign_sends() -> dict:
                 if last and now - last < timedelta(days=cooldown_days):
                     continue  # left PENDING: it becomes eligible again later
 
+            html = render_html(campaign.html_body, user)
+            unsub = context_for(user)["{{unsubscribe_url}}"]
             ok = send_email(
                 to=user.email,
                 subject=campaign.subject,
-                html=render_html(campaign.html_body, user),
+                html=html,
+                # Plain-text alternative: HTML-only promotional mail is a spam signal.
+                text=html_to_text(html),
+                # A real reply address beats a bare no-reply for reputation, and gives
+                # a recipient somewhere to go other than the spam button.
+                reply_to=getattr(settings, "CONTACT_US_EMAIL", "") or "",
+                headers={
+                    # Gmail/Yahoo bulk-sender requirements: an unsubscribe the mail
+                    # client itself can offer, plus one-click POST support. The link
+                    # in the body is not a substitute — filters look for these.
+                    "List-Unsubscribe": f"<{unsub}>",
+                    "List-Unsubscribe-Post": "List-Unsubscribe=One-Click",
+                },
             )
             if ok:
                 rec.status = CampaignRecipient.Status.SENT
