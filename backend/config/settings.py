@@ -703,11 +703,14 @@ CELERY_BEAT_SCHEDULE = {
     # Recurring "upgrade to get signals" nudge for Telegram-linked users with no
     # signal access. Runs daily; the per-user interval (SIGNAL_UPGRADE_NUDGE_DAYS)
     # is what stops it becoming spam.
-    # Drains queued campaign emails within CAMPAIGN_DAILY_CAP. Runs daily; the cap
-    # and the per-user cooldown do the pacing, not the schedule.
+    # Drains queued campaign emails. HOURLY, not daily: the daily cap and the
+    # per-user cooldown decide how much goes out, so a 24h schedule bought nothing
+    # and meant a freshly started campaign sat idle for up to a day with no feedback.
+    # Hourly also spreads the day's allowance instead of firing all 40 at once, which
+    # looks far less like a spam burst to receiving mail servers.
     "send-campaign-emails": {
         "task": "apps.campaigns.tasks.send_campaign_emails",
-        "schedule": env.float("CAMPAIGN_SEND_INTERVAL", default=86400.0),
+        "schedule": env.float("CAMPAIGN_SEND_INTERVAL", default=3600.0),
     },
     "send-upgrade-nudges": {
         "task": "apps.accounts.tasks.send_upgrade_nudges",
