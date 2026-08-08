@@ -34,6 +34,27 @@ def _skip_reason(user) -> str | None:
     return None
 
 
+def _enrol_eligible(campaign) -> int:
+    """Queue every eligible user not already on this campaign. Returns how many."""
+    from apps.accounts.models import User
+
+    from .models import CampaignRecipient
+
+    already = set(
+        CampaignRecipient.objects.filter(campaign=campaign).values_list("user_id", flat=True)
+    )
+    rows = [
+        CampaignRecipient(campaign=campaign, user=u)
+        for u in User.objects.exclude(id__in=already)
+        if _skip_reason(u) is None
+    ]
+    if rows:
+        # ignore_conflicts: harmless if a concurrent run queued the same person.
+        CampaignRecipient.objects.bulk_create(rows, ignore_conflicts=True)
+        logger.info("auto-enrolled %d user(s) into %s", len(rows), campaign.name)
+    return len(rows)
+
+
 def run_campaign_sends() -> dict:
     """Send up to the daily cap, newest campaigns last. Returns a summary."""
     from apps.common.email import send_email
@@ -60,6 +81,11 @@ def run_campaign_sends() -> dict:
     for campaign in EmailCampaign.objects.filter(status=EmailCampaign.Status.SENDING):
         if budget <= 0:
             break
+
+        # Auto-enrol campaigns pick up everyone eligible who isn't queued yet — so a
+        # user who signed up yesterday is included without anyone touching the admin.
+        if campaign.auto_enroll:
+            _enrol_eligible(campaign)
         per_campaign = min(budget, campaign.daily_cap)
         queue = (
             CampaignRecipient.objects
@@ -107,8 +133,9 @@ def run_campaign_sends() -> dict:
                 rec.save(update_fields=["status", "note"])
                 failed += 1
 
-        # Nothing left that could ever send -> the campaign is finished.
-        if not CampaignRecipient.objects.filter(
+        # Nothing left that could ever send -> the campaign is finished. Auto-enrol
+        # campaigns are never finished: tomorrow's signups are tomorrow's recipients.
+        if not campaign.auto_enroll and not CampaignRecipient.objects.filter(
             campaign=campaign, status=CampaignRecipient.Status.PENDING
         ).exists():
             campaign.status = EmailCampaign.Status.DONE

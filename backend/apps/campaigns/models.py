@@ -37,6 +37,19 @@ class EmailCampaign(models.Model):
     # Per-campaign override of settings.CAMPAIGN_DAILY_CAP. The GLOBAL cap still
     # applies on top — this can only make a campaign slower, never the sender louder.
     daily_cap = models.PositiveIntegerField(default=40)
+    # Auto-enrol: the sender tops this campaign up with EVERY eligible user on each
+    # run, including people who signed up after it started. Without it a campaign is
+    # a fixed list you had to select by hand — fine for a one-off, wrong for an
+    # always-on offer, because every new signup would silently miss it.
+    #
+    # It does NOT mean "email everyone every day": the per-user cooldown
+    # (CAMPAIGN_MIN_DAYS_BETWEEN) and the daily cap still apply, so it works out as
+    # one email per user per week, 40 a day, indefinitely.
+    auto_enroll = models.BooleanField(
+        default=False,
+        help_text="Automatically queue every eligible user, including future signups. "
+                  "The weekly per-user cooldown and daily cap still apply.",
+    )
     created_at = models.DateTimeField(auto_now_add=True)
     created_by = models.ForeignKey(
         "accounts.User", null=True, blank=True, on_delete=models.SET_NULL,

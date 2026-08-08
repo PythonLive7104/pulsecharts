@@ -9,6 +9,7 @@ from __future__ import annotations
 
 from django.contrib import admin, messages
 from django.http import HttpResponse
+from django.middleware.csrf import get_token
 from django.shortcuts import redirect
 from django.urls import path, reverse
 from django.utils.html import escape, format_html
@@ -33,7 +34,7 @@ class RecipientInline(admin.TabularInline):
 
 @admin.register(EmailCampaign)
 class EmailCampaignAdmin(admin.ModelAdmin):
-    list_display = ("name", "status", "subject", "daily_cap", "progress", "preview_link", "created_at")
+    list_display = ("name", "status", "auto_enroll", "subject", "daily_cap", "progress", "preview_link", "created_at")
     list_filter = ("status", "created_at")
     search_fields = ("name", "subject")
     readonly_fields = ("created_at", "created_by", "progress", "placeholder_help",
@@ -41,7 +42,7 @@ class EmailCampaignAdmin(admin.ModelAdmin):
     inlines = [RecipientInline]
     actions = ["add_recipients", "start_sending", "pause_sending"]
     fieldsets = (
-        (None, {"fields": ("name", "subject", "status", "daily_cap")}),
+        (None, {"fields": ("name", "subject", "status", "daily_cap", "auto_enroll")}),
         ("Content", {"fields": ("placeholder_help", "html_body")}),
         ("Recipients", {"fields": ("recipients_help", "progress")}),
         ("Meta", {"fields": ("created_by", "created_at")}),
@@ -174,7 +175,7 @@ class EmailCampaignAdmin(admin.ModelAdmin):
   <p style="color:#555">Already unsubscribed, unverified or lifetime-owning users are
      excluded — the sender would skip them anyway.</p>
   <form method="post">
-    <input type="hidden" name="csrfmiddlewaretoken" value="{request.COOKIES.get('csrftoken', '')}">
+    <input type="hidden" name="csrfmiddlewaretoken" value="{get_token(request)}">
     <input type="hidden" name="action" value="add_recipients">
     {selected}
     {opts}
@@ -274,7 +275,7 @@ def add_to_campaign(modeladmin, request, queryset):
   <p style="color:#555">They'll be queued as PENDING. Nothing is sent until the
      campaign's status is <b>Sending</b>, and then only within the daily cap.</p>
   <form method="post">
-    <input type="hidden" name="csrfmiddlewaretoken" value="{request.COOKIES.get('csrftoken', '')}">
+    <input type="hidden" name="csrfmiddlewaretoken" value="{get_token(request)}">
     <input type="hidden" name="action" value="add_to_campaign">
     {selected}
     <p><select name="campaign" style="padding:8px;min-width:320px;">{options}</select></p>
