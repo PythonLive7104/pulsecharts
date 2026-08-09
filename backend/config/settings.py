@@ -364,6 +364,57 @@ SIGNAL_MIN_CONFIDENCE = env.int("SIGNAL_MIN_CONFIDENCE", default=65)
 # they fire alone and this floor is the ONLY delivery gate they face.
 SIGNAL_MIN_CONFIDENCE_REVERSION = env.int("SIGNAL_MIN_CONFIDENCE_REVERSION", default=0)
 
+
+def _parse_strategy_floors(raw: str) -> dict:
+    """"slug:floor,slug:floor" -> {slug: floor}.
+
+    Raises rather than skipping a malformed entry: a typo'd slug would silently leave
+    that strategy on the kind-wide floor while the operator believes it was overridden,
+    and a trading gate that quietly isn't applied is worse than a deploy that fails
+    loudly.
+    """
+    from django.core.exceptions import ImproperlyConfigured
+
+    floors = {}
+    for part in (raw or "").split(","):
+        part = part.strip()
+        if not part:
+            continue
+        slug, sep, value = part.partition(":")
+        if not sep or not slug.strip():
+            raise ImproperlyConfigured(
+                f"SIGNAL_MIN_CONFIDENCE_BY_STRATEGY: expected 'slug:floor', got {part!r}"
+            )
+        try:
+            floors[slug.strip()] = int(value)
+        except ValueError:
+            raise ImproperlyConfigured(
+                f"SIGNAL_MIN_CONFIDENCE_BY_STRATEGY: {value!r} is not an integer (in {part!r})"
+            ) from None
+    return floors
+
+
+# PER-STRATEGY conviction floors, the finest of the three levels. Resolution order is
+# strategy -> kind -> global, first match wins.
+#
+# Needed because the three mean-reversion strategies respond to the confidence score in
+# three different directions, so no single reversion floor suits them. Measured
+# back-to-back on the same window:
+#     floor        RSI(2)          BB Fade         VWAP Stretch
+#     65        54.2% n=631     53.8% n=1596     57.1% n=665
+#     70        55.3% n=369     53.5% n=1389     56.5% n=531
+#     75        63.5% n=159     53.6% n=959      54.9% n=348
+# RSI(2) improves steeply with a higher floor (+0.20R -> +0.46R), Bollinger Fade is
+# indifferent to it, and VWAP Stretch is INVERTED — it gets worse as the score gets
+# more confident. Treat that inversion as unexplained rather than exploited: a strategy
+# that underperforms when it looks more convincing usually means the score is reading
+# something backwards for it, and that's worth understanding before leaning on it.
+#
+# Format: "slug:floor,slug:floor". Empty = no overrides (kind/global floors only).
+SIGNAL_MIN_CONFIDENCE_BY_STRATEGY = _parse_strategy_floors(
+    env("SIGNAL_MIN_CONFIDENCE_BY_STRATEGY", default="")
+)
+
 # Confluence collapse (delivery-side, Option A). The scan stores one signal per
 # (symbol, service, timeframe), so a coin can surface several cards at once — one
 # per strategy. Confluence collapses those to a SINGLE signal per (symbol,

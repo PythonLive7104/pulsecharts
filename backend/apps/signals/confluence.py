@@ -24,17 +24,29 @@ from .models import Signal
 from .pregate import kind_of
 
 
-def min_confidence(kind: str | None = None) -> int:
-    """The delivery confidence floor for a strategy kind.
+def min_confidence(kind: str | None = None, strategy_slug: str | None = None) -> int:
+    """The delivery confidence floor, resolved strategy -> kind -> global.
 
-    Mean reversion gets its own floor (``SIGNAL_MIN_CONFIDENCE_REVERSION``) because
-    ``confidence_score`` scores fades on a different branch to trend setups and the two
-    distributions aren't comparable — one flat floor was measurably mis-cutting the
-    fades. 0/unset falls back to the shared floor, so this is inert until configured.
+    Three levels because the score means different things at each. Mean reversion needs
+    its own floor (``SIGNAL_MIN_CONFIDENCE_REVERSION``) since ``confidence_score`` runs a
+    different branch for fades than for trend setups, so the two distributions aren't
+    comparable. And within reversion the three strategies respond in three DIFFERENT
+    directions — RSI(2) improves steeply as the floor rises, Bollinger Fade is flat,
+    VWAP Stretch gets worse — so a per-strategy override
+    (``SIGNAL_MIN_CONFIDENCE_BY_STRATEGY``) is the only way to serve all three. Numbers
+    are in the settings comment.
+
+    Both extra levels are inert until configured: 0/unset falls back to the level above.
     """
-    from .pregate import KIND_REVERSION
+    from .pregate import KIND_REVERSION, kind_of
 
     base = int(settings.SIGNAL_MIN_CONFIDENCE)
+    if strategy_slug:
+        override = getattr(settings, "SIGNAL_MIN_CONFIDENCE_BY_STRATEGY", {}).get(strategy_slug)
+        if override:
+            return int(override)
+        if kind is None:
+            kind = kind_of(strategy_slug)
     if kind == KIND_REVERSION:
         return int(getattr(settings, "SIGNAL_MIN_CONFIDENCE_REVERSION", 0) or base)
     return base
@@ -42,7 +54,7 @@ def min_confidence(kind: str | None = None) -> int:
 
 def deliverable_q() -> Q:
     """Filter for the delivery confidence floor. Built-in strategies must clear the
-    floor for their kind (see ``min_confidence``); custom (user-created) strategies
+    floor resolved for them (see ``min_confidence``); custom (user-created) strategies
     BYPASS it — the user deliberately built the rule, so every qualifying signal from
     it should surface regardless of the generic conviction score. Use as a positional
     arg to ``.filter()`` alongside the other kwargs."""
@@ -50,21 +62,29 @@ def deliverable_q() -> Q:
 
     base = min_confidence()
     rev = min_confidence(KIND_REVERSION)
+    overrides = dict(getattr(settings, "SIGNAL_MIN_CONFIDENCE_BY_STRATEGY", {}) or {})
     custom = Q(service__owner__isnull=False)
 
-    if rev == base:
+    if rev == base and not overrides:
         return Q(confidence_pct__gte=base) | custom
 
-    # Slug list rather than a kind column: kind is derived in Python (STRATEGY_KIND),
+    # Slug lists rather than a kind column: kind is derived in Python (STRATEGY_KIND),
     # so the DB has no way to express it. Anything unmapped is trend by definition
-    # (kind_of), which is exactly what the negated branch covers.
+    # (kind_of), which is exactly what the final negated branch covers.
     rev_slugs = [slug for slug, k in STRATEGY_KIND.items() if k == KIND_REVERSION]
-    is_rev = Q(service__slug__in=rev_slugs)
-    return (
-        (Q(confidence_pct__gte=rev) & is_rev)
-        | (Q(confidence_pct__gte=base) & ~is_rev)
-        | custom
+
+    q = custom
+    for slug, floor in overrides.items():
+        q |= Q(service__slug=slug, confidence_pct__gte=int(floor))
+    # Reversion strategies WITHOUT an override fall to the kind floor.
+    rest_rev = [s for s in rev_slugs if s not in overrides]
+    if rest_rev:
+        q |= Q(service__slug__in=rest_rev, confidence_pct__gte=rev)
+    # Everything else — trend, breakout, and any slug not in STRATEGY_KIND.
+    q |= Q(confidence_pct__gte=base) & ~Q(
+        service__slug__in=list(overrides) + rev_slugs
     )
+    return q
 
 
 def _configured_min(kind: str | None) -> int:
