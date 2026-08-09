@@ -330,6 +330,12 @@ class Command(BaseCommand):
                                  "which the plain backtest otherwise skips entirely — so a run "
                                  "without this models a feed with no conviction gate at all. "
                                  "Live value is SIGNAL_MIN_CONFIDENCE.")
+        parser.add_argument("--min-confidence-reversion", type=int, default=None,
+                            help="Separate confidence floor for MEAN-REVERSION strategies "
+                                 "(live: SIGNAL_MIN_CONFIDENCE_REVERSION). Only meaningful "
+                                 "alongside --min-confidence, which sets the trend/breakout "
+                                 "floor. Fades score on a different confidence branch, so the "
+                                 "flat floor cuts them at the wrong place.")
         parser.add_argument("--atr-floor", type=float, default=None,
                             help="Override the TREND stop's minimum ATR multiple (live: 3.0 "
                                  "crypto / 2.0 forex). Tighter = smaller R, so every TP sits "
@@ -423,6 +429,9 @@ class Command(BaseCommand):
             ("confidence floor", opts.get("min_confidence")
                                  if opts.get("min_confidence") is not None
                                  else "OFF (backtest skips the live gate)"),
+            ("  ...for reversion", opts.get("min_confidence_reversion")
+                                   if opts.get("min_confidence_reversion") is not None
+                                   else "same as above"),
             ("ADX floor", opts.get("adx_min") if opts.get("adx_min") is not None
                           else "OFF (backtest skips the live regime filter)"),
             ("timeframes", ",".join(timeframes)),
@@ -477,7 +486,8 @@ class Command(BaseCommand):
                                  opts.get("adx_min"), htf_bias_on, exit_lab,
                                  reversion_htf_on, opts.get("min_confidence"),
                                  opts.get("atr_floor"), opts.get("atr_cap"),
-                                 opts.get("reversion_adx_max"))
+                                 opts.get("reversion_adx_max"),
+                                 opts.get("min_confidence_reversion"))
                 series += 1
                 self.stdout.write(f"  · {sym.ticker} {tf}", ending="\r")
             if llm_on and budget["left"] <= 0:
@@ -551,7 +561,8 @@ class Command(BaseCommand):
                     asset_class="crypto", htf_structure_on=False, htf_limit=500,
                     adx_min=None, htf_bias_on=False, exit_lab=None,
                     reversion_htf_on=False, min_confidence=None,
-                    atr_floor=None, atr_cap=None, rev_adx_max=None):
+                    atr_floor=None, atr_cap=None, rev_adx_max=None,
+                    min_confidence_reversion=None):
         ticker = sym.ticker
         n = len(candles)
         threshold = settings.SIGNAL_MIN_CONFIDENCE
@@ -637,9 +648,16 @@ class Command(BaseCommand):
                     if htf_struct_now != want:  # opposite trend or choppy (None) → skip
                         continue
 
-                # Conviction floor — the same score the live feed gates on.
+                # Conviction floor — the same score the live feed gates on. Mean
+                # reversion may carry its own floor (SIGNAL_MIN_CONFIDENCE_REVERSION):
+                # fades score on a different branch of confidence_score, so one flat
+                # number cuts the two families at different effective strictnesses.
                 if min_confidence is not None:
-                    if confidence_score(direction, snap, svc.slug) < min_confidence:
+                    floor = min_confidence
+                    if (min_confidence_reversion is not None
+                            and pregate.kind_of(svc.slug) == pregate.KIND_REVERSION):
+                        floor = min_confidence_reversion
+                    if confidence_score(direction, snap, svc.slug) < floor:
                         continue
 
                 res = _outcome(direction, snap, future, asset_class, svc.slug,

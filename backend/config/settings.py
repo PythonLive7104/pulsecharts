@@ -348,6 +348,22 @@ SIGNAL_RULE_CONFIDENCE = env.int("SIGNAL_RULE_CONFIDENCE", default=75)
 # Only surface signals at/above this confidence (Section 19.1 / 20).
 SIGNAL_MIN_CONFIDENCE = env.int("SIGNAL_MIN_CONFIDENCE", default=65)
 
+# SEPARATE conviction floor for MEAN-REVERSION strategies, mirroring the splits that
+# already exist for regime (SIGNAL_ADX_MAX_REVERSION), confluence
+# (SIGNAL_CONFLUENCE_MIN_REVERSION) and stop width (SIGNAL_ATR_*_REVERSION).
+#
+# Why it needs its own number: confidence_score has a trend-shaped and a
+# reversion-shaped branch, and they don't produce comparable distributions. Measured
+# at a flat floor of 80, the floor HELPED every trend strategy (+1.6 to +2.9 points of
+# win rate) and HURT the two best fades — VWAP Stretch 56.7%→52.1% and BB Fade
+# 53.6%→50.8%, each losing ~68% of its setups. It was discarding fade trades that were
+# better than the ones it kept.
+#
+# 0 / unset = fall back to SIGNAL_MIN_CONFIDENCE (no behaviour change). Fades are
+# unusually exposed to this number: they run at SIGNAL_CONFLUENCE_MIN_REVERSION=1, so
+# they fire alone and this floor is the ONLY delivery gate they face.
+SIGNAL_MIN_CONFIDENCE_REVERSION = env.int("SIGNAL_MIN_CONFIDENCE_REVERSION", default=0)
+
 # Confluence collapse (delivery-side, Option A). The scan stores one signal per
 # (symbol, service, timeframe), so a coin can surface several cards at once — one
 # per strategy. Confluence collapses those to a SINGLE signal per (symbol,
@@ -522,26 +538,34 @@ SIGNAL_REENTRY_COOLDOWN_BARS = env.int("SIGNAL_REENTRY_COOLDOWN_BARS", default=3
 # Stop-loss width as ATR multiples, PER ASSET CLASS. The stop is clamped to
 # [floor, cap]×ATR (anchored to the nearest swing pivot in between).
 #
-# Crypto NARROWED back to 2.0-3.0 on 2026-08-06, reversing the June widening to
-# 3.0-4.5. That change was made on stop-outs alone — trades were being wicked out —
-# but nobody measured what it cost on the TARGET side, and it cost more than it
-# saved. Head-to-head over 20 symbols / 1200 candles / 1h+4h, the only difference
-# being this band:
-#     3.0-4.5 : n=4088  49.9% win  exp(scale) +0.03R  TP3 hits 754  avgMAE -4.4%
-#     2.0-3.0 : n=4940  49.4% win  exp(scale) +0.05R  TP3 hits 988  avgMAE -3.6%
-# Every trend strategy improved; not one got worse. The mechanism is the one the
-# mean-reversion strategies already demonstrate: a tighter stop makes 1R a smaller
-# move, so TP2/TP3 come into REACH instead of the trade stalling at TP1. You give up
-# a little win rate (more noise stop-outs) and gain more in winner size.
+# Crypto is back at 3.0-4.5 (2026-08-09), reverting the 2026-08-06 tightening to
+# 2.0-3.0. Keep BOTH halves of this history — the tightening was not a mistake, it
+# was measured, and the revert is about who the signals are for.
+#
+# Measured head-to-head, 20 symbols / 1200 candles / 1h+4h, only this band differing:
+#     3.0-4.5 : n=4088  49.9% win  exp(TP1) -0.00R  exp(scale) +0.03R  TP3 754
+#     2.0-3.0 : n=4940  49.4% win  exp(TP1) -0.01R  exp(scale) +0.05R  TP3 988
+#
+# The tighter band wins on exp(SCALE) — but that model assumes the trader banks half
+# at TP1 and holds a runner to TP3. On exp(TP1) — close the whole position at the
+# first target, which is what most retail traders actually do — the two are level and
+# the tight band is fractionally worse. User feedback said the same thing
+# independently: they prefer more TP1 hits and fewer stop-outs.
+#
+# So tighten this ONLY with evidence about how users exit. If you learn that most of
+# them hold a runner, 2.0-3.0 is worth +0.02R/trade; if they bank at TP1, it costs
+# them stop-outs for nothing. Mean-reversion strategies are unaffected either way —
+# they have their own band (SIGNAL_ATR_*_REVERSION) and their edge DOES depend on the
+# tight stop making TP2/TP3 reachable.
 #
 # Forex is untouched — measured on crypto only, and its band was already tight.
 # Mean-reversion strategies ignore both bands (SIGNAL_ATR_*_REVERSION).
 SIGNAL_ATR_STOP_FLOOR = {
-    "crypto": env.float("SIGNAL_ATR_FLOOR_CRYPTO", default=2.0),  # 3.0 Jun-Aug 2026
+    "crypto": env.float("SIGNAL_ATR_FLOOR_CRYPTO", default=3.0),  # 2.0 for 3 days, Aug 2026
     "forex": env.float("SIGNAL_ATR_FLOOR_FOREX", default=2.0),
 }
 SIGNAL_ATR_STOP_CAP = {
-    "crypto": env.float("SIGNAL_ATR_CAP_CRYPTO", default=3.0),  # 4.5 Jun-Aug 2026
+    "crypto": env.float("SIGNAL_ATR_CAP_CRYPTO", default=4.5),  # 3.0 for 3 days, Aug 2026
     "forex": env.float("SIGNAL_ATR_CAP_FOREX", default=3.0),
 }
 

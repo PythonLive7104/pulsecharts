@@ -24,13 +24,47 @@ from .models import Signal
 from .pregate import kind_of
 
 
+def min_confidence(kind: str | None = None) -> int:
+    """The delivery confidence floor for a strategy kind.
+
+    Mean reversion gets its own floor (``SIGNAL_MIN_CONFIDENCE_REVERSION``) because
+    ``confidence_score`` scores fades on a different branch to trend setups and the two
+    distributions aren't comparable — one flat floor was measurably mis-cutting the
+    fades. 0/unset falls back to the shared floor, so this is inert until configured.
+    """
+    from .pregate import KIND_REVERSION
+
+    base = int(settings.SIGNAL_MIN_CONFIDENCE)
+    if kind == KIND_REVERSION:
+        return int(getattr(settings, "SIGNAL_MIN_CONFIDENCE_REVERSION", 0) or base)
+    return base
+
+
 def deliverable_q() -> Q:
-    """Filter for the delivery confidence floor. Built-in strategies must clear
-    ``settings.SIGNAL_MIN_CONFIDENCE``; custom (user-created) strategies BYPASS it —
-    the user deliberately built the rule, so every qualifying signal from it should
-    surface regardless of the generic conviction score. Use as a positional arg to
-    ``.filter()`` alongside the other kwargs."""
-    return Q(confidence_pct__gte=settings.SIGNAL_MIN_CONFIDENCE) | Q(service__owner__isnull=False)
+    """Filter for the delivery confidence floor. Built-in strategies must clear the
+    floor for their kind (see ``min_confidence``); custom (user-created) strategies
+    BYPASS it — the user deliberately built the rule, so every qualifying signal from
+    it should surface regardless of the generic conviction score. Use as a positional
+    arg to ``.filter()`` alongside the other kwargs."""
+    from .pregate import KIND_REVERSION, STRATEGY_KIND
+
+    base = min_confidence()
+    rev = min_confidence(KIND_REVERSION)
+    custom = Q(service__owner__isnull=False)
+
+    if rev == base:
+        return Q(confidence_pct__gte=base) | custom
+
+    # Slug list rather than a kind column: kind is derived in Python (STRATEGY_KIND),
+    # so the DB has no way to express it. Anything unmapped is trend by definition
+    # (kind_of), which is exactly what the negated branch covers.
+    rev_slugs = [slug for slug, k in STRATEGY_KIND.items() if k == KIND_REVERSION]
+    is_rev = Q(service__slug__in=rev_slugs)
+    return (
+        (Q(confidence_pct__gte=rev) & is_rev)
+        | (Q(confidence_pct__gte=base) & ~is_rev)
+        | custom
+    )
 
 
 def _configured_min(kind: str | None) -> int:
