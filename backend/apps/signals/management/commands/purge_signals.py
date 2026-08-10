@@ -24,6 +24,12 @@ class Command(BaseCommand):
     def add_arguments(self, parser):
         parser.add_argument("--days", type=int, default=None, help="Retention window in days.")
         parser.add_argument(
+            "--flat-days", type=int, default=None,
+            help="Shorter window for INVALIDATED/EXPIRED calls, which carry no result "
+                 "and are excluded from the win rate either way (live: "
+                 "SIGNAL_RETENTION_DAYS_FLAT). Clamped to --days.",
+        )
+        parser.add_argument(
             "--all", action="store_true", dest="purge_all",
             help="Delete EVERY signal, including open/pending — full reset.",
         )
@@ -41,10 +47,11 @@ class Command(BaseCommand):
             )
             return
 
-        result = run_purge(days=opts["days"])
+        result = run_purge(days=opts["days"], flat_days=opts["flat_days"])
         self.stdout.write(
             self.style.SUCCESS(
-                f"Purged {result['signals_deleted']} signal rows and "
-                f"{result['alerts_deleted']} alert rows (older than {result['days']}d)."
+                f"Purged {result['signals_deleted']} signal rows "
+                f"({result['flat_deleted']} invalidated/expired at {result['flat_days']}d) "
+                f"and {result['alerts_deleted']} alert rows (older than {result['days']}d)."
             )
         )

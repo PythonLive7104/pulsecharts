@@ -600,20 +600,45 @@ def evaluate_pending_signals():
 # --- daily housekeeping (keep the database small) ---
 
 
-def run_purge(days: int | None = None) -> dict:
+# Outcomes that closed FLAT — no target reached, no stop hit. They carry no result
+# (stats.py keeps both out of the win rate), so they may be purged on their own,
+# shorter clock. Everything else is the accuracy record and keeps the full window.
+FLAT_OUTCOMES = (Signal.Outcome.INVALIDATED, Signal.Outcome.EXPIRED)
+
+
+def run_purge(days: int | None = None, flat_days: int | None = None) -> dict:
     """Delete data past the retention window to free database space.
 
     Removes RESOLVED signals (and, by cascade, their deliveries) older than the
     cutoff, plus already-seen triggered price alerts. Open (PENDING) signals are
     never deleted — an active call must survive until it hits its SL/TP.
+
+    Invalidated/expired calls get their own, optionally shorter window
+    (SIGNAL_RETENTION_DAYS_FLAT): they're the bulk of the rows and the least worth
+    keeping, since neither contributes to realized accuracy. 0/unset = same window as
+    everything else, i.e. the previous behaviour exactly.
     """
     from datetime import timedelta
 
     from apps.alerts.models import PriceAlert
 
     days = settings.SIGNAL_RETENTION_DAYS if days is None else days
-    cutoff = timezone.now() - timedelta(days=days)
+    if flat_days is None:
+        flat_days = getattr(settings, "SIGNAL_RETENTION_DAYS_FLAT", 0) or days
+    # A flat window LONGER than the main one would be silently pointless (the main
+    # sweep would delete those rows first), so clamp rather than pretend to honour it.
+    flat_days = min(flat_days, days)
 
+    now = timezone.now()
+    cutoff = now - timedelta(days=days)
+    flat_cutoff = now - timedelta(days=flat_days)
+
+    # Flat outcomes first, on their own clock.
+    flat_deleted, _ = (
+        Signal.objects.filter(generated_at__lt=flat_cutoff, outcome__in=FLAT_OUTCOMES)
+        .delete()
+    )
+    # Everything else resolved (TP1-4 / SL) on the full window. PENDING is never touched.
     sig_deleted, _ = (
         Signal.objects.filter(generated_at__lt=cutoff)
         .exclude(outcome=Signal.Outcome.PENDING)
@@ -623,9 +648,15 @@ def run_purge(days: int | None = None) -> dict:
         is_active=False, seen=True, triggered_at__lt=cutoff
     ).delete()
 
-    summary = {"days": days, "signals_deleted": sig_deleted, "alerts_deleted": alerts_deleted}
+    summary = {
+        "days": days, "flat_days": flat_days,
+        "signals_deleted": sig_deleted + flat_deleted,
+        "flat_deleted": flat_deleted,
+        "alerts_deleted": alerts_deleted,
+    }
     logger.info(
-        "purge: removed signals=%(signals_deleted)d alerts=%(alerts_deleted)d (older than %(days)dd)",
+        "purge: removed signals=%(signals_deleted)d (of which flat=%(flat_deleted)d "
+        "at %(flat_days)dd) alerts=%(alerts_deleted)d (older than %(days)dd)",
         summary,
     )
     return summary
@@ -683,14 +714,24 @@ def format_signal_for_telegram(s: Signal) -> str:
     # Header: what and where, then how strongly — two lines instead of four.
     from .pregate import KIND_REVERSION, kind_of
 
-    badges = [f"{s.confidence_pct}% conviction"]
+    # Conviction: TREND setups only. The score gates delivery for every strategy, but
+    # it doesn't mean the same thing across families, and printing one number invites
+    # an invalid comparison. For trend it tracks outcome (floor 70 -> 85 lifted every
+    # trend strategy 2-4 points); for fades it doesn't — BB Fade is flat across
+    # 65/70/75 and VWAP Stretch is INVERTED (57.1% / 56.5% / 54.9%). The scorer
+    # rewards how extreme the dislocation is, and an extreme move with volume behind
+    # it is more often a genuine breakout than something that reverts. A high number
+    # on a fade therefore reads backwards. Fades carry the "mean reversion" badge and
+    # the reasoning line instead. Mirrors SignalCard.jsx — change both together.
+    is_reversion = kind_of(s.service.slug) == KIND_REVERSION
+    badges = [] if is_reversion else [f"{s.confidence_pct}% conviction"]
     n_agree = getattr(s, "confluence_count", 1)
     if n_agree >= 2:
         badges.append(f"{n_agree} strategies agree")
     # Say what KIND of setup this is. Reversion is scored against its own confluence
     # floor, so a fade legitimately arrives with fewer agreeing strategies than a
     # trend signal — without this the card looks like the 3-of-N rule was skipped.
-    if kind_of(s.service.slug) == KIND_REVERSION:
+    if is_reversion:
         badges.append("mean reversion ↩️")
     # Daily 200-EMA confirmation. Omitted when unknown (legacy rows, new listings,
     # failed daily fetch); a signal fighting the daily trend says so rather than

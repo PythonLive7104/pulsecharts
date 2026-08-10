@@ -57,14 +57,30 @@ export default function SignalCard({ s }) {
             </span>
           )}
         </div>
-        <div
-          className="confidence"
-          title="Conviction — how strongly the indicators align for this setup. Not a win rate; see Realized accuracy for that."
-        >
-          <span className="conf-label">Conviction</span>
-          <div className="conf-bar"><div className="conf-fill" style={{ width: `${s.confidence_pct}%` }} /></div>
-          <span className="conf-pct">{s.confidence_pct}%</span>
-        </div>
+        {/* Conviction is shown for TREND setups only.
+            The score is still computed and still gates delivery for every strategy —
+            it just doesn't MEAN the same thing across families, so displaying one
+            number invites a comparison that isn't valid. For trend it tracks outcome
+            (raising the floor 70 -> 85 lifted every trend strategy 2-4 points). For
+            fades it does not: Bollinger Fade is flat across 65/70/75, and VWAP
+            Stretch is INVERTED — 57.1% at 65, 56.5% at 70, 54.9% at 75. The scorer
+            rewards how extreme the dislocation is (distance past the band, RSI/stoch
+            extremes, volume spike), and for mean reversion an extreme move with
+            volume behind it is more often a real breakout than something that snaps
+            back. So a high number on a fade is a mild warning, not a recommendation.
+            Rather than print a figure that reads backwards, the fade card leans on
+            its "mean reversion" badge and its reasoning line, which say what actually
+            triggered. Revisit if _confidence_reversion is ever rewritten per-strategy. */}
+        {s.strategy_kind !== "reversion" && (
+          <div
+            className="confidence"
+            title="Conviction — how strongly the indicators align for this setup. Not a win rate; see Realized accuracy for that."
+          >
+            <span className="conf-label">Conviction</span>
+            <div className="conf-bar"><div className="conf-fill" style={{ width: `${s.confidence_pct}%` }} /></div>
+            <span className="conf-pct">{s.confidence_pct}%</span>
+          </div>
+        )}
       </div>
 
       <div className="levels">

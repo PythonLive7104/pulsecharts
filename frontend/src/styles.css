@@ -2255,8 +2255,26 @@ a.brand:hover { text-decoration: none; }
 }
 .lt-banner-close:hover { opacity: 1; }
 
+/* Phones: the horizontal layout collapsed into a tall three-line column beside the
+   button. Reflow to two tidy rows instead —
+
+     [PRO LIFETIME]  $199 once            x
+     [        Get lifetime access ->      ]
+
+   `order` is what makes that work: DOM order is copy -> cta -> close, so without it
+   the full-width CTA wraps BETWEEN the copy and the close button, stranding the
+   close on a third row. */
 @media (max-width: 720px) {
-  .lt-banner-inner { padding: 9px 14px; gap: 10px; justify-content: space-between; }
-  .lt-banner-sub { display: none; }
-  .lt-banner-copy { flex: 1; }
+  .lt-banner-inner {
+    padding: 9px 14px;
+    gap: 8px 10px;
+    align-items: center;
+    justify-content: space-between;
+  }
+  .lt-banner-copy { order: 0; flex: 1 1 auto; gap: 6px; }
+  .lt-banner-close { order: 1; flex: 0 0 auto; }
+  .lt-banner-cta { order: 2; flex: 1 0 100%; text-align: center; padding: 9px 14px; }
+  /* Supporting copy, dropped in priority order: the break-even line first, then the
+     "never renews" tail. Price + CTA always survive. */
+  .lt-banner-sub, .lt-banner-tail { display: none; }
 }

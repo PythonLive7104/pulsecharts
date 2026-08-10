@@ -39,8 +39,13 @@ export default function LifetimeBanner({ plan, monthlyPrice, breakEvenMonths, is
             </>
           ) : (
             <>
-              <b className="lt-banner-price">${price}</b> once — never renews, never
-              expires
+              <b className="lt-banner-price">${price}</b> once
+              {/* Dropped on narrow screens — see the 720px block in styles.css.
+                  On a phone the price and the button are what matter; the rest
+                  wrapped into a three-line column beside the CTA. */}
+              <span className="lt-banner-tail">
+                {" "}— never renews, never expires
+              </span>
             </>
           )}
           {breakEvenMonths ? (

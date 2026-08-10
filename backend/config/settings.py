@@ -738,6 +738,18 @@ SIGNAL_SHADOW_MODE = env.bool("SIGNAL_SHADOW_MODE", default=False)
 # (e.g. 30) if you want a longer accuracy track record, lower it to free more DB.
 SIGNAL_RETENTION_DAYS = env.int("SIGNAL_RETENTION_DAYS", default=30)
 
+# SHORTER retention for calls that closed FLAT — invalidated (trend flipped) and
+# expired (ran out of bars). Unlike TP/SL these carry no result: stats.py excludes
+# both from the win rate by design, so keeping them for the full window buys nothing
+# but rows — and each one drags its per-user TelegramDelivery records along with it,
+# which is where the table volume actually comes from.
+#
+# 0 = fall back to SIGNAL_RETENTION_DAYS (no behaviour change). The only thing a
+# shorter window costs is the "invalidated"/"expired" COUNTS shown alongside the
+# accuracy figure, which will read lower once older ones are gone. The win rate
+# itself is unaffected — those outcomes were never in it.
+SIGNAL_RETENTION_DAYS_FLAT = env.int("SIGNAL_RETENTION_DAYS_FLAT", default=0)
+
 # --- Celery (Section 3, 13.6) ---
 
 CELERY_BROKER_URL = env("CELERY_BROKER_URL", default=REDIS_URL)

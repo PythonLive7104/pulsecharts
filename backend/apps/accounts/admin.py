@@ -52,14 +52,48 @@ class AccessFilter(admin.SimpleListFilter):
         return queryset
 
 
+class TelegramFilter(admin.SimpleListFilter):
+    """Filter on Telegram link state, which is TWO fields rather than one.
+
+    `telegram_chat_id` records that an account was ever linked; `telegram_active` is
+    the delivery switch. Disconnecting flips the switch but KEEPS the chat id, so the
+    user can reconnect without re-linking — which means neither field alone answers
+    "is this person receiving pushes". Mirrors User.telegram_connected /
+    telegram_can_reconnect so the admin and the app can't disagree.
+    """
+
+    title = "Telegram"
+    parameter_name = "telegram"
+
+    def lookups(self, request, model_admin):
+        return [
+            ("on", "Connected (receiving)"),
+            ("paused", "Linked but switched off"),
+            ("never", "Never linked"),
+        ]
+
+    def queryset(self, request, queryset):
+        linked = queryset.exclude(telegram_chat_id="")
+        if self.value() == "on":
+            return linked.filter(telegram_active=True)
+        if self.value() == "paused":
+            return linked.filter(telegram_active=False)
+        if self.value() == "never":
+            return queryset.filter(telegram_chat_id="")
+        return queryset
+
+
 @admin.register(User)
 class UserAdmin(BaseUserAdmin):
     ordering = ("email",)
     # `plan_tier` is what was last GRANTED; `effective_plan` is what the user
     # actually gets today. They differ for every lapsed plan — see effective_plan().
-    list_display = ("email", "effective_plan", "plan_tier", "plan_expiry", "is_staff")
-    list_filter = (AccessFilter, "plan_tier", "is_staff", "is_superuser", "is_active")
-    search_fields = ("email", "dodo_customer_id", "referred_by_code")
+    list_display = ("email", "effective_plan", "plan_tier", "plan_expiry",
+                    "telegram_state", "is_staff")
+    list_filter = (AccessFilter, TelegramFilter, "plan_tier", "is_staff",
+                   "is_superuser", "is_active")
+    search_fields = ("email", "dodo_customer_id", "referred_by_code", "telegram_chat_id")
+    readonly_fields = ("telegram_chat_id",)
     actions = ["enforce_plan_limits_action"]
 
     @admin.display(description="Effective plan", ordering="plan_tier")
@@ -78,6 +112,19 @@ class UserAdmin(BaseUserAdmin):
             stored = PLANS.get(obj.plan_tier, {}).get("label") or obj.plan_tier.title()
             return f"{label} (lapsed {stored})"
         return label
+
+    @admin.display(description="Telegram", ordering="telegram_active")
+    def telegram_state(self, obj):
+        """Connected / paused / never, in one column.
+
+        Not just a boolean on telegram_active: "off" means two different things
+        depending on whether a chat id survives (can reconnect in one tap vs has to
+        link from scratch), and that distinction is the useful one when someone asks
+        why they aren't getting pushes.
+        """
+        if not obj.telegram_chat_id:
+            return "— never linked"
+        return "✅ connected" if obj.telegram_active else "⏸ linked, off"
 
     def save_model(self, request, obj, form, change):
         """Persist the user, then bring saved data back within the (possibly newly
@@ -111,6 +158,10 @@ class UserAdmin(BaseUserAdmin):
         ("Personal info", {"fields": ("first_name", "last_name")}),
         ("Plan", {"fields": ("plan_tier", "plan_expiry", "dodo_customer_id",
                               "referred_by_code", "referral_credits")}),
+        # chat id is read-only: it comes from Telegram when the user links, and a
+        # hand-typed one would push this account's signals into a stranger's chat.
+        # The on/off switch stays editable so support can pause delivery.
+        ("Telegram", {"fields": ("telegram_chat_id", "telegram_active")}),
         (
             "Permissions",
             {"fields": ("is_active", "is_staff", "is_superuser", "groups", "user_permissions")},
