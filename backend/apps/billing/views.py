@@ -289,6 +289,15 @@ class WebhookView(APIView):
         code_str = (user.referred_by_code or "").strip()
         if rate <= 0 or not code_str:
             return
+        # SUBSCRIPTION plans only — lifetime pays NO commission. A lifetime purchase is
+        # one-time revenue against a perpetual cost to serve, so a 20% cut of it is paid
+        # out of margin that never recurs; Starter/Pro commissions come out of revenue
+        # that does. The referrer still earns their signup credit on a lifetime buyer.
+        if plan == LIFETIME:
+            logger.info(
+                "No referral commission on lifetime purchase %s (%s)", reference, user.email
+            )
+            return
         code = ReferralCode.objects.filter(code=code_str.upper()).select_related("owner").first()
         # No owner = an admin promo code, not somebody's referral link. And nobody
         # earns a commission on their own payment.

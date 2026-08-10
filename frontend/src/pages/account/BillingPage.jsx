@@ -297,7 +297,7 @@ export default function BillingPage() {
             Share your code — <strong>they get 30 days of Starter free</strong>, you earn
             ${ref.reward_per_referral} the moment they sign up
             {ref.commission?.rate_pct > 0 && (
-              <> plus <strong>{ref.commission.rate_pct}% of everything they pay</strong> afterwards</>
+              <> plus <strong>{ref.commission.rate_pct}% of every Starter or Pro payment</strong> they make afterwards</>
             )}.
             {neverExpires
               ? " Your access never expires, so there's no plan left to redeem — your balance just keeps growing."
@@ -361,8 +361,8 @@ export default function BillingPage() {
               <div className="commission-head">
                 <h3>Subscription commissions</h3>
                 <span className="muted">
-                  {ref.commission.rate_pct}% of every payment made by someone who
-                  signed up with your code
+                  {ref.commission.rate_pct}% of every Starter or Pro payment made by
+                  someone who signed up with your code (Lifetime excluded)
                 </span>
               </div>
 

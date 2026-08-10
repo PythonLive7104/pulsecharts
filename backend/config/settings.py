@@ -203,6 +203,12 @@ CAMPAIGN_MIN_DAYS_BETWEEN = env.int("CAMPAIGN_MIN_DAYS_BETWEEN", default=7)
 # VERIFIED charge, tracked as a ReferralCommission row, and settled out of band —
 # you mark it paid in the admin once the money has actually left. 0 disables it.
 #
+# SUBSCRIPTION PLANS ONLY (Starter, Pro). Lifetime pays NO commission: it is one-time
+# revenue against a perpetual cost to serve, so a cut of it comes out of margin that
+# never recurs, where a Starter/Pro cut comes out of revenue that does. Enforced in
+# BillingWebhookView._record_commission, not here. The referrer still earns their $1
+# signup credit when a lifetime buyer joins on their code.
+#
 # Deliberately separate from the $1 signup credit (User.referral_credits), which is
 # spent in-app: this is real revenue share and must not be redeemable for a plan.
 REFERRAL_COMMISSION_PCT = env.float("REFERRAL_COMMISSION_PCT", default=20.0)
