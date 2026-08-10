@@ -1,11 +1,6 @@
 import { useState } from "react";
 import { Link } from "react-router-dom";
 
-// Dismissal is remembered so the banner doesn't nag a returning visitor on every
-// load. Keyed by price: if the offer changes, everyone sees it again rather than
-// staying dismissed against a banner they never actually read.
-const KEY = "pc_lifetime_banner_dismissed";
-
 /**
  * Top-of-page promo bar for Pro Lifetime.
  *
@@ -14,6 +9,9 @@ const KEY = "pc_lifetime_banner_dismissed";
  * `original_price_usd`, so the bar can never advertise a discount that checkout isn't
  * charging. With no discount configured it falls back to the break-even framing, which
  * is a real comparison a visitor can verify rather than an invented "was" price.
+ *
+ * Dismissal is per-view state only, deliberately NOT persisted: closing it clears the
+ * bar for the current read, and a refresh or a later visit shows the offer again.
  *
  * Rendered above the sticky nav, so it scrolls away instead of permanently eating
  * viewport (and #anchor scroll-margin stays correct against the nav alone).
@@ -24,24 +22,9 @@ export default function LifetimeBanner({ plan, monthlyPrice, breakEvenMonths, is
   const off = plan?.discount_pct;
   const discounted = was != null && price != null && was > price;
 
-  const [hidden, setHidden] = useState(() => {
-    try {
-      return localStorage.getItem(KEY) === String(price);
-    } catch {
-      return false; // private mode / storage blocked — just show it
-    }
-  });
+  const [hidden, setHidden] = useState(false);
 
   if (hidden || price == null) return null;
-
-  const dismiss = () => {
-    try {
-      localStorage.setItem(KEY, String(price));
-    } catch {
-      /* non-fatal: the banner simply reappears next visit */
-    }
-    setHidden(true);
-  };
 
   return (
     <div className="lt-banner">
@@ -76,7 +59,7 @@ export default function LifetimeBanner({ plan, monthlyPrice, breakEvenMonths, is
         <button
           type="button"
           className="lt-banner-close"
-          onClick={dismiss}
+          onClick={() => setHidden(true)}
           aria-label="Dismiss lifetime offer"
         >
           ×
