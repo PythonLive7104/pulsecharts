@@ -44,7 +44,10 @@ from apps.accounts.plans import (
     tier_granted_by,
 )
 from apps.accounts.tasks import trim_to_plan_limits
-from apps.common.email import send_payment_confirmation_email
+from apps.common.email import (
+    send_payment_admin_alert,
+    send_payment_confirmation_email,
+)
 
 from .paystack import (
     PaystackError,
@@ -433,3 +436,28 @@ class WebhookView(APIView):
         # `tier` may be a plain str when carried over from user.plan_tier above.
         label = LIFETIME_PLAN["label"] if lifetime else PlanTier(tier).label
         send_payment_confirmation_email(to=user.email, plan_label=label, renewal=renewal)
+
+        # Operator alert. Read the commission back rather than threading it out of
+        # _record_commission, so the alert reports what was actually persisted (and
+        # stays correct on a replayed webhook, where nothing new is written). Wrapped
+        # like every other post-grant step: the customer already has their access and a
+        # failed notification must never fail the webhook — Paystack would retry it.
+        try:
+            from apps.accounts.models import ReferralCommission
+
+            row = (
+                ReferralCommission.objects.filter(payment_ref=reference)
+                .select_related("referrer")
+                .first()
+            )
+            send_payment_admin_alert(
+                user_email=user.email,
+                plan_label=label,
+                amount_usd=paid / 100,
+                reference=reference,
+                renewal=renewal,
+                referrer_email=row.referrer.email if row and row.referrer else "",
+                commission_usd=row.commission_usd if row else None,
+            )
+        except Exception:
+            logger.exception("Payment admin alert failed for %s (%s)", user.email, reference)

@@ -10,6 +10,7 @@ import { useStore } from "../store/useStore";
 import { api } from "../api";
 import { LIFETIME_FALLBACK, PLAN_FALLBACK, isLifetime } from "../lib/plans";
 import LifetimePrice from "../components/LifetimePrice";
+import LifetimeBanner from "../components/LifetimeBanner";
 
 // Lazy so three.js + R3F load in their own chunk only on the landing page,
 // keeping the trading app bundle lean.
@@ -200,6 +201,17 @@ export default function LandingPage() {
 
   return (
     <>
+      {/* Above the sticky nav on purpose: it scrolls away rather than permanently
+          eating viewport, and #anchor scroll-margin stays tuned to the nav alone.
+          Hidden for lifetime owners — same rule that hides the pricing section. */}
+      {!ownsLifetime && (
+        <LifetimeBanner
+          plan={lifetime}
+          monthlyPrice={monthlyPro}
+          breakEvenMonths={breakEvenMonths}
+          isAuthed={isAuthed}
+        />
+      )}
       <header className="landing-nav">
         <div className="landing-nav-inner">
           <span className="brand"><Logo /></span>

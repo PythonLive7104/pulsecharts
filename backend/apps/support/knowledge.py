@@ -64,10 +64,10 @@ KNOWLEDGE = [
         "keywords": ["premium", "paid", "pro", "starter", "upgrade", "subscription", "plan", "plans",
                      "what's included", "what is included", "included in premium", "benefits"],
         "answer": (
-            "There are two paid tiers. Starter ($9) adds the signal feed (up to "
+            "There are two paid tiers. Starter ($19) adds the signal feed (up to "
             "400/week) with Telegram alerts, RSI, MACD, Bollinger Bands and VWAP, "
             "6 signal strategies, an 80-coin watchlist and 10 saved layouts. Pro "
-            "($19) unlocks every indicator (Stochastic, ATR, Fibonacci, Ichimoku "
+            "($39) unlocks every indicator (Stochastic, ATR, Fibonacci, Ichimoku "
             "Cloud), unlimited signals, build-your-own-strategy with AI, a watchlist "
             "of every symbol we track and 50 saved layouts. Each is a one-time "
             "payment for 30 days of access. Prefer to pay once? There's also a Pro "
@@ -78,10 +78,11 @@ KNOWLEDGE = [
         "id": "pricing",
         "keywords": ["price", "pricing", "how much", "cost", "fee", "monthly", "per month", "expensive", "cheap"],
         "answer": (
-            "Three plans: Free ($0, no card required), Starter ($9) and Pro ($19). "
+            "Three plans: Free ($0, no card required), Starter ($19) and Pro ($39). "
             "Starter and Pro are one-time payments that unlock 30 days of access — "
             "no auto-renewal, no card kept on file. There's also a one-off Pro "
-            "Lifetime for $67 (25% off the usual $89) that never expires. It's priced "
+            "Lifetime for $199 that never expires — it pays for itself in about six "
+            "months versus Pro monthly. It's priced "
             "well below TradingView's indicator tiers as the affordable crypto & "
             "forex alternative."
         ),
@@ -96,8 +97,9 @@ KNOWLEDGE = [
             "lifetime deal", "lifetime plan", "buy once", "own it", "never expires",
         ],
         "answer": (
-            "Yes! Pro Lifetime is a single payment of $67 — that's 25% off the usual "
-            "$89 — and it never expires. You get every Pro feature for life: all "
+            "Yes! Pro Lifetime is a single payment of $199 and it never expires — about "
+            "six months of Pro, and everything after that is free. You get every "
+            "Pro feature for life: all "
             "indicators, unlimited signals on crypto & forex, Telegram alerts, "
             "build-your-own-AI-strategy, a watchlist of every symbol we track and "
             "50 saved layouts, "
@@ -269,7 +271,7 @@ KNOWLEDGE = [
             "Every account gets a personal referral code from the Plan & Billing "
             "page. Share your link, and you earn $1 in credit each time someone "
             "signs up with it. Credits can be redeemed for a plan once you've earned "
-            "enough — $9 for Starter, $19 for Pro — so a handful of referrals gets "
+            "enough — $19 for Starter, $39 for Pro — so a handful of referrals gets "
             "you a paid month without paying."
         ),
     },

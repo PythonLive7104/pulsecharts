@@ -2189,3 +2189,74 @@ a.brand:hover { text-decoration: none; }
   background: color-mix(in srgb, var(--red) 8%, transparent);
   border: 1px solid color-mix(in srgb, var(--red) 30%, transparent);
 }
+
+/* ---- Pro Lifetime promo bar (LifetimeBanner) ------------------------------
+   Sits ABOVE the sticky .landing-nav in the DOM, so it scrolls away instead of
+   permanently occupying viewport — which also means #anchor scroll-margin-top
+   stays tuned to the nav height alone and needed no change.
+   Own colours rather than theme tokens: this bar is meant to read as an
+   announcement against the page, and it keeps the same contrast in both themes. */
+.lt-banner {
+  background: linear-gradient(90deg, #1e3a8a 0%, #2f6df4 100%);
+  color: #fff;
+  font-size: 14px;
+}
+.lt-banner-inner {
+  max-width: 1100px;
+  margin: 0 auto;
+  padding: 10px 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  flex-wrap: wrap;
+}
+.lt-banner-copy { margin: 0; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.lt-banner-tag {
+  text-transform: uppercase;
+  letter-spacing: .08em;
+  font-size: 11px;
+  font-weight: 700;
+  padding: 3px 8px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, .16);
+}
+.lt-banner-was { opacity: .65; }
+.lt-banner-price { font-size: 16px; }
+.lt-banner-off {
+  font-weight: 700;
+  font-size: 12px;
+  padding: 2px 7px;
+  border-radius: 999px;
+  background: #fbbf24;
+  color: #1f2937;
+}
+/* The break-even line is supporting detail — de-emphasised, and the first thing
+   dropped on narrow screens so the price and the CTA always survive. */
+.lt-banner-sub { opacity: .8; }
+.lt-banner-cta {
+  background: #fff;
+  color: #1e3a8a;
+  font-weight: 600;
+  padding: 7px 14px;
+  border-radius: 8px;
+  white-space: nowrap;
+}
+.lt-banner-cta:hover { background: #eef2ff; }
+.lt-banner-close {
+  background: none;
+  border: 0;
+  color: #fff;
+  opacity: .7;
+  font-size: 20px;
+  line-height: 1;
+  cursor: pointer;
+  padding: 0 2px;
+}
+.lt-banner-close:hover { opacity: 1; }
+
+@media (max-width: 720px) {
+  .lt-banner-inner { padding: 9px 14px; gap: 10px; justify-content: space-between; }
+  .lt-banner-sub { display: none; }
+  .lt-banner-copy { flex: 1; }
+}

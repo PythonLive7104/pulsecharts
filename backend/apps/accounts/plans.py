@@ -75,7 +75,7 @@ PLANS: dict[str, dict] = {
     STARTER: {
         "key": STARTER,
         "label": "Starter",
-        "price_usd": 9,
+        "price_usd": 19,
         "period": "mo",
         "tagline": "Core indicators and a real signal feed.",
         # Kept clear of Free's cap: the ladder is slack-above-the-confluence-floor
@@ -106,7 +106,7 @@ PLANS: dict[str, dict] = {
     PRO: {
         "key": PRO,
         "label": "Pro",
-        "price_usd": 19,
+        "price_usd": 39,
         "period": "mo",
         "tagline": "Every indicator and strategy, unlimited signals.",
         # Follow cap = 8 active built-in strategies + 5 custom (Pro-only) a user can
@@ -151,13 +151,18 @@ LIFETIME = "lifetime"
 LIFETIME_PLAN: dict = {
     "key": LIFETIME,
     "label": "Pro Lifetime",
-    "price_usd": 67,
-    # What it was before the discount, and the resulting saving. Kept as DATA rather
-    # than hardcoded in the UI so the strike-through price and the "25% off" badge can
-    # never drift from what checkout actually charges — the charge reads price_usd
-    # (purchase_price_usd), and the badge is computed from these two.
-    "original_price_usd": 89,
-    "discount_pct": 25,  # round(1 - 67/89) = 24.7% -> advertised as 25%
+    "price_usd": 199,
+    # NO strike-through price. The old $89 -> $67 "25% off" was dropped when lifetime
+    # was repriced to $199 (2026-08-10): carrying the discount framing would have meant
+    # inventing a ~$265 "original" that was never charged, which is fabricated reference
+    # pricing and regulated in several jurisdictions. Both fields are None, and
+    # LifetimePrice.jsx already degrades to a plain price when they're absent.
+    #
+    # The honest anchor is the one the landing page computes itself: $199 against Pro at
+    # $39/mo pays for itself in ~6 months (LandingPage breakEvenMonths), and every month
+    # after that is free. That comparison is true and checkable, unlike a strike-through.
+    "original_price_usd": None,
+    "discount_pct": None,
     "period": "once",
     "grants_tier": PRO,
     "tagline": "Every Pro feature, forever. One payment, no renewals.",

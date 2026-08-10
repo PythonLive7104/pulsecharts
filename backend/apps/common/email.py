@@ -237,3 +237,46 @@ def send_contact_message(*, to: str, from_email: str, message: str) -> bool:
         text=text,
         reply_to=from_email,
     )
+
+
+def send_payment_admin_alert(*, user_email: str, plan_label: str, amount_usd: float,
+                             reference: str, renewal=None, referrer_email: str = "",
+                             commission_usd=None) -> bool:
+    """Tell the operator a payment landed (settings.PAYMENT_ALERT_EMAIL).
+
+    Internal mail, not customer-facing: plain and dense on purpose, so the subject
+    alone answers "who paid, for what, how much" from a phone lock screen.
+
+    Deliberately NOT wired to the customer's confirmation — this fires even for the
+    edge cases that one skips, and the caller swallows failures so a mail problem can
+    never break a payment webhook. Empty PAYMENT_ALERT_EMAIL disables it.
+    """
+    to = (getattr(settings, "PAYMENT_ALERT_EMAIL", "") or "").strip()
+    if not to:
+        return False
+
+    when = "never (lifetime)" if renewal is None else f"{renewal:%B %d, %Y}"
+    rows = [
+        ("Customer", user_email),
+        ("Plan", plan_label),
+        ("Amount", f"${amount_usd:,.2f}"),
+        ("Access until", when),
+        ("Reference", reference),
+    ]
+    if referrer_email:
+        commission = f" (${commission_usd:,.2f} owed)" if commission_usd else ""
+        rows.append(("Referred by", f"{referrer_email}{commission}"))
+
+    html_rows = "".join(
+        f'<tr><td style="padding:4px 14px 4px 0;color:#64748b;font-size:14px;">{k}</td>'
+        f'<td style="padding:4px 0;color:#0f172a;font-size:14px;"><strong>{v}</strong></td></tr>'
+        for k, v in rows
+    )
+    return send_email(
+        to=to,
+        subject=f"💰 {plan_label} — ${amount_usd:,.2f} from {user_email}",
+        html=f'<table style="border-collapse:collapse;">{html_rows}</table>',
+        text="\n".join(f"{k}: {v}" for k, v in rows),
+        # So hitting reply goes to the customer, not into the void.
+        reply_to=user_email,
+    )

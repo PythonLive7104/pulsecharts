@@ -29,8 +29,11 @@ export function planNeverExpires(entitlements) {
 // Mirrors LIFETIME_PLAN in backend apps/accounts/plans.py. A purchase option, not
 // a tier — buying it grants Pro with no expiry.
 export const LIFETIME_FALLBACK = {
-  key: "lifetime", label: "Pro Lifetime", price_usd: 67,
-  original_price_usd: 89, discount_pct: 25, period: "once",
+  key: "lifetime", label: "Pro Lifetime", price_usd: 199,
+  // null, not omitted: LifetimePrice reads these and hides the strike-through/badge
+  // when they're absent. Repriced 2026-08-10 with no discount framing — see the
+  // comment on LIFETIME_PLAN in backend apps/accounts/plans.py for why.
+  original_price_usd: null, discount_pct: null, period: "once",
   tagline: "Every Pro feature, forever. One payment, no renewals.",
   features: [
     "Everything in Pro, for life",
@@ -59,7 +62,7 @@ export const PLAN_FALLBACK = [
     ],
   },
   {
-    key: "starter", label: "Starter", price_usd: 9, period: "mo",
+    key: "starter", label: "Starter", price_usd: 19, period: "mo",
     tagline: "Core indicators and a real signal feed.",
     features: [
       "Everything in Free",
@@ -72,7 +75,7 @@ export const PLAN_FALLBACK = [
     ],
   },
   {
-    key: "pro", label: "Pro", price_usd: 19, period: "mo",
+    key: "pro", label: "Pro", price_usd: 39, period: "mo",
     tagline: "Every indicator and strategy, unlimited signals.",
     features: [
       "Everything in Starter",

@@ -256,6 +256,12 @@ RESEND_FROM_EMAIL = env(
 # Where the landing-page "Contact us" form delivers messages.
 CONTACT_US_EMAIL = env("CONTACT_US_EMAIL", default="")
 
+# Where "you got paid" alerts go, sent from the Paystack webhook on a VERIFIED charge.
+# Defaults to CONTACT_US_EMAIL so a single configured inbox covers both; set it
+# explicitly to split them. Empty disables the alert entirely (the customer's own
+# confirmation email is unaffected either way).
+PAYMENT_ALERT_EMAIL = env("PAYMENT_ALERT_EMAIL", default=CONTACT_US_EMAIL)
+
 # --- Trading signals (Section 13, 19, 20) ---
 # Note: Section 20 of CLAUDE.md specs Claude/Anthropic; per the developer's
 # choice the signal engine runs on OpenAI instead. Update CLAUDE.md §20–21 to
