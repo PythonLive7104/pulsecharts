@@ -262,6 +262,11 @@ class Command(BaseCommand):
     def add_arguments(self, parser):
         parser.add_argument("--timeframes", default=None,
                             help="Comma list, e.g. 1h,4h (default: SIGNAL_TIMEFRAMES).")
+        parser.add_argument("--asset-class", default=None, choices=["crypto", "forex"],
+                            help="Restrict to one asset class. WITHOUT this the symbol "
+                                 "list is whatever order the DB returns, which in practice "
+                                 "is all crypto — so every parameter tuned on a plain run "
+                                 "is crypto-derived even though it also governs forex.")
         parser.add_argument("--max-symbols", type=int, default=20,
                             help="How many active symbols to test (default 20).")
         parser.add_argument("--candles", type=int, default=500,
@@ -459,6 +464,7 @@ class Command(BaseCommand):
                                   if opts.get("min_confidence_strategy") else "none"),
             ("ADX floor", opts.get("adx_min") if opts.get("adx_min") is not None
                           else "OFF (backtest skips the live regime filter)"),
+            ("asset class", opts.get("asset_class") or "all (DB order — in practice crypto)"),
             ("timeframes", ",".join(timeframes)),
             ("candles / symbols", f"{opts['candles']} / {opts['max_symbols']}"),
         ]:
@@ -469,7 +475,10 @@ class Command(BaseCommand):
         if not services:
             self.stderr.write(self.style.ERROR("No signal services — run seed_signal_services."))
             return
-        symbols = list(Symbol.objects.filter(is_active=True)[:opts["max_symbols"]])
+        sym_qs = Symbol.objects.filter(is_active=True)
+        if opts.get("asset_class"):
+            sym_qs = sym_qs.filter(asset_class=opts["asset_class"])
+        symbols = list(sym_qs[:opts["max_symbols"]])
         if not symbols:
             self.stderr.write(self.style.ERROR("No active symbols — run sync_symbols."))
             return

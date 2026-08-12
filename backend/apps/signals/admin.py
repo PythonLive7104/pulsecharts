@@ -11,9 +11,12 @@ from .models import (
 
 @admin.register(SignalService)
 class SignalServiceAdmin(admin.ModelAdmin):
-    list_display = ("name", "slug", "strategy_type", "is_active")
-    list_filter = ("is_active", "strategy_type")
-    list_editable = ("is_active",)  # toggle a strategy on/off right from the list
+    list_display = ("name", "slug", "strategy_type", "is_active", "markets")
+    list_filter = ("is_active", "markets", "strategy_type")
+    # Both toggles editable from the list: switching a strategy off everywhere and
+    # narrowing it to one market are the two routine operations, and a strategy that
+    # loses money on forex while working on crypto needs the second, not the first.
+    list_editable = ("is_active", "markets")
     prepopulated_fields = {"slug": ("name",)}
 
 

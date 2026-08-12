@@ -28,6 +28,28 @@ class SignalService(models.Model):
     strategy_type = models.CharField(max_length=40, blank=True, default="")
     is_active = models.BooleanField(default=True)
 
+    # Which markets this strategy runs on. A strategy can be genuinely good on one
+    # asset class and a net loser on the other: measured over 22 FX pairs, the five
+    # EMA/MACD trend strategies sat at 48.5-49.5% (negative on exp(TP1)) while the
+    # same five run 52-53% on crypto, and Bollinger Fade carried 38% of all forex
+    # trades on its own. Before this field the only way to act on that was switching
+    # a strategy off everywhere, which threw away the market where it works.
+    # Applies to the SCAN only — existing signals and follows are untouched, so
+    # narrowing a strategy is reversible without data loss.
+    class Markets(models.TextChoices):
+        BOTH = "both", "Crypto + Forex"
+        CRYPTO = "crypto", "Crypto only"
+        FOREX = "forex", "Forex only"
+
+    markets = models.CharField(
+        max_length=8, choices=Markets.choices, default=Markets.BOTH,
+        help_text="Which asset classes this strategy is scanned on.",
+    )
+
+    def runs_on(self, asset_class: str) -> bool:
+        """Whether this strategy should be scanned for a symbol of `asset_class`."""
+        return self.markets == self.Markets.BOTH or self.markets == asset_class
+
     # Custom (user-created) strategies. owner=None => built-in system strategy.
     owner = models.ForeignKey(
         settings.AUTH_USER_MODEL,

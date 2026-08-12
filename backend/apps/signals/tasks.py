@@ -315,7 +315,13 @@ def run_scan(symbol_limit: int | None = None, use_pregate: bool | None = None) -
             if settings.SIGNAL_EXIT_ON_TREND_BREAK:
                 invalidated += _invalidate_trend_breaks(sym, tf, indicators, now)
 
-            for svc in system_services + custom_by_symbol.get(sym.id, []):
+            # Per-asset-class activation: a strategy narrowed to one market is simply
+            # not scanned on the other (SignalService.markets). Custom strategies are
+            # included so a Pro user's own rule can be market-scoped too.
+            for svc in (
+                [s for s in system_services if s.runs_on(sym.asset_class)]
+                + [s for s in custom_by_symbol.get(sym.id, []) if s.runs_on(sym.asset_class)]
+            ):
                 pair = (sym.id, svc.id, tf)
                 cand = candidate_direction_for_service(svc, indicators)
                 open_dir = open_dirs.get(pair)
