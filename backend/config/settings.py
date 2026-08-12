@@ -635,10 +635,32 @@ SIGNAL_ATR_STOP_CAP = {
 # MEAN-REVERSION geometry. A fade targets the mean, typically 1-2 ATR away, so the
 # trend band above (3.0-4.5xATR on crypto) puts TP1 — one full risk distance — beyond
 # where the trade was ever going. These tighter multiples are what make the same
-# 1R/2R/3R ladder reachable for a fade. Applied by strategy KIND (pregate.kind_of),
-# not by asset class.
-SIGNAL_ATR_FLOOR_REVERSION = env.float("SIGNAL_ATR_FLOOR_REVERSION", default=1.0)
-SIGNAL_ATR_CAP_REVERSION = env.float("SIGNAL_ATR_CAP_REVERSION", default=1.5)
+# 1R/2R/3R ladder reachable for a fade. Applied by strategy KIND (pregate.kind_of)
+# AND, since 2026-08-12, by asset class.
+#
+# Forex was widened to 1.5-2.0 after being measured for the first time. It had always
+# been one scalar shared by both markets — chosen on crypto — even though the trend
+# band was split per asset class months ago. On Bollinger Fade, which carries ~40% of
+# all forex trades (n=973-1365, a real sample):
+#     1.0-1.5 : 53.5%  exp(TP1) +0.07R  exp(scale) +0.19R
+#     1.5-2.0 : 56.4%  exp(TP1) +0.13R  exp(scale) +0.24R   <-- interior peak
+#     2.0-2.5 : 53.2%  exp(TP1) +0.06R  exp(scale) +0.13R
+# Better than BOTH neighbours, so it isn't the edge of a tested range. A 1.0xATR stop
+# was inside FX noise and getting wicked out before the reversion happened.
+#
+# The other two fades moved the other way (RSI(2) 61.1 -> 59.1, VWAP Stretch
+# 60.7 -> 52.0) but on n=25-72 — too thin to weigh against Bollinger Fade's n~1000+.
+# Recheck them once forex has more resolved trades.
+#
+# Crypto is UNCHANGED at 1.0-1.5; nothing here was measured against it.
+SIGNAL_ATR_FLOOR_REVERSION = {
+    "crypto": env.float("SIGNAL_ATR_FLOOR_REVERSION_CRYPTO", default=1.0),
+    "forex": env.float("SIGNAL_ATR_FLOOR_REVERSION_FOREX", default=1.5),
+}
+SIGNAL_ATR_CAP_REVERSION = {
+    "crypto": env.float("SIGNAL_ATR_CAP_REVERSION_CRYPTO", default=1.5),
+    "forex": env.float("SIGNAL_ATR_CAP_REVERSION_FOREX", default=2.0),
+}
 
 # Mean reversion is only sane in a RANGE, so the regime filter inverts for it: instead
 # of ADX >= SIGNAL_ADX_MIN (trend strength), a fade needs ADX <= this (no strong trend
@@ -694,6 +716,51 @@ SIGNAL_TIMEFRAMES = env.list("SIGNAL_TIMEFRAMES", default=["1h", "4h"])
 # backtests far worse — live results show ~35% weekend win-rate vs ~76% on
 # weekdays (Saturday worst at ~27%). On by default; set False to scan crypto 24/7.
 SIGNAL_SKIP_CRYPTO_WEEKEND = env.bool("SIGNAL_SKIP_CRYPTO_WEEKEND", default=True)
+
+
+def _parse_hours(raw: str) -> set:
+    """"0-7" / "0-7,22" / "3" -> {0,1,...,6} etc. End of a range is EXCLUSIVE, so
+    "0-7" means 00:00 up to but not including 07:00 — the Asian session as measured."""
+    from django.core.exceptions import ImproperlyConfigured
+
+    hours = set()
+    for part in (raw or "").split(","):
+        part = part.strip()
+        if not part:
+            continue
+        try:
+            if "-" in part:
+                lo, hi = (int(x) for x in part.split("-", 1))
+                hours.update(range(lo, hi))
+            else:
+                hours.add(int(part))
+        except ValueError:
+            raise ImproperlyConfigured(
+                f"SIGNAL_FOREX_SKIP_HOURS_UTC: {part!r} is not an hour or H-H range"
+            ) from None
+    if any(h < 0 or h > 23 for h in hours):
+        raise ImproperlyConfigured("SIGNAL_FOREX_SKIP_HOURS_UTC: hours must be 0-23")
+    return hours
+
+
+# UTC hours in which FOREX signal generation is skipped. Forex is session-driven in a
+# way crypto is not, and the engine was previously blind to that — it scanned all 24
+# hours identically.
+#
+# Measured over 22 pairs, 1h+4h, at the live config:
+#     Late/thin        21-24   57.3%  n=89    exp(TP1) +0.15R
+#     London open      07-12   57.0%  n=528   exp(TP1) +0.14R
+#     New York         16-21   54.8%  n=883   exp(TP1) +0.10R
+#     London/NY overlap 12-16  49.3%  n=562   exp(TP1) -0.01R
+#     Asian range      00-07   44.5%  n=779   exp(TP1) -0.11R   <-- the loss centre
+# Skipping 00-07 lifts the forex book ~51.6% -> ~54.0% without touching a strategy,
+# threshold or stop. The majors traded here are EUR/GBP/CHF/USD pairs whose home
+# sessions are asleep in Asian hours, so setups trigger on thin, drifting liquidity.
+#
+# CAVEAT: this is a blanket cut. JPY/AUD/NZD crosses ARE liquid in Asian hours and may
+# be paying for the European pairs' losses — a per-pair check (backtest --by-symbol)
+# should come before treating 00-07 as settled. Empty = scan all hours (old behaviour).
+SIGNAL_FOREX_SKIP_HOURS_UTC = _parse_hours(env("SIGNAL_FOREX_SKIP_HOURS_UTC", default=""))
 
 # How often a Telegram-linked user with NO signal access (free / lapsed) is nudged
 # to upgrade — apps.accounts.tasks.run_upgrade_nudges. The beat task runs daily and

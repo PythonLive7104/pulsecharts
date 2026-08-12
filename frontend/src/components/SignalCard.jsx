@@ -45,6 +45,14 @@ export default function SignalCard({ s }) {
       <div className="signal-head">
         <div className="signal-sym">
           <span className="sig-ticker">{s.symbol}</span>
+          {/* Market marker. Shown for FOREX only: crypto is the default market and
+              tagging every card would add a badge to a row that already carries
+              direction, timeframe, outcome and sometimes confluence. Forex cards are
+              the ones a trader needs to spot in a mixed list — different session,
+              different stop geometry, different strategies behind them. */}
+          {s.asset_class === "forex" && (
+            <span className="sig-market" title="Forex pair">FX</span>
+          )}
           <span className={`dir-badge ${buy ? "buy" : "sell"}`}>{s.direction}</span>
           <span className="sig-tf">{s.timeframe}</span>
           <span className={`outcome-badge ${outClass}`}>{outLabel}</span>

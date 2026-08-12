@@ -129,12 +129,22 @@ def _stop_mults(asset_class, strategy_slug=None):
     settings.SIGNAL_ATR_STOP_FLOOR/CAP), falling back to crypto for an unknown class.
     MEAN-REVERSION setups use their own, much tighter band: they target the mean a
     couple of ATR away, so a 3-4.5xATR stop would make TP1 unreachable by
-    construction (see settings.SIGNAL_ATR_FLOOR_REVERSION).
+    construction (see settings.SIGNAL_ATR_FLOOR_REVERSION). That band is ALSO
+    per-asset-class: forex fades need a wider stop than crypto ones.
     """
     from . import pregate
 
     if strategy_slug and pregate.kind_of(strategy_slug) == pregate.KIND_REVERSION:
-        return settings.SIGNAL_ATR_FLOOR_REVERSION, settings.SIGNAL_ATR_CAP_REVERSION
+        # Per asset class since 2026-08-12: forex needs a wider fade stop than crypto
+        # (1.5-2.0 vs 1.0-1.5) — see the settings comment for the measurement.
+        # .get() with a crypto fallback mirrors the trend band's handling of an
+        # unknown class.
+        return (
+            settings.SIGNAL_ATR_FLOOR_REVERSION.get(asset_class)
+            or settings.SIGNAL_ATR_FLOOR_REVERSION["crypto"],
+            settings.SIGNAL_ATR_CAP_REVERSION.get(asset_class)
+            or settings.SIGNAL_ATR_CAP_REVERSION["crypto"],
+        )
     floor = settings.SIGNAL_ATR_STOP_FLOOR.get(asset_class) or settings.SIGNAL_ATR_STOP_FLOOR["crypto"]
     cap = settings.SIGNAL_ATR_STOP_CAP.get(asset_class) or settings.SIGNAL_ATR_STOP_CAP["crypto"]
     return floor, cap

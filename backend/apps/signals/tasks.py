@@ -15,6 +15,7 @@ import requests
 from celery import shared_task
 from django.conf import settings
 from django.db.models import F, Q
+from datetime import timezone as dt_timezone
 from django.utils import timezone
 
 from apps.market_data.feeds import get_candles, get_candles_since
@@ -284,6 +285,7 @@ def run_scan(symbol_limit: int | None = None, use_pregate: bool | None = None) -
     htf_structure_on = settings.SIGNAL_HTF_STRUCTURE_ENABLED
     htf_cache: dict[tuple[int, str], str | None] = {}  # (symbol_id, htf) -> trend bias
     htf_struct_cache: dict[tuple[int, str], str | None] = {}  # (symbol_id, htf) -> structure
+    scan_hour_utc = timezone.now().astimezone(dt_timezone.utc).hour
     forex_is_open = forex_market_open()  # evaluated once per scan; also our
     # "is it the weekend window" signal (Fri 21:00 → Sun 21:00 UTC).
     for sym in symbols:
@@ -294,6 +296,14 @@ def run_scan(symbol_limit: int | None = None, use_pregate: bool | None = None) -
         # forex window (not a calendar weekend) also trims the thin Friday-night
         # session, which underperforms as well.
         if not forex_is_open and (sym.is_forex or settings.SIGNAL_SKIP_CRYPTO_WEEKEND):
+            continue
+        # Session filter, FOREX only. Forex behaviour is session-driven in a way
+        # crypto isn't: measured across 22 pairs, the Asian range (00-07 UTC) ran
+        # 44.5% with negative expectancy while every other session was profitable —
+        # the European majors that dominate the roster trade on thin, drifting
+        # liquidity while their home sessions are asleep. Crypto is deliberately
+        # unaffected; it has no sessions. Empty setting = scan all hours.
+        if sym.is_forex and scan_hour_utc in settings.SIGNAL_FOREX_SKIP_HOURS_UTC:
             continue
         for tf in settings.SIGNAL_TIMEFRAMES:
             try:

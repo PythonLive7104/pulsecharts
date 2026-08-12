@@ -120,7 +120,10 @@ class Command(BaseCommand):
         self.stdout.write(f"  {'ATR stop forex  (floor-cap)':34s} "
                           f"{floor.get('forex')}-{cap.get('forex')}")
         self.stdout.write(f"  {'ATR stop reversion (floor-cap)':34s} "
-                          f"{settings.SIGNAL_ATR_FLOOR_REVERSION}-{settings.SIGNAL_ATR_CAP_REVERSION}")
+                          f"{settings.SIGNAL_ATR_FLOOR_REVERSION['crypto']}-"
+                          f"{settings.SIGNAL_ATR_CAP_REVERSION['crypto']} crypto / "
+                          f"{settings.SIGNAL_ATR_FLOOR_REVERSION['forex']}-"
+                          f"{settings.SIGNAL_ATR_CAP_REVERSION['forex']} forex")
         by_day = getattr(settings, "SIGNAL_ADX_MIN_BY_WEEKDAY", {})
         if any(by_day.values()):
             self.stdout.write(f"  {'ADX per-weekday overrides':34s} {by_day}")

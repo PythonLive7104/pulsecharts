@@ -109,6 +109,28 @@ def _record(bucket, res):
     bucket["mae"] += res["mae_pct"]
 
 
+# --- breakdowns -----------------------------------------------------------
+# UTC session buckets. Forex liquidity and behaviour are session-driven in a way
+# crypto is not: the Asian range is quiet and mean-reverting, London open is the
+# volatility burst, the London/NY overlap carries most of the day's volume, and the
+# late session drifts. The engine has no session awareness at all, so this is the
+# one genuinely forex-shaped lever that has never been tested.
+SESSIONS = [
+    ("Asian range      00-07", range(0, 7)),
+    ("London open      07-12", range(7, 12)),
+    ("London/NY overlap 12-16", range(12, 16)),
+    ("New York         16-21", range(16, 21)),
+    ("Late/thin        21-24", range(21, 24)),
+]
+
+
+def _session_of(hour: int) -> str:
+    for label, hours in SESSIONS:
+        if hour in hours:
+            return label
+    return SESSIONS[-1][0]
+
+
 # --- exit lab -------------------------------------------------------------
 # Management schemes that CANNOT be derived from the winners-by-best-TP aggregate
 # (EXIT_MODELS above), because they depend on the price path after TP1: a later
@@ -208,7 +230,7 @@ def _replay_exits(direction, entry, stop0, tps, future, atr):
 
 
 def _outcome(direction, snap, future, asset_class="crypto", strategy_slug=None,
-             atr_floor=None, atr_cap=None):
+             atr_floor=None, atr_cap=None, rev_floor=None, rev_cap=None):
     """Deterministic levels + walk for a setup; None if degenerate or unresolved.
 
     Mean-reversion setups get their own (much tighter) ATR stop band — with the trend
@@ -216,8 +238,12 @@ def _outcome(direction, snap, future, asset_class="crypto", strategy_slug=None,
     look worthless for a reason that has nothing to do with the strategy.
     """
     if strategy_slug and pregate.kind_of(strategy_slug) == pregate.KIND_REVERSION:
-        floor = settings.SIGNAL_ATR_FLOOR_REVERSION
-        cap = settings.SIGNAL_ATR_CAP_REVERSION
+        floor = rev_floor if rev_floor is not None else (
+            settings.SIGNAL_ATR_FLOOR_REVERSION.get(asset_class)
+            or settings.SIGNAL_ATR_FLOOR_REVERSION["crypto"])
+        cap = rev_cap if rev_cap is not None else (
+            settings.SIGNAL_ATR_CAP_REVERSION.get(asset_class)
+            or settings.SIGNAL_ATR_CAP_REVERSION["crypto"])
     else:
         # --atr-floor/--atr-cap sweep the TREND band only; reversion keeps its own
         # (a fade with a trend-width stop can't reach TP1 by construction).
@@ -314,6 +340,22 @@ class Command(BaseCommand):
                                  "below allows SELLs only. This is the live HTF regime gate "
                                  "(SIGNAL_HTF_REGIME_ENABLED), which the plain backtest skips. "
                                  "Point-in-time aligned; no strategy is exempt, matching live.")
+        parser.add_argument("--reversion-atr-floor", type=float, default=None,
+                            help="MEAN-REVERSION stop floor in ATR multiples (live: "
+                                 "SIGNAL_ATR_FLOOR_REVERSION, now per asset class: "
+                                 "1.0 crypto / 1.5 forex). Overrides BOTH classes for "
+                                 "the run.")
+        parser.add_argument("--reversion-atr-cap", type=float, default=None,
+                            help="MEAN-REVERSION stop cap in ATR multiples (live: "
+                                 "SIGNAL_ATR_CAP_REVERSION).")
+        parser.add_argument("--by-session", action="store_true",
+                            help="Break results down by UTC trading session (Asian / London "
+                                 "/ London-NY overlap / NY / late). Forex has real intraday "
+                                 "seasonality that the engine is currently blind to — fades "
+                                 "and breakouts do not want the same hours.")
+        parser.add_argument("--by-symbol", action="store_true",
+                            help="Break results down per symbol — finds which pairs/coins "
+                                 "carry the losses.")
         parser.add_argument("--exit-lab", action="store_true",
                             help="Also replay alternative trade-management schemes per trade "
                                  "(later breakeven, no breakeven, ATR trails) and report each "
@@ -465,6 +507,10 @@ class Command(BaseCommand):
             ("ADX floor", opts.get("adx_min") if opts.get("adx_min") is not None
                           else "OFF (backtest skips the live regime filter)"),
             ("asset class", opts.get("asset_class") or "all (DB order — in practice crypto)"),
+            ("reversion stop band",
+             f"{opts.get('reversion_atr_floor') or settings.SIGNAL_ATR_FLOOR_REVERSION}-"
+             f"{opts.get('reversion_atr_cap') or settings.SIGNAL_ATR_CAP_REVERSION} xATR"
+             + (" (override)" if opts.get("reversion_atr_floor") else " (per asset class)")),
             ("timeframes", ",".join(timeframes)),
             ("candles / symbols", f"{opts['candles']} / {opts['max_symbols']}"),
         ]:
@@ -491,6 +537,10 @@ class Command(BaseCommand):
         rb = {svc.slug: _blank(svc.name) for svc in services}
         # Per-scheme totals for --exit-lab: index-aligned with EXIT_LAB.
         exit_lab = {"on": bool(opts.get("exit_lab")), "n": 0, "r": [0.0] * len(EXIT_LAB)}
+        # Optional breakdowns. Each maps bucket -> the same _blank() shape as `rb`, so
+        # _record() fills them with no special-casing.
+        by_session = {} if opts.get("by_session") else None
+        by_symbol = {} if opts.get("by_symbol") else None
         llm = {svc.slug: _blank(svc.name) for svc in services} if llm_on else None
         # Shared LLM budget + call stats across all series.
         budget = {"left": opts["llm_sample"] if llm_on else 0,
@@ -522,7 +572,8 @@ class Command(BaseCommand):
                                  opts.get("atr_floor"), opts.get("atr_cap"),
                                  opts.get("reversion_adx_max"),
                                  opts.get("min_confidence_reversion"),
-                                 strategy_floors)
+                                 strategy_floors, by_session, by_symbol,
+                                 opts.get("reversion_atr_floor"), opts.get("reversion_atr_cap"))
                 series += 1
                 self.stdout.write(f"  · {sym.ticker} {tf}", ending="\r")
             if llm_on and budget["left"] <= 0:
@@ -533,6 +584,23 @@ class Command(BaseCommand):
             self._report_compare(rb, llm, budget)
         else:
             self._report(rb, series)
+        for title, buckets in (("session", by_session), ("symbol", by_symbol)):
+            if not buckets:
+                continue
+            self.stdout.write(self.style.MIGRATE_HEADING(f"\n  By {title}:"))
+            # Sorted by win rate so the tail to prune is at the bottom. n is printed
+            # first because a 90% bucket on 12 trades is noise, not a finding.
+            rows = sorted(buckets.values(), key=lambda b: -(b["wins"] / (b["trades"] or 1)))
+            for b in rows:
+                n = b["trades"]
+                if not n:
+                    continue
+                win = 100 * b["wins"] / n
+                self.stdout.write(
+                    f"    {b['name']:<26} n={n:<6} {win:5.1f}%  "
+                    f"exp(TP1)={b['r_tp1'] / n:+.2f}R  exp(scale)={b['r_scale'] / n:+.2f}R"
+                )
+
         if exit_lab["on"] and exit_lab["n"]:
             self.stdout.write(self.style.MIGRATE_HEADING(
                 f"\n  Exit lab — replayed per trade (n={exit_lab['n']}), same trades:"))
@@ -597,7 +665,8 @@ class Command(BaseCommand):
                     adx_min=None, htf_bias_on=False, exit_lab=None,
                     reversion_htf_on=False, min_confidence=None,
                     atr_floor=None, atr_cap=None, rev_adx_max=None,
-                    min_confidence_reversion=None, strategy_floors=None):
+                    min_confidence_reversion=None, strategy_floors=None,
+                    by_session=None, by_symbol=None, rev_floor=None, rev_cap=None):
         ticker = sym.ticker
         n = len(candles)
         threshold = settings.SIGNAL_MIN_CONFIDENCE
@@ -699,11 +768,19 @@ class Command(BaseCommand):
                         continue
 
                 res = _outcome(direction, snap, future, asset_class, svc.slug,
-                               atr_floor, atr_cap)
+                               atr_floor, atr_cap, rev_floor, rev_cap)
                 if res is None:
                     free_at[svc.slug] = i + 1
                     continue
                 free_at[svc.slug] = i + 1 + res["bars"]
+
+                if by_session is not None:
+                    from datetime import datetime, timezone as _tz
+                    hour = datetime.fromtimestamp(candles[i]["time"], _tz.utc).hour
+                    key = _session_of(hour)
+                    _record(by_session.setdefault(key, _blank(key)), res)
+                if by_symbol is not None:
+                    _record(by_symbol.setdefault(ticker, _blank(ticker)), res)
 
                 if exit_lab and exit_lab["on"]:
                     stop0, tps = res["_levels"]

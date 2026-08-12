@@ -439,6 +439,14 @@ a.brand:hover { text-decoration: none; }
   background: var(--bg-elev); border: 1px solid var(--border); border-radius: 12px; padding: 24px;
 }
 .indicator-col h3 { margin: 0 0 14px; color: var(--text-strong); }
+/* Forex marker on a signal card. Muted outline, not a filled accent badge — it's
+   metadata, and must not compete with the BUY/SELL badge next to it. */
+.sig-market {
+  font-size: 10px; font-weight: 700; letter-spacing: .04em;
+  padding: 1px 5px; border-radius: 4px;
+  border: 1px solid var(--border); color: var(--muted);
+}
+
 .chip-row { display: flex; flex-wrap: wrap; gap: 8px; }
 .chip {
   font-size: 13px; padding: 6px 12px; border-radius: 999px; border: 1px solid var(--border);
@@ -1110,6 +1118,13 @@ a.brand:hover { text-decoration: none; }
 .strategy-badge {
   font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.03em;
   padding: 1px 6px; border-radius: 999px; background: var(--accent); color: #fff;
+}
+/* Market-scope badge: informational, not a feature flag, so it reads as muted
+   metadata rather than competing with the accent-coloured "Custom" badge. */
+.strategy-badge-market {
+  background: transparent;
+  color: var(--muted);
+  border: 1px solid var(--border);
 }
 .strategy-actions { display: flex; align-items: center; gap: 6px; flex-shrink: 0; }
 .strategy-del {

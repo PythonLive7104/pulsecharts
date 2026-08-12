@@ -27,6 +27,10 @@ export default function SignalsPage() {
   // Past-results panel: toggled open by a button, filterable by win/loss.
   const [showResults, setShowResults] = useState(false);
   const [resultFilter, setResultFilter] = useState("all");
+  // "all" | "crypto" | "forex" — the two markets behave differently enough (different
+  // strategies scanned, different stop geometry, different sessions) that traders
+  // generally want one or the other, not an interleaved list.
+  const [marketFilter, setMarketFilter] = useState("all");
   // Surfaced when following a strategy is rejected (e.g. free-tier limit).
   const [followError, setFollowError] = useState(null);
   // Telegram delivery (premium): connection status + deep link.
@@ -161,6 +165,20 @@ export default function SignalsPage() {
   // their locked floor), so they must be inspectable HERE too — otherwise the two
   // panels quote different populations with nothing on screen to reconcile them.
   const running = (feed?.signals || []).filter((s) => s.best_tp > 0);
+  // Market split of the live feed. asset_class comes straight off the signal
+  // (symbol.asset_class), so this needs no extra request and can't drift from what
+  // the engine actually scanned.
+  const marketCounts = (feed?.signals || []).reduce(
+    (acc, s) => {
+      if (s.asset_class === "forex") acc.forex += 1;
+      else acc.crypto += 1;
+      return acc;
+    },
+    { crypto: 0, forex: 0 },
+  );
+  const shownSignals = (feed?.signals || []).filter(
+    (s) => marketFilter === "all" || (s.asset_class || "crypto") === marketFilter,
+  );
   const shownResults = (resultFilter === "running" ? running : resolved).filter((s) =>
     resultFilter === "win"
       ? WIN_OUTCOMES.has(s.outcome)
@@ -371,6 +389,16 @@ export default function SignalsPage() {
                   <strong>
                     {svc.name}
                     {svc.is_custom && <span className="strategy-badge">Custom</span>}
+                    {/* Market scope, shown only when the strategy is NARROWED.
+                        "both" is the default and labelling it would just add noise to
+                        every row. Surfaced here so following a crypto-only strategy
+                        while watching FX pairs is visible up front, instead of being
+                        discovered later as a permanently empty feed. */}
+                    {svc.markets && svc.markets !== "both" && (
+                      <span className="strategy-badge strategy-badge-market">
+                        {svc.markets === "crypto" ? "Crypto only" : "Forex only"}
+                      </span>
+                    )}
                   </strong>
                   <span className="muted">{svc.is_custom ? svc.rule_summary : svc.description}</span>
                 </div>
@@ -596,7 +624,36 @@ export default function SignalsPage() {
               <Link to="/app" className="btn-primary">Add symbols on the chart →</Link>
             </div>
           )}
-          {!loading && !feed?.needs_watchlist && feed?.signals?.length === 0 && (
+          {/* Coverage gap beats the generic empty state: strategies are scanned per
+              market, so following only crypto-only strategies while watching FX pairs
+              gives a feed that can NEVER fill. Saying "signals appear as the engine
+              generates them" there is wrong — nothing is coming. Name the market and
+              the fix instead. */}
+          {!loading && !feed?.needs_watchlist && feed?.signals?.length === 0
+            && feed?.coverage_gap && (
+            <div className="empty-feed">
+              <p className="muted">
+                None of the strategies you follow run on{" "}
+                <strong>{feed.coverage_gap.asset_classes.join(" or ")}</strong>.
+              </p>
+              <p className="muted">
+                You're watching {feed.coverage_gap.asset_classes.join(" and ")} symbols,
+                but the strategies you follow are scanned on other markets only — so no
+                signals can arrive for them.
+                {feed.coverage_gap.suggestions?.length > 0 && (
+                  <>
+                    {" "}Follow{" "}
+                    <strong>
+                      {feed.coverage_gap.suggestions.slice(0, 3).map((x) => x.name).join(", ")}
+                    </strong>{" "}
+                    to cover {feed.coverage_gap.asset_classes.join(" and ")}.
+                  </>
+                )}
+              </p>
+            </div>
+          )}
+          {!loading && !feed?.needs_watchlist && feed?.signals?.length === 0
+            && !feed?.coverage_gap && (
             <div className="empty-feed">
               <p className="muted">No signals yet.</p>
               <p className="muted">
@@ -606,12 +663,43 @@ export default function SignalsPage() {
               </p>
             </div>
           )}
+          {/* Market filter. Only rendered when BOTH markets are present — with a
+              crypto-only watchlist the chips would be a row of one, which is noise.
+              Counts are of what's loaded, not feed.signals_total, so a filtered
+              count can never claim more than the list can show. */}
+          {marketCounts.crypto > 0 && marketCounts.forex > 0 && (
+            <div className="chip-row">
+              <button
+                className={`chip ${marketFilter === "all" ? "active" : ""}`}
+                onClick={() => setMarketFilter("all")}
+              >
+                All ({marketCounts.crypto + marketCounts.forex})
+              </button>
+              <button
+                className={`chip ${marketFilter === "crypto" ? "active" : ""}`}
+                onClick={() => setMarketFilter("crypto")}
+              >
+                ₿ Crypto ({marketCounts.crypto})
+              </button>
+              <button
+                className={`chip ${marketFilter === "forex" ? "active" : ""}`}
+                onClick={() => setMarketFilter("forex")}
+              >
+                💱 Forex ({marketCounts.forex})
+              </button>
+            </div>
+          )}
           <div
             className="signal-list signal-scroll"
             style={scrollH ? { height: scrollH, maxHeight: scrollH } : undefined}
           >
-            {feed?.signals?.map((s) => <SignalCard key={s.id} s={s} />)}
-            {feed?.has_more && (
+            {shownSignals.map((s) => <SignalCard key={s.id} s={s} />)}
+            {shownSignals.length === 0 && feed?.signals?.length > 0 && (
+              <p className="muted">No {marketFilter} signals right now.</p>
+            )}
+            {/* "Show more" pages the WHOLE feed, so hide it while filtered — the
+                count would refer to the unfiltered list and read as a bug. */}
+            {feed?.has_more && marketFilter === "all" && (
               <button className="load-more" onClick={loadMore} disabled={loadingMore}>
                 {loadingMore
                   ? "Loading…"
