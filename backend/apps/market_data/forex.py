@@ -105,7 +105,45 @@ def _download(yahoo_symbol: str, yf_interval: str, ticker: str, interval: str, *
     if chart.get("error"):
         raise requests.RequestException(f"Yahoo error for {yahoo_symbol}: {chart['error']}")
     results = chart.get("result") or []
-    return _parse_result(results[0], ticker, interval) if results else []
+    if not results:
+        return []
+    return _snap_partial_bucket(_parse_result(results[0], ticker, interval), interval)
+
+
+def _snap_partial_bucket(candles: list[dict], interval: str) -> list[dict]:
+    """Put the in-progress candle back on the grid the closed candles define.
+
+    Yahoo timestamps the CURRENT, unfinished bar at the moment of the request rather
+    than at its bucket open — e.g. a 1h series ending ...16:00, 17:00, 17:46:24. Left
+    alone that breaks the live chart badly: the relay polls every few seconds, each
+    poll carries a new timestamp, and the frontend's applyLiveCandle appends whenever
+    ``candle.time > last.time`` — so a fresh bar is added every cycle and the chart
+    grows a run of flat duplicates pinned at the live price.
+
+    The grid is taken from the PREVIOUS candle, not from a modulo of the interval,
+    because daily FX bars sit on a 23:00 UTC boundary — flooring to 86400 would land
+    them on midnight and shift every bar by an hour.
+
+    Two shapes, both handled:
+      * intraday (1h, 15m) — the stray bar duplicates a bucket that already exists,
+        so its tick is folded into that bar and the duplicate dropped;
+      * daily — the stray bar IS the current session with no aligned twin, so it just
+        moves back to its bucket open.
+    """
+    step = _INTERVAL_SECONDS.get(interval)
+    if not step or len(candles) < 2:
+        return candles
+    prev, last = candles[-2], candles[-1]
+    delta = last["time"] - prev["time"]
+    if delta <= 0 or delta % step == 0:
+        return candles  # already aligned
+    last["time"] = prev["time"] + (delta // step) * step
+    if last["time"] == prev["time"]:
+        prev["high"] = max(prev["high"], last["high"])
+        prev["low"] = min(prev["low"], last["low"])
+        prev["close"] = last["close"]
+        return candles[:-1]
+    return candles
 
 
 def _aggregate_4h(candles_1h: list[dict]) -> list[dict]:

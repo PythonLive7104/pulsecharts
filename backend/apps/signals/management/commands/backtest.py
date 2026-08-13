@@ -365,6 +365,13 @@ class Command(BaseCommand):
         parser.add_argument("--reversion-atr-cap", type=float, default=None,
                             help="MEAN-REVERSION stop cap in ATR multiples (live: "
                                  "SIGNAL_ATR_CAP_REVERSION).")
+        parser.add_argument("--tp-multiples", default=None, metavar="R1,R2,R3",
+                            help="Override the TP ladder in R multiples (live: 1,2,3 — "
+                                 "levels.TP_MULTIPLES). Moving TP1 BELOW 1R is the only "
+                                 "lever that raises the TP1 hit rate without touching the "
+                                 "stop; it also raises the break-even win rate (1/(1+R): "
+                                 "50%% at 1.0R, 55.6%% at 0.8R, 58.8%% at 0.7R), so read "
+                                 "exp() and not just the win rate.")
         parser.add_argument("--eval-bars", type=int, default=None,
                             help="Model the LIVE expiry clock (SIGNAL_EVAL_BARS, 48): a trade "
                                  "that reaches neither a target nor its stop within this many "
@@ -472,6 +479,28 @@ class Command(BaseCommand):
         # Parse --min-confidence-strategy SLUG:FLOOR (repeatable) the same way settings
         # parses SIGNAL_MIN_CONFIDENCE_BY_STRATEGY: fail loudly, never skip silently, so
         # a typo can't quietly leave a strategy on the kind floor.
+        if opts.get("tp_multiples"):
+            try:
+                mults = [float(x) for x in opts["tp_multiples"].split(",")]
+            except ValueError:
+                raise CommandError("--tp-multiples expects numbers, e.g. 0.8,1.6,2.4")
+            if len(mults) != 3 or any(m <= 0 for m in mults) or mults != sorted(mults):
+                raise CommandError("--tp-multiples expects 3 ascending positive R values")
+            new = {1: mults[0], 2: mults[1], 3: mults[2]}
+            # Patch BOTH the level maths and this module's copy: TP_MULTIPLES was
+            # imported by value, and SCALEOUT_R/_record price a win off the ladder, so
+            # leaving either behind would score new levels with the old R values.
+            from apps.signals import levels as _levels
+            _levels.TP_MULTIPLES.clear(); _levels.TP_MULTIPLES.update(new)
+            TP_MULTIPLES.clear(); TP_MULTIPLES.update(new)
+            SCALEOUT_R.clear()
+            SCALEOUT_R.update({1: 0.5 * new[1 if False else 1],
+                               2: 0.5 * new[1] + 0.25 * new[2],
+                               3: 0.5 * new[1] + 0.25 * new[2] + 0.25 * new[3]})
+            self.stdout.write(self.style.WARNING(
+                f"TP ladder overridden: {new[1]}R / {new[2]}R / {new[3]}R "
+                f"(break-even win rate {100 / (1 + new[1]):.1f}%)"))
+
         strategy_floors = {}
         for item in opts.get("min_confidence_strategy") or []:
             slug, sep, value = item.partition(":")
