@@ -72,6 +72,13 @@ class Command(BaseCommand):
                             help="Break down by how many strategies agreed — the evidence "
                                  "for where SIGNAL_CONFLUENCE_MIN should sit. Only covers "
                                  "signals delivered after the count started being stored.")
+        parser.add_argument("--by-strategy-timeframe", action="store_true",
+                            help="Cross-tab strategy x timeframe. Answers whether a weak "
+                                 "timeframe is genuinely weak, or just where the weak "
+                                 "STRATEGIES happen to concentrate — the two call for "
+                                 "different fixes (drop the timeframe vs disable the "
+                                 "strategies) and the flat by-timeframe table can't tell "
+                                 "them apart.")
         parser.add_argument("--by-symbol", action="store_true",
                             help="Also break down per symbol — finds which coins carry the losses.")
         parser.add_argument("--include-open", action="store_true",
@@ -115,6 +122,7 @@ class Command(BaseCommand):
 
         overall = _blank("ALL DELIVERED")
         by_strategy, by_tf, by_symbol, by_dir, by_conf = {}, {}, {}, {}, {}
+        by_strat_tf = {}
         invalidated = 0
 
         for s in resolved:
@@ -133,6 +141,10 @@ class Command(BaseCommand):
                 _record(bucket, s.best_tp, won)
             if opts["by_symbol"]:
                 _record(by_symbol.setdefault(s.symbol.ticker, _blank(s.symbol.ticker)),
+                        s.best_tp, won)
+            if opts["by_strategy_timeframe"]:
+                key = (s.service.name, s.timeframe)
+                _record(by_strat_tf.setdefault(key, _blank(f"{s.service.name} · {s.timeframe}")),
                         s.best_tp, won)
             if opts["by_confluence"]:
                 # Null = delivered before the count was stored. Bucketed separately
@@ -164,6 +176,16 @@ class Command(BaseCommand):
             w(self.style.MIGRATE_HEADING("  By strategies agreeing"))
             for b in sorted(by_conf.values(), key=lambda x: x["label"]):
                 w(_line(b))
+        if opts["by_strategy_timeframe"]:
+            w(self.style.MIGRATE_HEADING("  By strategy x timeframe"))
+            # Grouped by strategy, timeframes adjacent, so the 1h-vs-4h comparison for
+            # ONE strategy is on consecutive lines — that pairing is the whole point.
+            for name in sorted({k[0] for k in by_strat_tf}):
+                rows = [by_strat_tf[k] for k in sorted(by_strat_tf) if k[0] == name]
+                for b in rows:
+                    w(_line(b))
+                if len(rows) < 2:
+                    w("      (one timeframe only — nothing to compare)")
         if opts["by_symbol"]:
             w(self.style.MIGRATE_HEADING("  By symbol (worst first)"))
             for b in sorted(by_symbol.values(), key=lambda x: x["r"] / max(x["n"], 1)):

@@ -176,7 +176,10 @@ def generate_signal(
 
     # Custom (user-created) strategy: deterministic rule eval, no pre-gate, no LLM.
     if rule_config:
-        return _custom_signal(strategy_name, rule_config, indicators, _stop_mults(asset_class))
+        return _custom_signal(
+            strategy_name, strategy_slug, rule_config, indicators,
+            _stop_mults(asset_class, strategy_slug),
+        )
 
     # Cheap rule-based pre-gate — skips the paid LLM call on obvious non-setups.
     pregate_on = settings.SIGNAL_PREGATE_ENABLED if use_pregate is None else use_pregate
@@ -455,6 +458,8 @@ def _rules_signal(symbol, timeframe, strategy_slug, strategy_name, strategy_focu
     if levels is None:
         return None
 
+    # kind_of() maps an unknown slug to trend, so a custom strategy is scored by the
+    # trend branch — correct, since custom rules are EMA/RSI/MACD-shaped.
     confidence = confidence_score(direction, indicators, strategy_slug) or settings.SIGNAL_RULE_CONFIDENCE
     reasoning, invalidation = _rule_reasoning(strategy_slug, strategy_name, direction, indicators)
     return {
@@ -467,7 +472,7 @@ def _rules_signal(symbol, timeframe, strategy_slug, strategy_name, strategy_focu
     }
 
 
-def _custom_signal(strategy_name, rule_config, indicators, stop_mults):
+def _custom_signal(strategy_name, strategy_slug, rule_config, indicators, stop_mults):
     """Signal for a user-created strategy: the user's rule picks the direction, levels
     and confidence reuse the shared math, and the reasoning lists the conditions that
     fired. Deterministic — no pre-gate, no LLM, no system quality gates."""
