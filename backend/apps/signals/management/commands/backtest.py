@@ -85,7 +85,7 @@ def _exit_expectancy(total, fractions):
 
 def _blank(name):
     return {
-        "name": name, "trades": 0, "wins": 0, "losses": 0,
+        "name": name, "trades": 0, "wins": 0, "losses": 0, "expired": 0,
         "r_tp1": 0.0, "r_scale": 0.0, "r_best": 0.0, "mfe": 0.0, "mae": 0.0,
         "tp_dist": {1: 0, 2: 0, 3: 0, 4: 0},
     }
@@ -94,6 +94,15 @@ def _blank(name):
 def _record(bucket, res):
     bucket["trades"] += 1
     best_tp = res["best_tp"]
+    # Ran out of bars without touching a target OR its stop (--eval-bars only). Live,
+    # run_evaluation closes this flat: 0R, and NEITHER a win nor a loss. Counting it as
+    # a loss would be wrong twice over — it never lost money, and it would drag the win
+    # rate with trades that simply hadn't finished.
+    if res.get("expired"):
+        bucket["expired"] += 1
+        bucket["mfe"] += res["mfe_pct"]
+        bucket["mae"] += res["mae_pct"]
+        return
     if best_tp >= 1:
         bucket["wins"] += 1
         bucket["tp_dist"][best_tp] += 1
@@ -230,7 +239,7 @@ def _replay_exits(direction, entry, stop0, tps, future, atr):
 
 
 def _outcome(direction, snap, future, asset_class="crypto", strategy_slug=None,
-             atr_floor=None, atr_cap=None, rev_floor=None, rev_cap=None):
+             atr_floor=None, atr_cap=None, rev_floor=None, rev_cap=None, eval_bars=None):
     """Deterministic levels + walk for a setup; None if degenerate or unresolved.
 
     Mean-reversion setups get their own (much tighter) ATR stop band — with the trend
@@ -259,9 +268,17 @@ def _outcome(direction, snap, future, asset_class="crypto", strategy_slug=None,
     if levels is None:
         return None
     tps = [levels[k] for k in ("tp1", "tp2", "tp3", "tp4") if levels[k] is not None]
-    res = walk(direction, float(snap["close"]), levels["stop_loss"], tps, future)
+    horizon = future[:eval_bars] if eval_bars else future
+    res = walk(direction, float(snap["close"]), levels["stop_loss"], tps, horizon)
     if not (res["terminal"] or res["best_tp"] >= 1):
-        return None
+        # Ran out of road. With the live clock modelled this is an EXPIRED trade and
+        # counts as a 0R scratch (run_evaluation closes it flat); without it, the trade
+        # simply hasn't finished inside the sample and is dropped as unknowable.
+        if eval_bars:
+            res["expired"] = True
+            res["best_tp"] = 0
+        else:
+            return None
     res["_levels"] = (levels["stop_loss"], tps)  # for --exit-lab's replay
     return res
 
@@ -348,6 +365,14 @@ class Command(BaseCommand):
         parser.add_argument("--reversion-atr-cap", type=float, default=None,
                             help="MEAN-REVERSION stop cap in ATR multiples (live: "
                                  "SIGNAL_ATR_CAP_REVERSION).")
+        parser.add_argument("--eval-bars", type=int, default=None,
+                            help="Model the LIVE expiry clock (SIGNAL_EVAL_BARS, 48): a trade "
+                                 "that reaches neither a target nor its stop within this many "
+                                 "bars closes FLAT at 0R, exactly as run_evaluation does. "
+                                 "Without this the backtest walks every remaining candle and "
+                                 "DROPS trades that never resolve — which flatters results, and "
+                                 "flatters slow timeframes most, since 48 bars is 2 days on 1h "
+                                 "but 8 days on 4h.")
         parser.add_argument("--by-session", action="store_true",
                             help="Break results down by UTC trading session (Asian / London "
                                  "/ London-NY overlap / NY / late). Forex has real intraday "
@@ -573,7 +598,8 @@ class Command(BaseCommand):
                                  opts.get("reversion_adx_max"),
                                  opts.get("min_confidence_reversion"),
                                  strategy_floors, by_session, by_symbol,
-                                 opts.get("reversion_atr_floor"), opts.get("reversion_atr_cap"))
+                                 opts.get("reversion_atr_floor"), opts.get("reversion_atr_cap"),
+                                 opts.get("eval_bars"))
                 series += 1
                 self.stdout.write(f"  · {sym.ticker} {tf}", ending="\r")
             if llm_on and budget["left"] <= 0:
@@ -666,7 +692,8 @@ class Command(BaseCommand):
                     reversion_htf_on=False, min_confidence=None,
                     atr_floor=None, atr_cap=None, rev_adx_max=None,
                     min_confidence_reversion=None, strategy_floors=None,
-                    by_session=None, by_symbol=None, rev_floor=None, rev_cap=None):
+                    by_session=None, by_symbol=None, rev_floor=None, rev_cap=None,
+                    eval_bars=None):
         ticker = sym.ticker
         n = len(candles)
         threshold = settings.SIGNAL_MIN_CONFIDENCE
@@ -768,7 +795,7 @@ class Command(BaseCommand):
                         continue
 
                 res = _outcome(direction, snap, future, asset_class, svc.slug,
-                               atr_floor, atr_cap, rev_floor, rev_cap)
+                               atr_floor, atr_cap, rev_floor, rev_cap, eval_bars)
                 if res is None:
                     free_at[svc.slug] = i + 1
                     continue
@@ -832,9 +859,14 @@ class Command(BaseCommand):
         t = b["trades"]
         if not t:
             return f"  {b['name']:<26} {'—':>7}  (no trades)"
+        # Win RATE excludes 0R expiries (they're neither), matching stats.py and
+        # feed_stats; the R figures divide by every trade, since a scratch really did
+        # occupy a slot and really did return 0.
+        decided = b["wins"] + b["losses"] or 1
+        exp = f" exp={b['expired']}" if b["expired"] else ""
         return (
-            f"  {b['name']:<26} {b['wins']/t*100:5.1f}%  "
-            f"{b['wins']:>3}W /{b['losses']:>3}L  n={t:<4} "
+            f"  {b['name']:<26} {b['wins']/decided*100:5.1f}%  "
+            f"{b['wins']:>3}W /{b['losses']:>3}L{exp}  n={t:<4} "
             f"exp(TP1)={b['r_tp1']/t:+.2f}R  exp(scale)={b['r_scale']/t:+.2f}R  "
             f"exp(best)={b['r_best']/t:+.2f}R  "
             f"avgMFE={b['mfe']/t:+.1f}% avgMAE={b['mae']/t:+.1f}%"
