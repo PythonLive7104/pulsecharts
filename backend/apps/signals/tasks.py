@@ -286,6 +286,7 @@ def run_scan(symbol_limit: int | None = None, use_pregate: bool | None = None) -
     htf_cache: dict[tuple[int, str], str | None] = {}  # (symbol_id, htf) -> trend bias
     htf_struct_cache: dict[tuple[int, str], str | None] = {}  # (symbol_id, htf) -> structure
     scan_hour_utc = timezone.now().astimezone(dt_timezone.utc).hour
+    fx_only = set(settings.SIGNAL_FOREX_STRATEGIES or ())
     forex_is_open = forex_market_open()  # evaluated once per scan; also our
     # "is it the weekend window" signal (Fri 21:00 → Sun 21:00 UTC).
     for sym in symbols:
@@ -325,7 +326,13 @@ def run_scan(symbol_limit: int | None = None, use_pregate: bool | None = None) -
             if settings.SIGNAL_EXIT_ON_TREND_BREAK:
                 invalidated += _invalidate_trend_breaks(sym, tf, indicators, now)
 
+            # Forex runs only the strategies that survive its trading costs
+            # (SIGNAL_FOREX_STRATEGIES). Crypto is unrestricted, and a user's own
+            # custom strategy is exempt — they built the rule deliberately.
             for svc in system_services + custom_by_symbol.get(sym.id, []):
+                if (sym.is_forex and fx_only and svc.owner_id is None
+                        and svc.slug not in fx_only):
+                    continue
                 pair = (sym.id, svc.id, tf)
                 cand = candidate_direction_for_service(svc, indicators)
                 open_dir = open_dirs.get(pair)
@@ -501,6 +508,17 @@ def _invalidate_trend_breaks(sym, tf, ind, now) -> int:
     return n
 
 
+def _eval_bars_for(asset_class: str) -> int:
+    """Expiry clock in bars for this asset class (SIGNAL_EVAL_BARS_BY_ASSET).
+
+    Forex trades on a wider stop need materially longer to resolve than crypto ones —
+    see the settings comment. 0/unset falls back to the shared SIGNAL_EVAL_BARS, so
+    this is inert until configured.
+    """
+    per = getattr(settings, "SIGNAL_EVAL_BARS_BY_ASSET", None) or {}
+    return int(per.get(asset_class) or settings.SIGNAL_EVAL_BARS)
+
+
 def run_evaluation(limit: int | None = None) -> dict:
     """Resolve PENDING signals against the price action that followed.
 
@@ -572,7 +590,7 @@ def run_evaluation(limit: int | None = None) -> dict:
                 mfe_pct=res["mfe_pct"], mae_pct=res["mae_pct"], **tagged,
             )
             resolved += updated  # 0 if it was already closed elsewhere
-        elif len(eval_candles) >= settings.SIGNAL_EVAL_BARS:
+        elif len(eval_candles) >= _eval_bars_for(sig.symbol.asset_class):
             # Out of time. Close it at whatever it actually banked: a call that tagged
             # TP1/TP2 books that (the partial is real money), one that never reached a
             # target expires flat. Either way the slot is freed so the strategy can
@@ -1110,6 +1128,9 @@ def run_telegram_push() -> dict:
             if (r.symbol_id, r.timeframe, r.direction, r.entry_price) not in delivered_trades
         ]
         reps.sort(key=lambda s: s.generated_at)
+        shadowed = confluence.shadowed_asset_classes()
+        if shadowed:  # generated + evaluated, but never pushed
+            reps = [r for r in reps if r.symbol.asset_class not in shadowed]
         # Same correlated-exposure cap the in-app feed applies — Telegram is where the
         # four-at-once run was actually felt. Sorted oldest-first above, so the earliest
         # signal claims the exposure and later duplicates are the ones held back.

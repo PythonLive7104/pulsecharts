@@ -301,3 +301,14 @@ def cap_currency_exposure(reps: list, *, already_open=()) -> list:
             counts[key] = counts.get(key, 0) + 1
         kept.append(sig)
     return kept
+
+
+def shadowed_asset_classes() -> set:
+    """Asset classes generated + evaluated but never delivered.
+
+    Per-asset-class SIGNAL_SHADOW_MODE. `feed_stats` reads stored Signal rows rather
+    than deliveries, so a shadowed class still accumulates a real, measurable track
+    record — which is the point: validate forex on live data without putting untested
+    signals in front of anyone, while crypto ships normally.
+    """
+    return {a.strip() for a in (getattr(settings, "SIGNAL_SHADOW_ASSET_CLASSES", None) or ()) if a.strip()}

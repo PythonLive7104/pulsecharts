@@ -423,6 +423,36 @@ def _parse_strategy_floors(raw: str) -> dict:
 # something backwards for it, and that's worth understanding before leaning on it.
 #
 # Format: "slug:floor,slug:floor". Empty = no overrides (kind/global floors only).
+# Which strategies are scanned on FOREX symbols. Empty = all of them (crypto is
+# always unrestricted).
+#
+# Measured over 22 pairs / 100 days / 1h, NET of a 1-pip spread — the first forex
+# backtest ever run with trading costs charged:
+#     Bollinger Band Fade   56.1%  n=541  exp(TP1) +0.07R  exp(scale) +0.12R
+#     RSI(2) Reversion      52.0%  n=248            -0.02R            +0.03R
+#     Momentum Crossover    52.0%  n=236            +0.01R            -0.07R
+#     Trend Rider           52.0%  n=236            +0.01R            -0.07R
+#     ADX Directional       51.7%  n=237            +0.00R            -0.08R
+#     MACD Trend Following  51.7%  n=237            +0.00R            -0.08R
+#     EMA Ribbon            51.6%  n=216            -0.00R            -0.08R
+# One strategy has an edge on forex; the other eight are break-even before costs and
+# negative after them. The old "forex is roughly break-even" aggregate was Bollinger
+# Fade's edge diluted by ~1400 trades that don't work. Its edge held in EVERY stop /
+# holding configuration tested (+0.06R to +0.12R), so it is a property of the
+# strategy, not of one lucky cell.
+#
+# Crypto is deliberately untouched: moves average 4.3% there against ~0.1% fees, so
+# cost is 1-2% of risk instead of ~11%, and all nine strategies clear it.
+#
+# Custom (user-created) strategies are EXEMPT — the user built the rule deliberately.
+SIGNAL_FOREX_STRATEGIES = env.list("SIGNAL_FOREX_STRATEGIES", default=["bb-fade"])
+
+# Asset classes whose signals are GENERATED and EVALUATED but never delivered — the
+# per-asset-class version of SIGNAL_SHADOW_MODE. Lets forex be validated on live data
+# (feed_stats reads stored rows, not deliveries) while crypto keeps shipping normally.
+# Empty = deliver everything.
+SIGNAL_SHADOW_ASSET_CLASSES = env.list("SIGNAL_SHADOW_ASSET_CLASSES", default=[])
+
 # Max concurrent signals sharing one CURRENCY EXPOSURE, per user (forex only).
 #
 # An FX pair is two currencies: SELL EUR-USD is short EUR and long USD. Every fade
@@ -440,7 +470,7 @@ def _parse_strategy_floors(raw: str) -> dict:
 # Delivery-side, like confluence: nothing about generation changes, so it is fully
 # reversible. 0 disables. Crypto is exempt — "BTC-USD" has no second traded currency
 # to net against, so the same rule would collapse every crypto signal into one bucket.
-SIGNAL_MAX_PER_CURRENCY = env.int("SIGNAL_MAX_PER_CURRENCY", default=2)
+SIGNAL_MAX_PER_CURRENCY = env.int("SIGNAL_MAX_PER_CURRENCY", default=1)
 
 SIGNAL_MIN_CONFIDENCE_BY_STRATEGY = _parse_strategy_floors(
     env("SIGNAL_MIN_CONFIDENCE_BY_STRATEGY", default="")
@@ -812,6 +842,22 @@ SIGNAL_SCAN_SYMBOL_LIMIT = env.int("SIGNAL_SCAN_SYMBOL_LIMIT", default=0)
 # 2 days without touching its stop or a target is dead regardless of where price sits.
 # A call that already banked TP1/TP2 closes at that banked level, not as EXPIRED.
 SIGNAL_EVAL_BARS = env.int("SIGNAL_EVAL_BARS", default=48)
+
+# Per-asset-class override of the expiry clock. Forex needs far longer: measured over
+# 22 pairs / 100 days / 1h with a 1-pip spread charged, Bollinger Fade on a 3.0-4.0xATR
+# stop improves monotonically with holding time —
+#     48 bars (2d) : 55.2%  n=387  exp(TP1) +0.06R  exp(scale) -0.03R
+#     96 bars (4d) : 58.0%  n=300            +0.12R             +0.10R
+#    192 bars (8d) : 58.6%  n=257            +0.14R             +0.18R
+# A wider stop puts every target proportionally further away, so the same 2-day clock
+# that suits crypto scratches forex trades at 0R before they can resolve — and a
+# scratch still pays the spread. Pair the two or neither: a wide stop on a short clock
+# was the WORST cell tested.
+# 0 / unset for a class = fall back to SIGNAL_EVAL_BARS.
+SIGNAL_EVAL_BARS_BY_ASSET = {
+    "crypto": env.int("SIGNAL_EVAL_BARS_CRYPTO", default=0),
+    "forex": env.int("SIGNAL_EVAL_BARS_FOREX", default=0),
+}
 
 # Shadow mode: keep generating + evaluating signals but DON'T surface them in the
 # user feed (run for weeks, validate realized accuracy before any claims, 13.7).

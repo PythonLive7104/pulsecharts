@@ -85,7 +85,7 @@ def _exit_expectancy(total, fractions):
 
 def _blank(name):
     return {
-        "name": name, "trades": 0, "wins": 0, "losses": 0, "expired": 0,
+        "name": name, "trades": 0, "wins": 0, "losses": 0, "expired": 0, "cost": 0.0,
         "r_tp1": 0.0, "r_scale": 0.0, "r_best": 0.0, "mfe": 0.0, "mae": 0.0,
         "tp_dist": {1: 0, 2: 0, 3: 0, 4: 0},
     }
@@ -100,20 +100,28 @@ def _record(bucket, res):
     # rate with trades that simply hadn't finished.
     if res.get("expired"):
         bucket["expired"] += 1
+        # A scratch still paid to get in and out — 0R gross, -cost net.
+        c = res.get("cost_r", 0.0)
+        bucket["r_tp1"] -= c
+        bucket["r_scale"] -= c
+        bucket["r_best"] -= c
+        bucket["cost"] += c
         bucket["mfe"] += res["mfe_pct"]
         bucket["mae"] += res["mae_pct"]
         return
+    cost = res.get("cost_r", 0.0)  # spread, in R for this trade (--spread-pct)
     if best_tp >= 1:
         bucket["wins"] += 1
         bucket["tp_dist"][best_tp] += 1
-        bucket["r_tp1"] += 1.0                       # conservative: exit all at TP1 (+1R)
-        bucket["r_scale"] += SCALEOUT_R[best_tp]     # realized: 50/25/25 scale-out
-        bucket["r_best"] += TP_MULTIPLES[best_tp]    # optimistic: exit all at best target
+        bucket["r_tp1"] += 1.0 - cost                     # conservative: all out at TP1
+        bucket["r_scale"] += SCALEOUT_R[best_tp] - cost   # realized: 50/25/25 scale-out
+        bucket["r_best"] += TP_MULTIPLES[best_tp] - cost  # optimistic: all out at best TP
     else:
         bucket["losses"] += 1
-        bucket["r_tp1"] -= 1.0
-        bucket["r_scale"] -= 1.0
-        bucket["r_best"] -= 1.0
+        bucket["r_tp1"] -= 1.0 + cost
+        bucket["r_scale"] -= 1.0 + cost
+        bucket["r_best"] -= 1.0 + cost
+    bucket["cost"] += cost
     bucket["mfe"] += res["mfe_pct"]
     bucket["mae"] += res["mae_pct"]
 
@@ -365,6 +373,15 @@ class Command(BaseCommand):
         parser.add_argument("--reversion-atr-cap", type=float, default=None,
                             help="MEAN-REVERSION stop cap in ATR multiples (live: "
                                  "SIGNAL_ATR_CAP_REVERSION).")
+        parser.add_argument("--spread-pct", type=float, default=None, metavar="PCT",
+                            help="Model the round-trip SPREAD as a %% of price and report "
+                                 "expectancy NET of it. Every other figure this command "
+                                 "prints is gross, which is harmless on crypto (moves ~4%%, "
+                                 "fees ~0.1%%) and decisive on forex (moves ~0.4%%, spread "
+                                 "~0.009%% = a tenth of the risk). Cost in R is computed PER "
+                                 "TRADE as spread_pct / risk_pct, so a wide-stop trade "
+                                 "correctly pays proportionally less. ~0.0087 = 1 pip on "
+                                 "EUR-USD; ~0.05 = a 0.05%% crypto round trip.")
         parser.add_argument("--tp-multiples", default=None, metavar="R1,R2,R3",
                             help="Override the TP ladder in R multiples (live: 1,2,3 — "
                                  "levels.TP_MULTIPLES). Moving TP1 BELOW 1R is the only "
@@ -628,7 +645,7 @@ class Command(BaseCommand):
                                  opts.get("min_confidence_reversion"),
                                  strategy_floors, by_session, by_symbol,
                                  opts.get("reversion_atr_floor"), opts.get("reversion_atr_cap"),
-                                 opts.get("eval_bars"))
+                                 opts.get("eval_bars"), opts.get("spread_pct"))
                 series += 1
                 self.stdout.write(f"  · {sym.ticker} {tf}", ending="\r")
             if llm_on and budget["left"] <= 0:
@@ -722,7 +739,7 @@ class Command(BaseCommand):
                     atr_floor=None, atr_cap=None, rev_adx_max=None,
                     min_confidence_reversion=None, strategy_floors=None,
                     by_session=None, by_symbol=None, rev_floor=None, rev_cap=None,
-                    eval_bars=None):
+                    eval_bars=None, spread_pct=None):
         ticker = sym.ticker
         n = len(candles)
         threshold = settings.SIGNAL_MIN_CONFIDENCE
@@ -830,6 +847,14 @@ class Command(BaseCommand):
                     continue
                 free_at[svc.slug] = i + 1 + res["bars"]
 
+                # Charge the spread, per trade, as a fraction of THIS trade's risk.
+                # Stored on the result so every bucket (_record) nets it off consistently.
+                if spread_pct:
+                    stop0, _tps = res["_levels"]
+                    entry = float(snap["close"])
+                    risk_pct = abs(entry - stop0) / entry * 100 if entry else 0
+                    res["cost_r"] = (spread_pct / risk_pct) if risk_pct else 0.0
+
                 if by_session is not None:
                     from datetime import datetime, timezone as _tz
                     hour = datetime.fromtimestamp(candles[i]["time"], _tz.utc).hour
@@ -899,6 +924,7 @@ class Command(BaseCommand):
             f"exp(TP1)={b['r_tp1']/t:+.2f}R  exp(scale)={b['r_scale']/t:+.2f}R  "
             f"exp(best)={b['r_best']/t:+.2f}R  "
             f"avgMFE={b['mfe']/t:+.1f}% avgMAE={b['mae']/t:+.1f}%"
+            + (f"  cost={b['cost']/t:.3f}R" if b["cost"] else "")
         )
 
     def _report(self, stats, series):

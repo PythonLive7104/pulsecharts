@@ -461,6 +461,7 @@ class SignalFeedView(APIView):
                     "signal__symbol_id", "signal__timeframe", "signal__direction", "signal__entry_price",
                 )
             )
+            shadowed = confluence.shadowed_asset_classes()
             candidates = list(
                 Signal.objects.filter(
                     confluence.deliverable_q(),  # custom strategies bypass the conf floor
@@ -470,7 +471,9 @@ class SignalFeedView(APIView):
                     outcome=Signal.Outcome.PENDING,
                     generated_at__gte=now - FEED_LOOKBACK,
                 )
-                .select_related("service")
+                # symbol joined too: the shadow gate and the currency cap both read
+                # symbol.asset_class / ticker, which would otherwise be a query per row.
+                .select_related("service", "symbol")
                 .order_by("-generated_at")
             )
             reps = [
@@ -481,6 +484,8 @@ class SignalFeedView(APIView):
             # too, so four correlated signals arriving in four consecutive scans are
             # capped the same as four arriving together. Runs BEFORE the quota slice so
             # a held-back duplicate doesn't consume a delivery slot.
+            if shadowed:  # generated + evaluated, but never surfaced
+                reps = [r for r in reps if r.symbol.asset_class not in shadowed]
             reps = confluence.cap_currency_exposure(
                 reps,
                 already_open=Signal.objects.filter(
