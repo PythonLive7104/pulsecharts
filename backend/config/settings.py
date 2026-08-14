@@ -423,6 +423,25 @@ def _parse_strategy_floors(raw: str) -> dict:
 # something backwards for it, and that's worth understanding before leaning on it.
 #
 # Format: "slug:floor,slug:floor". Empty = no overrides (kind/global floors only).
+# Max concurrent signals sharing one CURRENCY EXPOSURE, per user (forex only).
+#
+# An FX pair is two currencies: SELL EUR-USD is short EUR and long USD. Every fade
+# strategy triggers on the same condition — price extended from its mean — so one
+# strong USD move makes every USD pair extended at once and Bollinger Fade fires SELL
+# across all of them. On 2026-08-14 that delivered GBP-USD, EUR-USD, NZD-USD and
+# AUD-USD SELLs together, and all four stopped out within 20 minutes. Four cards, but
+# one bet: long USD, four times.
+#
+# It only began when forex went fade-only (2026-08-12). With six trend strategies also
+# live, a hard USD trend produced trend signals WITH the move and fades AGAINST it,
+# and that opposition diversified the book invisibly. Concentrating on fades raised
+# per-strategy win rate and removed the diversification at the same time.
+#
+# Delivery-side, like confluence: nothing about generation changes, so it is fully
+# reversible. 0 disables. Crypto is exempt — "BTC-USD" has no second traded currency
+# to net against, so the same rule would collapse every crypto signal into one bucket.
+SIGNAL_MAX_PER_CURRENCY = env.int("SIGNAL_MAX_PER_CURRENCY", default=2)
+
 SIGNAL_MIN_CONFIDENCE_BY_STRATEGY = _parse_strategy_floors(
     env("SIGNAL_MIN_CONFIDENCE_BY_STRATEGY", default="")
 )

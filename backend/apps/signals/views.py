@@ -520,6 +520,18 @@ class SignalFeedView(APIView):
                 r for r in confluence.collapse(candidates)  # one per symbol+tf, newest first
                 if (r.symbol_id, r.timeframe, r.direction, r.entry_price) not in delivered_trades
             ]
+            # Don't send one bet four times. Counts the user's still-open forex calls
+            # too, so four correlated signals arriving in four consecutive scans are
+            # capped the same as four arriving together. Runs BEFORE the quota slice so
+            # a held-back duplicate doesn't consume a delivery slot.
+            reps = confluence.cap_currency_exposure(
+                reps,
+                already_open=Signal.objects.filter(
+                    deliveries__user=user,
+                    outcome=Signal.Outcome.PENDING,
+                    symbol__asset_class="forex",
+                ).select_related("symbol"),
+            )
             if not unlimited:
                 reps = reps[:remaining]
             SignalDelivery.objects.bulk_create(

@@ -232,3 +232,72 @@ def annotate(signals, pool) -> list:
         svc_map.setdefault(s.service_id, s)  # ensure self is counted
         _annotate(s, svc_map)
     return signals
+
+
+# --- correlated-exposure cap ------------------------------------------------
+# An FX pair is two currencies, so SELL EUR-USD is short EUR AND long USD. Fade
+# strategies all trigger on the same condition — price extended from its mean — so a
+# single strong USD move makes every USD pair extended at the same instant and
+# Bollinger Fade fires SELL on all of them at once. Delivered as-is that is not four
+# signals, it is one bet sent four times: they win together and, as happened on
+# 2026-08-14 (GBP-USD, EUR-USD, NZD-USD, AUD-USD all stopped out inside 20 minutes),
+# they lose together.
+#
+# This never showed before forex went fade-only (2026-08-12). With six trend
+# strategies also live, a hard USD trend produced trend signals WITH the move and
+# fades AGAINST it, and that opposition diversified the book invisibly. Removing the
+# trend strategies raised each strategy's win rate and concentrated the portfolio —
+# the cap restores the diversification without giving the win rate back.
+#
+# Crypto is deliberately exempt: alts do co-move with BTC, but a ticker like
+# "BTC-USD" has no second traded currency to net against, so the same rule would just
+# collapse every crypto signal into one USD bucket.
+
+
+def _fx_exposure(signal) -> tuple:
+    """(currency, side) pairs a forex signal takes on. Empty for non-forex.
+
+    BUY BASE-QUOTE  = long BASE,  short QUOTE
+    SELL BASE-QUOTE = short BASE, long QUOTE
+    """
+    sym = signal.symbol
+    if getattr(sym, "asset_class", "crypto") != "forex":
+        return ()
+    parts = (sym.ticker or "").split("-")
+    if len(parts) != 2:
+        return ()
+    base, quote = parts
+    long_base = signal.direction == Signal.Direction.BUY
+    return ((base, "long" if long_base else "short"),
+            (quote, "short" if long_base else "long"))
+
+
+def cap_currency_exposure(reps: list, *, already_open=()) -> list:
+    """Drop signals that would stack a currency bet beyond SIGNAL_MAX_PER_CURRENCY.
+
+    `already_open` is the user's live positions, so the cap counts across scans rather
+    than only within one batch — four correlated calls arriving in four consecutive
+    scans is the same bet as four arriving together.
+
+    Order is preserved and the FIRST signal to claim an exposure wins, so callers keep
+    control of priority (the feed sorts newest-first, Telegram oldest-first). 0
+    disables the cap entirely.
+    """
+    cap = int(getattr(settings, "SIGNAL_MAX_PER_CURRENCY", 0) or 0)
+    if cap <= 0:
+        return reps
+
+    counts: dict = {}
+    for sig in already_open:
+        for key in _fx_exposure(sig):
+            counts[key] = counts.get(key, 0) + 1
+
+    kept = []
+    for sig in reps:
+        exposure = _fx_exposure(sig)
+        if exposure and any(counts.get(k, 0) >= cap for k in exposure):
+            continue  # this bet is already on
+        for key in exposure:
+            counts[key] = counts.get(key, 0) + 1
+        kept.append(sig)
+    return kept

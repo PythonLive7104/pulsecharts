@@ -1116,6 +1116,17 @@ def run_telegram_push() -> dict:
             if (r.symbol_id, r.timeframe, r.direction, r.entry_price) not in delivered_trades
         ]
         reps.sort(key=lambda s: s.generated_at)
+        # Same correlated-exposure cap the in-app feed applies — Telegram is where the
+        # four-at-once run was actually felt. Sorted oldest-first above, so the earliest
+        # signal claims the exposure and later duplicates are the ones held back.
+        reps = confluence.cap_currency_exposure(
+            reps,
+            already_open=Signal.objects.filter(
+                telegram_deliveries__user=user,
+                outcome=Signal.Outcome.PENDING,
+                symbol__asset_class="forex",
+            ).select_related("symbol"),
+        )
         if not unlimited:
             reps = reps[:remaining]
 
