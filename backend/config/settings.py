@@ -460,8 +460,21 @@ SIGNAL_MIN_CONFIDENCE_FOREX = env.int("SIGNAL_MIN_CONFIDENCE_FOREX", default=0)
 # Crypto is deliberately untouched: moves average 4.3% there against ~0.1% fees, so
 # cost is 1-2% of risk instead of ~11%, and all nine strategies clear it.
 #
+# RSI(2) added 2026-08-14 as a SECOND strategy, at the live forex floor of 75:
+#     floor 65 : 54.1%  n=161  exp(TP1) +0.05R
+#     floor 70 : 57.5%  n=108            +0.12R
+#     floor 75 : 67.5%  n=41             +0.31R   <-- the floor it actually runs at
+# n=41 is too thin to believe 67.5%, and it is NOT the reason to add it. The reason is
+# that blending it with Bollinger Fade at the same floor lifts the book from 1.6 to ~2.0
+# signals/day while the win rate holds (~63.9% -> ~64.4%), and at 20% of the book its
+# downside is bounded: even if its true rate is 55%, the blend still lands near 62%.
+# Treat the 67.5% as unmeasured until the shadow window resolves 100+ of its trades.
+# VWAP Stretch stays OUT — n=8 at every floor tested, genuinely unknown.
+#
 # Custom (user-created) strategies are EXEMPT — the user built the rule deliberately.
-SIGNAL_FOREX_STRATEGIES = env.list("SIGNAL_FOREX_STRATEGIES", default=["bb-fade"])
+SIGNAL_FOREX_STRATEGIES = env.list(
+    "SIGNAL_FOREX_STRATEGIES", default=["bb-fade", "rsi2-reversion"]
+)
 
 # Asset classes whose signals are GENERATED and EVALUATED but never delivered — the
 # per-asset-class version of SIGNAL_SHADOW_MODE. Lets forex be validated on live data
