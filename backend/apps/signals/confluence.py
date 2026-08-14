@@ -52,6 +52,11 @@ def min_confidence(kind: str | None = None, strategy_slug: str | None = None) ->
     return base
 
 
+def _forex_floor() -> int:
+    """Forex-only confidence floor, or 0 when unset (normal resolution applies)."""
+    return int(getattr(settings, "SIGNAL_MIN_CONFIDENCE_FOREX", 0) or 0)
+
+
 def deliverable_q() -> Q:
     """Filter for the delivery confidence floor. Built-in strategies must clear the
     floor resolved for them (see ``min_confidence``); custom (user-created) strategies
@@ -65,7 +70,7 @@ def deliverable_q() -> Q:
     overrides = dict(getattr(settings, "SIGNAL_MIN_CONFIDENCE_BY_STRATEGY", {}) or {})
     custom = Q(service__owner__isnull=False)
 
-    if rev == base and not overrides:
+    if rev == base and not overrides and not _forex_floor():
         return Q(confidence_pct__gte=base) | custom
 
     # Slug lists rather than a kind column: kind is derived in Python (STRATEGY_KIND),
@@ -74,16 +79,23 @@ def deliverable_q() -> Q:
     rev_slugs = [slug for slug, k in STRATEGY_KIND.items() if k == KIND_REVERSION]
 
     q = custom
+    # Forex gets its own floor for EVERY strategy: the floor buys selectivity against
+    # that market's costs, and forex costs ~11% of risk against crypto's 1-2%. Applied
+    # as its own branch so the crypto clauses below are unaffected.
+    fx = _forex_floor()
+    if fx:
+        q |= Q(symbol__asset_class="forex", confidence_pct__gte=fx)
+    not_fx = ~Q(symbol__asset_class="forex") if fx else Q()
     for slug, floor in overrides.items():
-        q |= Q(service__slug=slug, confidence_pct__gte=int(floor))
+        q |= Q(service__slug=slug, confidence_pct__gte=int(floor)) & not_fx
     # Reversion strategies WITHOUT an override fall to the kind floor.
     rest_rev = [s for s in rev_slugs if s not in overrides]
     if rest_rev:
-        q |= Q(service__slug__in=rest_rev, confidence_pct__gte=rev)
+        q |= Q(service__slug__in=rest_rev, confidence_pct__gte=rev) & not_fx
     # Everything else — trend, breakout, and any slug not in STRATEGY_KIND.
-    q |= Q(confidence_pct__gte=base) & ~Q(
-        service__slug__in=list(overrides) + rev_slugs
-    )
+    q |= (Q(confidence_pct__gte=base)
+          & ~Q(service__slug__in=list(overrides) + rev_slugs)
+          & not_fx)
     return q
 
 

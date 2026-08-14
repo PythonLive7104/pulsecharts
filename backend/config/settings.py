@@ -423,6 +423,22 @@ def _parse_strategy_floors(raw: str) -> dict:
 # something backwards for it, and that's worth understanding before leaning on it.
 #
 # Format: "slug:floor,slug:floor". Empty = no overrides (kind/global floors only).
+# Confidence floor applied to FOREX signals only, overriding the strategy/kind floors
+# for that market. 0 = use the normal resolution (strategy -> kind -> global).
+#
+# The same strategy needs a DIFFERENT floor per market, because the floor is really
+# buying selectivity against that market's costs. Bollinger Fade, net of a 1-pip
+# spread, 22 pairs / 100 days / 1h on the 3.0-4.0xATR + 192-bar geometry:
+#     forex  floor 65 : 58.6%  n=257  exp(TP1) +0.14R
+#     forex  floor 70 : 58.3%  n=241            +0.14R
+#     forex  floor 75 : 63.9%  n=161            +0.25R   <-- interior peak
+#     forex  floor 80 : 53.7%  n=55             +0.05R
+# ...while the SAME strategy on crypto is flat across floors (53.8% @65, 53.5% @70,
+# 53.6% @75) and only loses volume — 1596 trades down to 959 for no gain. A
+# per-strategy floor would force one number on both markets and cost crypto 40% of
+# its Bollinger Fade volume to buy forex nothing it can't get here.
+SIGNAL_MIN_CONFIDENCE_FOREX = env.int("SIGNAL_MIN_CONFIDENCE_FOREX", default=0)
+
 # Which strategies are scanned on FOREX symbols. Empty = all of them (crypto is
 # always unrestricted).
 #
