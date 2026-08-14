@@ -389,16 +389,6 @@ export default function SignalsPage() {
                   <strong>
                     {svc.name}
                     {svc.is_custom && <span className="strategy-badge">Custom</span>}
-                    {/* Market scope, shown only when the strategy is NARROWED.
-                        "both" is the default and labelling it would just add noise to
-                        every row. Surfaced here so following a crypto-only strategy
-                        while watching FX pairs is visible up front, instead of being
-                        discovered later as a permanently empty feed. */}
-                    {svc.markets && svc.markets !== "both" && (
-                      <span className="strategy-badge strategy-badge-market">
-                        {svc.markets === "crypto" ? "Crypto only" : "Forex only"}
-                      </span>
-                    )}
                   </strong>
                   <span className="muted">{svc.is_custom ? svc.rule_summary : svc.description}</span>
                 </div>
@@ -624,36 +614,7 @@ export default function SignalsPage() {
               <Link to="/app" className="btn-primary">Add symbols on the chart →</Link>
             </div>
           )}
-          {/* Coverage gap beats the generic empty state: strategies are scanned per
-              market, so following only crypto-only strategies while watching FX pairs
-              gives a feed that can NEVER fill. Saying "signals appear as the engine
-              generates them" there is wrong — nothing is coming. Name the market and
-              the fix instead. */}
-          {!loading && !feed?.needs_watchlist && feed?.signals?.length === 0
-            && feed?.coverage_gap && (
-            <div className="empty-feed">
-              <p className="muted">
-                None of the strategies you follow run on{" "}
-                <strong>{feed.coverage_gap.asset_classes.join(" or ")}</strong>.
-              </p>
-              <p className="muted">
-                You're watching {feed.coverage_gap.asset_classes.join(" and ")} symbols,
-                but the strategies you follow are scanned on other markets only — so no
-                signals can arrive for them.
-                {feed.coverage_gap.suggestions?.length > 0 && (
-                  <>
-                    {" "}Follow{" "}
-                    <strong>
-                      {feed.coverage_gap.suggestions.slice(0, 3).map((x) => x.name).join(", ")}
-                    </strong>{" "}
-                    to cover {feed.coverage_gap.asset_classes.join(" and ")}.
-                  </>
-                )}
-              </p>
-            </div>
-          )}
-          {!loading && !feed?.needs_watchlist && feed?.signals?.length === 0
-            && !feed?.coverage_gap && (
+          {!loading && !feed?.needs_watchlist && feed?.signals?.length === 0 && (
             <div className="empty-feed">
               <p className="muted">No signals yet.</p>
               <p className="muted">

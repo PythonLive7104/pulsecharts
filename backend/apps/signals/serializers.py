@@ -13,10 +13,6 @@ class SignalServiceSerializer(serializers.ModelSerializer):
         fields = (
             "id", "name", "slug", "description", "strategy_type",
             "is_followed", "is_custom", "rule_summary",
-            # Which markets it's scanned on. Exposed so the picker can say "crypto
-            # only" up front, rather than letting someone follow a strategy that can
-            # never fire on the pairs they watch.
-            "markets",
         )
 
     def get_is_followed(self, obj):

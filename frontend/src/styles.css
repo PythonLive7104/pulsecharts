@@ -1119,13 +1119,6 @@ a.brand:hover { text-decoration: none; }
   font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.03em;
   padding: 1px 6px; border-radius: 999px; background: var(--accent); color: #fff;
 }
-/* Market-scope badge: informational, not a feature flag, so it reads as muted
-   metadata rather than competing with the accent-coloured "Custom" badge. */
-.strategy-badge-market {
-  background: transparent;
-  color: var(--muted);
-  border: 1px solid var(--border);
-}
 .strategy-actions { display: flex; align-items: center; gap: 6px; flex-shrink: 0; }
 .strategy-del {
   border: 1px solid var(--border); background: transparent; color: var(--text);

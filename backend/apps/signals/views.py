@@ -163,48 +163,6 @@ def _next_market_open():
     return resume
 
 
-def _coverage_gap(watched_ids, followed_ids) -> dict | None:
-    """Which watched markets none of the user's followed strategies can fire on.
-
-    Strategies are scanned per asset class (SignalService.markets), because a strategy
-    can work on one market and lose money on the other — the five EMA/MACD trend
-    strategies run ~48.5% on FX against 52-53% on crypto, so they're crypto-only.
-    The side effect is that following ONLY those while watching only FX pairs yields a
-    permanently empty feed that looks identical to "nothing has triggered yet".
-
-    So name it: return the uncovered asset classes plus the strategies that would fix
-    it. None when every watched market has at least one followed strategy behind it.
-    """
-    from apps.market_data.models import Symbol
-
-    from .models import SignalService
-
-    if not watched_ids or not followed_ids:
-        return None  # a different empty state already explains those
-
-    watched = set(
-        Symbol.objects.filter(id__in=watched_ids)
-        .values_list("asset_class", flat=True)
-        .distinct()
-    )
-    followed = list(SignalService.objects.filter(id__in=followed_ids))
-    uncovered = [ac for ac in watched if not any(svc.runs_on(ac) for svc in followed)]
-    if not uncovered:
-        return None
-
-    # What they could follow instead — active, not already followed, and actually
-    # scanned on the market they're missing. Custom strategies are excluded: they
-    # belong to their owner and can't be followed by anyone else.
-    suggestions = [
-        {"id": svc.id, "name": svc.name}
-        for svc in SignalService.objects.filter(is_active=True, owner__isnull=True)
-        .exclude(id__in=followed_ids)
-        .order_by("name")
-        if any(svc.runs_on(ac) for ac in uncovered)
-    ]
-    return {"asset_classes": sorted(uncovered), "suggestions": suggestions}
-
-
 def _followed_service_ids(user):
     """Service ids this user follows AND is allowed to see.
 
@@ -477,7 +435,6 @@ class SignalFeedView(APIView):
             })
 
         followed_ids = _followed_service_ids(user)
-        coverage_gap = _coverage_gap(watched_ids, followed_ids)
 
         delivered_this_week = SignalDelivery.objects.filter(
             user=user, delivered_at__gte=week_cutoff
@@ -669,10 +626,6 @@ class SignalFeedView(APIView):
                 "limit": limit,
                 "has_more": offset + len(active) < active_total,
                 "pause": pause,
-                # Set only when a watched market has NO followed strategy behind it —
-                # the empty feed is then a config mismatch, not "nothing fired yet",
-                # and the UI can say which market and what to follow.
-                "coverage_gap": coverage_gap,
                 "trade_updates": trade_updates,
                 "resolved": SignalSerializer(resolved, many=True).data,
                 "disclaimer": "Informational only. Not financial advice.",
