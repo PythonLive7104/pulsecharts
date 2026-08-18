@@ -50,12 +50,39 @@ MAJORS = [
     ("XAU-USD", "GC=F", "Gold / US Dollar (Pro)", Symbol.MinPlan.PRO),
 ]
 
+# Candidate pairs, seeded INACTIVE (2026-08-15). Adding symbols is the only lever that
+# raises signal volume without loosening a gate — same strategies, same floors, wider
+# universe. But these are all crosses, and a cross spreads 3-5 pips against a major's
+# ~1. Forex only just clears its costs at 1 pip (break-even win rate ~55.5%), so a wide
+# spread can sink a pair whatever the signal quality — which is exactly how forex lost
+# money in the first place. So: seeded inactive, backtested with --spread-pct set to
+# THEIR spread, and activated one by one only if they clear the bar.
+# XAG-USD is here because gold (XAU-USD) was the best forex instrument measured (66.8%),
+# so the other precious metal is worth testing rather than assuming.
+CANDIDATES = [
+    ("AUD-CHF", "AUDCHF=X", "Australian Dollar / Swiss Franc (Pro)", Symbol.MinPlan.PRO),
+    ("CAD-CHF", "CADCHF=X", "Canadian Dollar / Swiss Franc (Pro)", Symbol.MinPlan.PRO),
+    ("EUR-NZD", "EURNZD=X", "Euro / New Zealand Dollar (Pro)", Symbol.MinPlan.PRO),
+    ("GBP-CAD", "GBPCAD=X", "British Pound / Canadian Dollar (Pro)", Symbol.MinPlan.PRO),
+    ("GBP-NZD", "GBPNZD=X", "British Pound / New Zealand Dollar (Pro)", Symbol.MinPlan.PRO),
+    ("NZD-CAD", "NZDCAD=X", "New Zealand Dollar / Canadian Dollar (Pro)", Symbol.MinPlan.PRO),
+    ("NZD-CHF", "NZDCHF=X", "New Zealand Dollar / Swiss Franc (Pro)", Symbol.MinPlan.PRO),
+    ("XAG-USD", "SI=F", "Silver / US Dollar (Pro)", Symbol.MinPlan.PRO),
+]
+
 # Forex sorts after crypto in the picker.
 _SORT_BASE = 10_000
 
 
 class Command(BaseCommand):
     help = "Seed the major forex pairs + gold (Yahoo Finance)."
+
+    def add_arguments(self, parser):
+        parser.add_argument(
+            "--with-candidates", action="store_true",
+            help="Also seed the CANDIDATE crosses, INACTIVE. They are not scanned until "
+                 "individually activated — backtest each with its own spread first.",
+        )
 
     def handle(self, *args, **options):
         created = 0
@@ -73,6 +100,24 @@ class Command(BaseCommand):
                 },
             )
             created += int(was_created)
+
+        if options.get("with_candidates"):
+            for j, (ticker, feed, name, min_plan) in enumerate(CANDIDATES):
+                # is_active=False on CREATE only — never re-deactivate a pair someone
+                # has since promoted after measuring it.
+                _, was_created = Symbol.objects.get_or_create(
+                    ticker=ticker,
+                    defaults={
+                        "asset_class": Symbol.AssetClass.FOREX,
+                        "feed_symbol": feed,
+                        "hl_coin": "",
+                        "display_name": name,
+                        "is_active": False,
+                        "sort_order": _SORT_BASE + 100 + j,
+                        "min_plan": min_plan,
+                    },
+                )
+                created += was_created
         self.stdout.write(
             self.style.SUCCESS(
                 f"Seeded {len(MAJORS)} forex/metal symbols ({created} new)."
