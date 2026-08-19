@@ -482,6 +482,32 @@ SIGNAL_FOREX_STRATEGIES = env.list(
 # Empty = deliver everything.
 SIGNAL_SHADOW_ASSET_CLASSES = env.list("SIGNAL_SHADOW_ASSET_CLASSES", default=[])
 
+# MARKET-LEADER regime gate for crypto mean-reversion. Blocks a fade that opposes
+# BTC's trend: no crypto SELL fades while BTC is running up, no BUY fades while it
+# falls. Trend strategies are never affected, and forex has no leader so it is exempt.
+#
+# Why the existing per-symbol ADX ceiling wasn't enough: it judges each coin alone, but
+# alts follow BTC — a coin can read "ranging" while the whole market moves one way. And
+# ADX is a 14-bar smoothed average, so it still reads ranging through the first leg of a
+# move, which is exactly when fades fire into it. On 2026-08-19 that produced 225 fade
+# stop-outs, 101 of them inside a single hour, all SELL, during a rally.
+#
+# Format "ema:N" (BTC more than N x ATR from its EMA50 — no smoothing lag) or "adx:N".
+# Empty disables. Measured over 22 symbols / 100 days / 1h, net of a 0.05% round trip:
+#     no gate   : BB Fade 56.1% n=1015 | VWAP Stretch 58.8% n=775 | RSI(2) 57.4% n=115
+#     ema:1.5   :         61.6% n=503  |              60.4% n=404 |         64.4% n=73
+#     ema:1.0   :         64.1% n=401  |              61.8% n=335 |         62.1% n=58
+#     adx:30    :         56.2% n=889  |              58.5% n=691 |         56.5% n=108
+# All three fades improve together under either EMA setting — mechanism, not noise.
+# ADX does nothing (fires on 28% of bars), confirming the lag diagnosis.
+#
+# ema:1.5 over ema:1.0 deliberately: 1.0 calls BTC "trending" on 66% of bars, which is
+# loose enough to block ordinary conditions, and keeps 25% less fade volume for a
+# comparable gain. COST: fades lose ~half their trades, the book ~27%. Per trade it
+# improves on both measures, but TOTAL edge only rises if you exit at TP1 (303R -> 318R);
+# holding the scale-out to TP3 it falls (641R -> 487R).
+SIGNAL_LEADER_GATE = env("SIGNAL_LEADER_GATE", default="")
+
 # Max concurrent signals sharing one CURRENCY EXPOSURE, per user (forex only).
 #
 # An FX pair is two currencies: SELL EUR-USD is short EUR and long USD. Every fade

@@ -246,6 +246,58 @@ def _replay_exits(direction, entry, stop0, tps, future, atr):
     return [st["r"] for st in state]
 
 
+
+def _parse_leader_gate(raw):
+    """'ema:1.5' / 'adx:30' -> (mode, threshold), or None."""
+    if not raw:
+        return None
+    mode, _, val = raw.partition(":")
+    mode = mode.strip().lower()
+    if mode not in ("ema", "adx"):
+        raise CommandError("--leader-gate expects ema:N or adx:N")
+    try:
+        return mode, float(val)
+    except ValueError:
+        raise CommandError("--leader-gate threshold must be a number") from None
+
+
+def _leader_timeline(candles, mode, thresh):
+    """[(bar_time, 'up'|'down'|None)] — the leader's trend as known AT each bar close.
+
+    None = not trending, so fades are unrestricted. Built once and reused across every
+    symbol; each signal bar looks up the latest entry at or before its own timestamp,
+    so the gate can never read a bar the signal couldn't have seen.
+    """
+    from apps.signals.indicators import _adx, _ema
+
+    closes = [c["close"] for c in candles]
+    ema50 = _ema(closes, 50)
+    out = []
+    for i in range(MIN_CANDLES, len(candles)):
+        window = candles[: i + 1]
+        state = None
+        if mode == "adx":
+            adx = _adx(window)
+            if adx is not None and adx > thresh:
+                # ADX gives strength but not direction — take direction from the EMA.
+                e = ema50[i]
+                if e:
+                    state = "up" if closes[i] > e else "down"
+        else:
+            e, atr = ema50[i], _atr_of(window)
+            if e and atr:
+                dist = (closes[i] - e) / atr
+                if abs(dist) > thresh:
+                    state = "up" if dist > 0 else "down"
+        out.append((candles[i]["time"], state))
+    return out
+
+
+def _atr_of(candles):
+    from apps.signals.indicators import _atr
+    return _atr(candles)
+
+
 def _outcome(direction, snap, future, asset_class="crypto", strategy_slug=None,
              atr_floor=None, atr_cap=None, rev_floor=None, rev_cap=None, eval_bars=None):
     """Deterministic levels + walk for a setup; None if degenerate or unresolved.
@@ -373,6 +425,15 @@ class Command(BaseCommand):
         parser.add_argument("--reversion-atr-cap", type=float, default=None,
                             help="MEAN-REVERSION stop cap in ATR multiples (live: "
                                  "SIGNAL_ATR_CAP_REVERSION).")
+        parser.add_argument("--leader-gate", default=None, metavar="ema:N | adx:N",
+                            help="Block MEAN-REVERSION signals that oppose the market "
+                                 "leader's trend (BTC for crypto). 'ema:1.5' = leader is "
+                                 "trending when price sits >1.5xATR from its EMA50; "
+                                 "'adx:30' = when leader ADX exceeds 30. Alts follow BTC, so "
+                                 "a per-symbol ADX ceiling can read 'ranging' while the whole "
+                                 "market runs one way — which is how 225 fades stopped out "
+                                 "together on 2026-08-19. Point-in-time: the leader is "
+                                 "evaluated on bars closed at or before the signal bar.")
         parser.add_argument("--spread-pct", type=float, default=None, metavar="PCT",
                             help="Model the round-trip SPREAD as a %% of price and report "
                                  "expectancy NET of it. Every other figure this command "
@@ -625,6 +686,26 @@ class Command(BaseCommand):
             + "…"
         )
 
+        # Market-leader trend timeline, built once and shared by every symbol. Alts
+        # follow BTC, so a per-symbol ADX ceiling can read "ranging" while the whole
+        # market runs one way — the gate this measures.
+        leader_gate = _parse_leader_gate(opts.get("leader_gate"))
+        leader_tl = None
+        if leader_gate:
+            lead = next((x for x in symbols if x.hl_coin == "BTC"), None)
+            if lead is None:
+                raise CommandError("--leader-gate needs BTC in the scanned symbol set")
+            try:
+                lc = get_candles(lead, timeframes[0], limit=opts["candles"])
+            except (requests.RequestException, ValueError):
+                raise CommandError("--leader-gate: could not fetch leader candles") from None
+            leader_tl = _leader_timeline(lc, *leader_gate)
+            trending = sum(1 for _t, st in leader_tl if st)
+            self.stdout.write(self.style.WARNING(
+                "Leader gate %s: BTC trending on %d of %d bars (%.0f%%) — fades opposing "
+                "it are blocked." % (opts["leader_gate"], trending, len(leader_tl),
+                                     100.0 * trending / max(len(leader_tl), 1))))
+
         series = 0
         for sym in symbols:
             for tf in timeframes:
@@ -645,7 +726,8 @@ class Command(BaseCommand):
                                  opts.get("min_confidence_reversion"),
                                  strategy_floors, by_session, by_symbol,
                                  opts.get("reversion_atr_floor"), opts.get("reversion_atr_cap"),
-                                 opts.get("eval_bars"), opts.get("spread_pct"))
+                                 opts.get("eval_bars"), opts.get("spread_pct"),
+                                 leader_tl)
                 series += 1
                 self.stdout.write(f"  · {sym.ticker} {tf}", ending="\r")
             if llm_on and budget["left"] <= 0:
@@ -739,7 +821,7 @@ class Command(BaseCommand):
                     atr_floor=None, atr_cap=None, rev_adx_max=None,
                     min_confidence_reversion=None, strategy_floors=None,
                     by_session=None, by_symbol=None, rev_floor=None, rev_cap=None,
-                    eval_bars=None, spread_pct=None):
+                    eval_bars=None, spread_pct=None, leader_tl=None):
         ticker = sym.ticker
         n = len(candles)
         threshold = settings.SIGNAL_MIN_CONFIDENCE
@@ -752,6 +834,7 @@ class Command(BaseCommand):
         # (blocks); before the first entry = no data yet (fails open).
         htf_timeline = self._htf_timeline(sym, tf, htf_limit) if htf_structure_on else None
         hp = -1  # pointer into htf_timeline; -1 = nothing usable yet
+        lp = -1  # pointer into leader_tl, same point-in-time discipline
         # Same point-in-time treatment for the HTF 200-EMA bias (--htf-bias).
         bias_timeline = (self._htf_bias_timeline(sym, tf, htf_limit)
                          if (htf_bias_on or reversion_htf_on) else None)
@@ -823,6 +906,19 @@ class Command(BaseCommand):
                         and svc.slug not in EMA_STACK_EXEMPT):
                     want = "up" if direction == "BUY" else "down"
                     if htf_struct_now != want:  # opposite trend or choppy (None) → skip
+                        continue
+
+                # Market-leader regime gate: a fade opposing the leader's trend is
+                # blocked. Point-in-time — advance a pointer to the latest leader bar
+                # closed at or before THIS bar, never past it.
+                if leader_tl is not None and pregate.kind_of(svc.slug) == pregate.KIND_REVERSION:
+                    bar_t = candles[i]["time"]
+                    while lp + 1 < len(leader_tl) and leader_tl[lp + 1][0] <= bar_t:
+                        lp += 1
+                    lead_state = leader_tl[lp][1] if lp >= 0 else None
+                    if lead_state == "up" and direction == "SELL":
+                        continue
+                    if lead_state == "down" and direction == "BUY":
                         continue
 
                 # Conviction floor — the same score the live feed gates on. Mean

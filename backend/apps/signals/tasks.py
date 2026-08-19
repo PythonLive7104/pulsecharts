@@ -173,6 +173,57 @@ def _regime_ok(sym, tf: str, direction: str, indicators: dict, htf_cache: dict,
     return direction == htf_dir
 
 
+def leader_trend(timeframe: str) -> str | None:
+    """BTC's trend right now: 'up', 'down', or None when it isn't trending.
+
+    None means fades are unrestricted, so every failure path here — BTC missing, a
+    candle fetch that errors, a malformed setting — fails OPEN. A regime gate that
+    silently blocked every fade because one fetch timed out would be far worse than one
+    that occasionally lets a trade through.
+    """
+    raw = (getattr(settings, "SIGNAL_LEADER_GATE", "") or "").strip()
+    if not raw:
+        return None
+    mode, _, val = raw.partition(":")
+    try:
+        thresh = float(val)
+    except ValueError:
+        logger.warning("SIGNAL_LEADER_GATE malformed (%r) — gate disabled", raw)
+        return None
+
+    from apps.market_data.models import Symbol
+
+    from .indicators import _adx, _atr, _ema
+
+    lead = Symbol.objects.filter(asset_class="crypto", hl_coin="BTC").first()
+    if lead is None:
+        return None
+    try:
+        candles = get_candles(lead, timeframe, limit=120)
+    except (requests.RequestException, ValueError):
+        logger.warning("leader gate: BTC candle fetch failed — gate open this scan")
+        return None
+    if len(candles) < 60:
+        return None
+
+    closes = [c["close"] for c in candles]
+    ema50 = _ema(closes, 50)[-1]
+    if not ema50:
+        return None
+    if mode.strip().lower() == "adx":
+        adx = _adx(candles)
+        if adx is None or adx <= thresh:
+            return None
+        return "up" if closes[-1] > ema50 else "down"
+    atr = _atr(candles)
+    if not atr:
+        return None
+    dist = (closes[-1] - ema50) / atr
+    if abs(dist) <= thresh:
+        return None
+    return "up" if dist > 0 else "down"
+
+
 def run_scan(symbol_limit: int | None = None, use_pregate: bool | None = None) -> dict:
     """Evaluate active strategies across symbols/timeframes. Returns a summary
     including LLM call/token stats for cost visibility."""
@@ -279,6 +330,7 @@ def run_scan(symbol_limit: int | None = None, use_pregate: bool | None = None) -
             ] = s["last"]
 
     created = scanned = deduped = cooled = invalidated = regime_skipped = 0
+    leader_blocked = 0
     htf_struct_skipped = 0
     stats = {"gated": 0, "llm_calls": 0, "in_tokens": 0, "out_tokens": 0}
     regime_on = settings.SIGNAL_REGIME_FILTER_ENABLED
@@ -287,6 +339,11 @@ def run_scan(symbol_limit: int | None = None, use_pregate: bool | None = None) -
     htf_struct_cache: dict[tuple[int, str], str | None] = {}  # (symbol_id, htf) -> structure
     scan_hour_utc = timezone.now().astimezone(dt_timezone.utc).hour
     fx_only = set(settings.SIGNAL_FOREX_STRATEGIES or ())
+    from .pregate import KIND_REVERSION, kind_of
+    # One BTC fetch per timeframe per scan, not one per symbol.
+    leader_by_tf = {tf: leader_trend(tf) for tf in settings.SIGNAL_TIMEFRAMES}
+    if any(leader_by_tf.values()):
+        logger.info("leader gate active: %s", leader_by_tf)
     forex_is_open = forex_market_open()  # evaluated once per scan; also our
     # "is it the weekend window" signal (Fri 21:00 → Sun 21:00 UTC).
     for sym in symbols:
@@ -372,6 +429,22 @@ def run_scan(symbol_limit: int | None = None, use_pregate: bool | None = None) -
                 ):
                     htf_struct_skipped += 1
                     continue
+                # Market-leader regime gate (crypto mean-reversion only). Alts follow
+                # BTC, so a fade opposing BTC's trend is fighting the whole market —
+                # that is how 225 fades stopped out together on 2026-08-19, 101 inside
+                # one hour. The per-symbol ADX ceiling misses it twice over: it judges
+                # each coin alone, and ADX lags through the first leg of a move.
+                # Forex has no leader, trend strategies WANT a trend, and custom
+                # strategies own their logic — all three exempt.
+                if (
+                    cand is not None and not sym.is_forex and not svc.is_custom
+                    and kind_of(svc.slug) == KIND_REVERSION
+                ):
+                    lead = leader_by_tf.get(tf)
+                    if (lead == "up" and cand == "SELL") or (lead == "down" and cand == "BUY"):
+                        leader_blocked += 1
+                        continue
+
                 scanned += 1
                 try:
                     sig = generate_signal(
@@ -434,7 +507,7 @@ def run_scan(symbol_limit: int | None = None, use_pregate: bool | None = None) -
         "deduped": deduped,               # skipped: same-direction call still open (free)
         "cooled": cooled,                 # skipped: same-direction re-entry within cooldown (free)
         "invalidated": invalidated,       # stale opposite calls closed on a trend flip
-        "regime_skipped": regime_skipped,  # skipped: ranging market / HTF disagreement (free)
+        "regime_skipped": regime_skipped, "leader_blocked": leader_blocked,  # skipped: ranging market / HTF disagreement (free)
         "htf_struct_skipped": htf_struct_skipped,  # skipped: HTF swing structure disagreed (free)
         "gated": stats["gated"],          # skipped before any LLM call (free)
         "llm_calls": stats["llm_calls"],  # actual paid OpenAI calls
