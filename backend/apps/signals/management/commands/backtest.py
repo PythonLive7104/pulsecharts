@@ -20,11 +20,14 @@ Two modes:
 No database writes. Caveats are printed in the output footer — read them.
 """
 
+import json
+import os
+
 import requests
 from django.conf import settings
 from django.core.management.base import BaseCommand, CommandError
 
-from apps.market_data.feeds import get_candles
+from apps.market_data.feeds import get_candles as _fetch_candles
 from apps.market_data.models import Symbol
 from apps.signals.engine import generate_judgment
 from apps.signals.evaluate import walk
@@ -39,6 +42,40 @@ from apps.signals.pregate import (
     passes_pregate,
 )
 from apps.signals.tasks import _HTF_MAP
+
+# --- frozen candle snapshot (--cache-dir) -----------------------------------
+# Every run of this command refetches live candles, so the N-bar window slides
+# forward between runs. A sweep comparing settings back-to-back was therefore
+# comparing them on DIFFERENT data: run an ADX 25 pass and an ADX 28 pass an hour
+# apart and the reversion rows move too, even though the ADX floor cannot touch
+# them (fades are bounded by --reversion-adx-max, a separate knob). That drift is
+# indistinguishable in the output from a real effect of the setting being swept.
+#
+# --cache-dir freezes one snapshot to disk and replays every run against it, so a
+# sweep varies exactly the one parameter under test. Reuse the same directory for
+# every arm of a sweep; delete it to pull fresh data.
+_CACHE_DIR: str | None = None
+
+
+def get_candles(symbol, interval="1h", limit=300):
+    """``feeds.get_candles``, memoised to ``--cache-dir`` when one is set."""
+    if _CACHE_DIR is None:
+        return _fetch_candles(symbol, interval, limit=limit)
+    path = os.path.join(_CACHE_DIR, f"{symbol.id}_{interval}_{limit}.json")
+    try:
+        with open(path) as fh:
+            return json.load(fh)
+    except (OSError, ValueError):
+        pass
+    candles = _fetch_candles(symbol, interval, limit=limit)
+    tmp = f"{path}.tmp"
+    try:
+        with open(tmp, "w") as fh:
+            json.dump(candles, fh)
+        os.replace(tmp, path)  # atomic: a killed run can't leave a truncated file
+    except OSError:
+        pass  # cache is an optimisation; a write failure must not fail the run
+    return candles
 
 MIN_CANDLES = 210  # enough history for the 200 EMA / swing windows (matches tasks.py)
 
@@ -512,6 +549,12 @@ class Command(BaseCommand):
                             help="Override the overextension guard (ATR stretch beyond EMA21 "
                                  "that blocks a chase entry). 0 disables; live default is 2.0. "
                                  "Sweep to tune, e.g. --overext 1.5.")
+        parser.add_argument("--cache-dir", default=None, metavar="DIR",
+                            help="Freeze candles to DIR and replay every run against that "
+                                 "snapshot. Without it each run refetches, so the window "
+                                 "slides between runs and a sweep compares settings on "
+                                 "different data. Pass the SAME dir to every arm of a "
+                                 "sweep; delete it for fresh data.")
         parser.add_argument("--adx-min", type=float, default=None,
                             help="Apply an ADX floor (proxy for the live regime filter's ADX "
                                  "gate, which the backtest otherwise SKIPS). Only setups with "
@@ -519,6 +562,10 @@ class Command(BaseCommand):
                                  "NOTE: ADX-only; live also has the EMA-separation chop filter.")
 
     def handle(self, *args, **opts):
+        if opts.get("cache_dir"):
+            global _CACHE_DIR
+            _CACHE_DIR = opts["cache_dir"]
+            os.makedirs(_CACHE_DIR, exist_ok=True)
         from apps.signals import pregate
         if opts.get("ema_gate"):
             pregate.EMA_GATE_MODE = opts["ema_gate"]

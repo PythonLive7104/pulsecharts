@@ -79,6 +79,18 @@ class Command(BaseCommand):
                                  "different fixes (drop the timeframe vs disable the "
                                  "strategies) and the flat by-timeframe table can't tell "
                                  "them apart.")
+        parser.add_argument("--by-strategy-direction", action="store_true",
+                            help="Cross-tab strategy x BUY/SELL. A directional regime "
+                                 "(everything trending one way) hits fades and trend "
+                                 "strategies differently, so a flat by-direction table "
+                                 "can't say whether the weak side is one strategy selling "
+                                 "into a rally or every strategy doing it — and those need "
+                                 "opposite fixes.")
+        parser.add_argument("--by-day", action="store_true",
+                            help="Break down per UTC day, split BUY/SELL. Shows whether a "
+                                 "weak side is a persistent bias or one bad session, and "
+                                 "whether a config change actually moved anything after "
+                                 "the date it went live.")
         parser.add_argument("--by-symbol", action="store_true",
                             help="Also break down per symbol — finds which coins carry the losses.")
         parser.add_argument("--include-open", action="store_true",
@@ -122,7 +134,7 @@ class Command(BaseCommand):
 
         overall = _blank("ALL DELIVERED")
         by_strategy, by_tf, by_symbol, by_dir, by_conf = {}, {}, {}, {}, {}
-        by_strat_tf = {}
+        by_strat_tf, by_strat_dir, by_day = {}, {}, {}
         invalidated = 0
 
         for s in resolved:
@@ -146,6 +158,17 @@ class Command(BaseCommand):
                 key = (s.service.name, s.timeframe)
                 _record(by_strat_tf.setdefault(key, _blank(f"{s.service.name} · {s.timeframe}")),
                         s.best_tp, won)
+            if opts["by_strategy_direction"]:
+                key = (s.service.name, s.direction)
+                _record(by_strat_dir.setdefault(key, _blank(f"{s.service.name} · {s.direction}")),
+                        s.best_tp, won)
+            if opts["by_day"]:
+                # Bucketed by GENERATION day, not delivery: a config change alters what
+                # the scan produces, so generation time is what lines up with the date
+                # it went live.
+                day = s.generated_at.strftime("%Y-%m-%d")
+                _record(by_day.setdefault((day, s.direction),
+                                          _blank(f"{day} {s.direction}")), s.best_tp, won)
             if opts["by_confluence"]:
                 # Null = delivered before the count was stored. Bucketed separately
                 # rather than assumed to be 1, which would fabricate the comparison.
@@ -186,6 +209,19 @@ class Command(BaseCommand):
                     w(_line(b))
                 if len(rows) < 2:
                     w("      (one timeframe only — nothing to compare)")
+        if opts["by_strategy_direction"]:
+            w(self.style.MIGRATE_HEADING("  By strategy x direction"))
+            for name in sorted({k[0] for k in by_strat_dir}):
+                rows = [by_strat_dir[k] for k in sorted(by_strat_dir) if k[0] == name]
+                for b in rows:
+                    w(_line(b))
+                if len(rows) < 2:
+                    w("      (one direction only — nothing to compare)")
+        if opts["by_day"]:
+            w(self.style.MIGRATE_HEADING("  By day x direction (UTC, generation date)"))
+            for day in sorted({k[0] for k in by_day}):
+                for b in [by_day[k] for k in sorted(by_day) if k[0] == day]:
+                    w(_line(b))
         if opts["by_symbol"]:
             w(self.style.MIGRATE_HEADING("  By symbol (worst first)"))
             for b in sorted(by_symbol.values(), key=lambda x: x["r"] / max(x["n"], 1)):
