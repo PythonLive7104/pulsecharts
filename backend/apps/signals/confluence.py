@@ -315,6 +315,54 @@ def cap_currency_exposure(reps: list, *, already_open=()) -> list:
     return kept
 
 
+# --- correlated-direction cap (crypto) --------------------------------------
+# The currency cap above cannot protect crypto: a "BTC-USD" ticker has no second
+# traded currency to net against, so netting every crypto signal into one USD
+# bucket would collapse the whole book into a single slot.
+#
+# But alts do co-move with BTC, and the exposure is real. On 2026-08-19 the feed
+# delivered 92 SELL trades in one day and 65 of them lost (29.3%, -0.51R): not 92
+# independent calls, one bet on one market move, sent 92 times. Every other day in
+# that window ran SELL at 84-100%. A single correlated cluster is what turns a good
+# fortnight into a bad one, and no confidence floor or per-symbol filter can see it —
+# each of those 92 signals was individually reasonable.
+#
+# So the cap is on CONCURRENT SAME-DIRECTION crypto exposure per user, counted across
+# scans (not merely within one batch), which is the grain the risk actually has.
+# Direction is the whole key: unlike forex there is no pair to decompose, and BTC
+# leading the market means same-direction alt trades rise and fall together.
+
+
+def cap_crypto_direction(reps: list, *, already_open=()) -> list:
+    """Drop crypto signals that would push same-direction open exposure past
+    ``SIGNAL_MAX_CRYPTO_PER_DIRECTION``.
+
+    Mirrors ``cap_currency_exposure``: order is preserved and the FIRST signal to
+    claim a slot wins, so callers keep control of priority (the feed sorts
+    newest-first, Telegram oldest-first). Forex is untouched here — it has its own,
+    finer cap. 0 disables.
+    """
+    cap = int(getattr(settings, "SIGNAL_MAX_CRYPTO_PER_DIRECTION", 0) or 0)
+    if cap <= 0:
+        return reps
+
+    counts: dict = {}
+    for sig in already_open:
+        if getattr(sig.symbol, "asset_class", "crypto") == "crypto":
+            counts[sig.direction] = counts.get(sig.direction, 0) + 1
+
+    kept = []
+    for sig in reps:
+        if getattr(sig.symbol, "asset_class", "crypto") != "crypto":
+            kept.append(sig)  # forex is capped by cap_currency_exposure instead
+            continue
+        if counts.get(sig.direction, 0) >= cap:
+            continue  # this side of the market is already fully committed
+        counts[sig.direction] = counts.get(sig.direction, 0) + 1
+        kept.append(sig)
+    return kept
+
+
 def shadowed_asset_classes() -> set:
     """Asset classes generated + evaluated but never delivered.
 

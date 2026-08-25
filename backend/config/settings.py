@@ -527,6 +527,22 @@ SIGNAL_LEADER_GATE = env("SIGNAL_LEADER_GATE", default="")
 # to net against, so the same rule would collapse every crypto signal into one bucket.
 SIGNAL_MAX_PER_CURRENCY = env.int("SIGNAL_MAX_PER_CURRENCY", default=1)
 
+# Crypto's version of the same risk, capped on DIRECTION rather than currency.
+# "BTC-USD" has no second currency to decompose, but alts follow BTC, so N open
+# same-direction crypto calls are one bet on one market move made N times.
+#
+# Measured: on 2026-08-19 the feed delivered 92 SELL trades in a single day and 65
+# lost — 29.3%, -0.51R. Every other day in that fortnight ran SELL at 84-100%, and
+# that one day dragged the 14-day SELL figure from ~74% down to 51.6%. No confidence
+# floor could have caught it: each of the 92 was individually a reasonable signal.
+# What made it expensive was that they were all the SAME signal.
+#
+# Caps CONCURRENT open same-direction crypto exposure per user, counted across scans.
+# Delivery-side like confluence — generation is untouched, so it is fully reversible.
+# 0 disables. Sizing note: this is a ceiling on simultaneous open trades, not a daily
+# limit; as trades resolve, slots free up.
+SIGNAL_MAX_CRYPTO_PER_DIRECTION = env.int("SIGNAL_MAX_CRYPTO_PER_DIRECTION", default=0)
+
 SIGNAL_MIN_CONFIDENCE_BY_STRATEGY = _parse_strategy_floors(
     env("SIGNAL_MIN_CONFIDENCE_BY_STRATEGY", default="")
 )

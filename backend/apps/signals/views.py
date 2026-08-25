@@ -494,6 +494,17 @@ class SignalFeedView(APIView):
                     symbol__asset_class="forex",
                 ).select_related("symbol"),
             )
+            # Same idea one asset class over: alts co-move with BTC, so N open
+            # same-direction crypto calls are one bet N times. Counts the user's
+            # still-open crypto trades so the cap holds across scans.
+            reps = confluence.cap_crypto_direction(
+                reps,
+                already_open=Signal.objects.filter(
+                    deliveries__user=user,
+                    outcome=Signal.Outcome.PENDING,
+                    symbol__asset_class="crypto",
+                ).select_related("symbol"),
+            )
             if not unlimited:
                 reps = reps[:remaining]
             SignalDelivery.objects.bulk_create(

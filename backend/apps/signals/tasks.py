@@ -1215,6 +1215,16 @@ def run_telegram_push() -> dict:
                 symbol__asset_class="forex",
             ).select_related("symbol"),
         )
+        # Crypto's correlated-direction cap. Telegram is where a burst is felt most —
+        # 92 pushes in a day is not a feed, it is an alarm going off.
+        reps = confluence.cap_crypto_direction(
+            reps,
+            already_open=Signal.objects.filter(
+                telegram_deliveries__user=user,
+                outcome=Signal.Outcome.PENDING,
+                symbol__asset_class="crypto",
+            ).select_related("symbol"),
+        )
         if not unlimited:
             reps = reps[:remaining]
 
