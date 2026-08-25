@@ -549,6 +549,11 @@ class Command(BaseCommand):
                             help="Override the overextension guard (ATR stretch beyond EMA21 "
                                  "that blocks a chase entry). 0 disables; live default is 2.0. "
                                  "Sweep to tune, e.g. --overext 1.5.")
+        parser.add_argument("--leader-gate-all", action="store_true",
+                            help="Apply --leader-gate to EVERY strategy, not just fades "
+                                 "(live gates reversion only). A trend SELL on an alt while "
+                                 "the leader rallies is fighting the same market a fade is; "
+                                 "this measures whether exempting trend is costing anything.")
         parser.add_argument("--cache-dir", default=None, metavar="DIR",
                             help="Freeze candles to DIR and replay every run against that "
                                  "snapshot. Without it each run refetches, so the window "
@@ -774,7 +779,7 @@ class Command(BaseCommand):
                                  strategy_floors, by_session, by_symbol,
                                  opts.get("reversion_atr_floor"), opts.get("reversion_atr_cap"),
                                  opts.get("eval_bars"), opts.get("spread_pct"),
-                                 leader_tl)
+                                 leader_tl, opts.get("leader_gate_all", False))
                 series += 1
                 self.stdout.write(f"  · {sym.ticker} {tf}", ending="\r")
             if llm_on and budget["left"] <= 0:
@@ -868,7 +873,8 @@ class Command(BaseCommand):
                     atr_floor=None, atr_cap=None, rev_adx_max=None,
                     min_confidence_reversion=None, strategy_floors=None,
                     by_session=None, by_symbol=None, rev_floor=None, rev_cap=None,
-                    eval_bars=None, spread_pct=None, leader_tl=None):
+                    eval_bars=None, spread_pct=None, leader_tl=None,
+                    leader_all=False):
         ticker = sym.ticker
         n = len(candles)
         threshold = settings.SIGNAL_MIN_CONFIDENCE
@@ -958,7 +964,9 @@ class Command(BaseCommand):
                 # Market-leader regime gate: a fade opposing the leader's trend is
                 # blocked. Point-in-time — advance a pointer to the latest leader bar
                 # closed at or before THIS bar, never past it.
-                if leader_tl is not None and pregate.kind_of(svc.slug) == pregate.KIND_REVERSION:
+                if leader_tl is not None and (
+                        leader_all
+                        or pregate.kind_of(svc.slug) == pregate.KIND_REVERSION):
                     bar_t = candles[i]["time"]
                     while lp + 1 < len(leader_tl) and leader_tl[lp + 1][0] <= bar_t:
                         lp += 1
