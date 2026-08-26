@@ -150,7 +150,12 @@ def _record(bucket, res):
     if best_tp >= 1:
         bucket["wins"] += 1
         bucket["tp_dist"][best_tp] += 1
-        bucket["r_tp1"] += 1.0 - cost                     # conservative: all out at TP1
+        # Priced off the LADDER, not a hardcoded 1R: with --tp-multiples the whole
+        # point is that TP1 moves, and crediting a 0.3R target as +1.0R made every
+        # tighter ladder look better the closer TP1 got — an artifact that inverted
+        # the comparison it exists to make. Unchanged for the default 1/2/3 ladder,
+        # where TP_MULTIPLES[1] is 1.0.
+        bucket["r_tp1"] += TP_MULTIPLES[1] - cost         # conservative: all out at TP1
         bucket["r_scale"] += SCALEOUT_R[best_tp] - cost   # realized: 50/25/25 scale-out
         bucket["r_best"] += TP_MULTIPLES[best_tp] - cost  # optimistic: all out at best TP
     else:
@@ -624,7 +629,7 @@ class Command(BaseCommand):
             _levels.TP_MULTIPLES.clear(); _levels.TP_MULTIPLES.update(new)
             TP_MULTIPLES.clear(); TP_MULTIPLES.update(new)
             SCALEOUT_R.clear()
-            SCALEOUT_R.update({1: 0.5 * new[1 if False else 1],
+            SCALEOUT_R.update({1: 0.5 * new[1],
                                2: 0.5 * new[1] + 0.25 * new[2],
                                3: 0.5 * new[1] + 0.25 * new[2] + 0.25 * new[3]})
             self.stdout.write(self.style.WARNING(
