@@ -363,6 +363,47 @@ def cap_crypto_direction(reps: list, *, already_open=()) -> list:
     return kept
 
 
+# --- entry freshness --------------------------------------------------------
+# See SIGNAL_SUPPRESS_PROGRESSED / SIGNAL_MAX_DELIVERY_AGE_BARS in settings for why.
+# Both are expressed as a Q so they compose into the candidate query rather than
+# filtering in Python after the rows are already loaded.
+
+_BAR_SECONDS = {
+    "1m": 60, "3m": 180, "5m": 300, "15m": 900, "30m": 1800,
+    "1h": 3600, "2h": 7200, "4h": 14400, "8h": 28800, "12h": 43200,
+    "1d": 86400,
+}
+
+
+def fresh_entry_q(now):
+    """Filter restricting delivery to signals still usable as an ENTRY.
+
+    Returns a Q that is empty (matches everything) when both guards are off, so the
+    caller can always AND it in. ``now`` is passed rather than read here so one
+    request uses a single consistent clock.
+    """
+    from datetime import timedelta
+
+    q = Q()
+    if getattr(settings, "SIGNAL_SUPPRESS_PROGRESSED", True):
+        # best_tp >= 1 on a PENDING row = TP1 already tagged and the trade is still
+        # running. Whatever that is, it is not a fresh entry at the printed price.
+        q &= Q(best_tp=0)
+
+    bars = int(getattr(settings, "SIGNAL_MAX_DELIVERY_AGE_BARS", 0) or 0)
+    if bars > 0:
+        # Per-timeframe cutoff: the same bar count means a different wall-clock age on
+        # 1h than on 4h, which is the point — staleness is measured in bars, not hours.
+        age_q = Q()
+        for tf, secs in _BAR_SECONDS.items():
+            age_q |= Q(timeframe=tf, generated_at__gte=now - timedelta(seconds=bars * secs))
+        # A timeframe absent from _BAR_SECONDS has no cutoff rather than being dropped:
+        # an unknown frame must not silently disappear from the feed.
+        age_q |= ~Q(timeframe__in=list(_BAR_SECONDS))
+        q &= age_q
+    return q
+
+
 def shadowed_asset_classes() -> set:
     """Asset classes generated + evaluated but never delivered.
 

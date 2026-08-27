@@ -543,6 +543,30 @@ SIGNAL_MAX_PER_CURRENCY = env.int("SIGNAL_MAX_PER_CURRENCY", default=1)
 # limit; as trades resolve, slots free up.
 SIGNAL_MAX_CRYPTO_PER_DIRECTION = env.int("SIGNAL_MAX_CRYPTO_PER_DIRECTION", default=0)
 
+# --- entry freshness -------------------------------------------------------
+# A signal card prints the entry price it was generated at. The feed surfaced
+# candidates up to FEED_LOOKBACK (2 days) old, so on a 1h timeframe a user could be
+# handed a "new" trade whose entry was 48 bars behind the market — the setup already
+# played out, and entering there takes the full 1R of risk for whatever reward is
+# left. AUTO_TRADE_MAX_SIGNAL_AGE_SEC has refused signals older than 10 minutes for
+# the executor since it was built; the human-facing feed had no equivalent.
+#
+# This does NOT change the measured win rate — the backtest enters at the generated
+# price. It closes the gap between that measurement and what a user actually gets,
+# which is the only gap that shows up in their P&L.
+#
+# Two independent guards:
+#
+# 1. Progressed calls. The evaluator updates Signal.best_tp on STILL-PENDING rows, so
+#    best_tp >= 1 means price already reached TP1 and kept going. That is not an entry
+#    any more, it is somebody else's open trade. Suppressed for NEW deliveries only —
+#    a user who already received it keeps seeing it progress in their feed.
+SIGNAL_SUPPRESS_PROGRESSED = env.bool("SIGNAL_SUPPRESS_PROGRESSED", default=True)
+# 2. Age, counted in BARS of the signal's own timeframe so one number means the same
+#    thing on 1h and 4h. 0 disables. 4 bars on 1h = 4 hours: long enough to survive a
+#    scan gap or a quota deferral, short enough that the entry is still near the market.
+SIGNAL_MAX_DELIVERY_AGE_BARS = env.int("SIGNAL_MAX_DELIVERY_AGE_BARS", default=0)
+
 SIGNAL_MIN_CONFIDENCE_BY_STRATEGY = _parse_strategy_floors(
     env("SIGNAL_MIN_CONFIDENCE_BY_STRATEGY", default="")
 )

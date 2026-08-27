@@ -66,3 +66,57 @@ class CapCryptoDirectionTests(SimpleTestCase):
         # oldest-first), so the cap must never reorder.
         a, b, c = _sig("BUY"), _sig("BUY"), _sig("BUY")
         self.assertEqual(cap_crypto_direction([a, b, c]), [a, b])
+
+
+class FreshEntryQTests(SimpleTestCase):
+    """`fresh_entry_q` builds the filter; these assert the Q's SHAPE rather than
+    hitting the DB, since the guards are pure configuration logic."""
+
+    @override_settings(SIGNAL_SUPPRESS_PROGRESSED=False, SIGNAL_MAX_DELIVERY_AGE_BARS=0)
+    def test_both_off_is_empty_q(self):
+        from django.utils import timezone
+
+        from apps.signals.confluence import fresh_entry_q
+
+        # An empty Q must match everything, so callers can AND it in unconditionally.
+        self.assertEqual(len(fresh_entry_q(timezone.now())), 0)
+
+    @override_settings(SIGNAL_SUPPRESS_PROGRESSED=True, SIGNAL_MAX_DELIVERY_AGE_BARS=0)
+    def test_progressed_guard_filters_best_tp(self):
+        from django.utils import timezone
+
+        from apps.signals.confluence import fresh_entry_q
+
+        self.assertIn(("best_tp", 0), fresh_entry_q(timezone.now()).children)
+
+    @override_settings(SIGNAL_SUPPRESS_PROGRESSED=False, SIGNAL_MAX_DELIVERY_AGE_BARS=4)
+    def test_age_guard_scales_with_timeframe(self):
+        from datetime import timedelta
+
+        from django.utils import timezone
+
+        from apps.signals.confluence import fresh_entry_q
+
+        now = timezone.now()
+        q = fresh_entry_q(now)
+        # Flatten to (timeframe, cutoff) pairs and confirm 4h's window is 4x 1h's.
+        cutoffs = {}
+        for child in q.children:
+            pairs = dict(getattr(child, "children", []) or [])
+            tf = pairs.get("timeframe")
+            if tf:
+                cutoffs[tf] = pairs["generated_at__gte"]
+        self.assertAlmostEqual(
+            (now - cutoffs["1h"]).total_seconds(), 4 * 3600, delta=2)
+        self.assertAlmostEqual(
+            (now - cutoffs["4h"]).total_seconds(), 4 * 14400, delta=2)
+
+    @override_settings(SIGNAL_SUPPRESS_PROGRESSED=False, SIGNAL_MAX_DELIVERY_AGE_BARS=4)
+    def test_unknown_timeframe_is_not_dropped(self):
+        from django.utils import timezone
+
+        from apps.signals.confluence import fresh_entry_q
+
+        # An unmapped frame gets no cutoff rather than vanishing from the feed.
+        rendered = str(fresh_entry_q(timezone.now()))
+        self.assertIn("NOT", rendered.upper())

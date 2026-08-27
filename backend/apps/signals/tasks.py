@@ -1185,6 +1185,7 @@ def run_telegram_push() -> dict:
         candidates = list(
             Signal.objects.filter(
                 confluence.deliverable_q(),  # custom strategies bypass the conf floor
+                confluence.fresh_entry_q(now),  # not already run to TP1 / not stale
                 service_id__in=followed,
                 symbol_id__in=watched,
                 direction__in=[Signal.Direction.BUY, Signal.Direction.SELL],
