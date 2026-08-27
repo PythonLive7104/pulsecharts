@@ -32,6 +32,11 @@ SETTINGS = [
     ("SIGNAL_FOREX_STRATEGIES", "SIGNAL_FOREX_STRATEGIES"),
     ("SIGNAL_MAX_PER_CURRENCY", "SIGNAL_MAX_PER_CURRENCY"),
     ("SIGNAL_MAX_CRYPTO_PER_DIRECTION", "SIGNAL_MAX_CRYPTO_PER_DIRECTION"),
+    # Was missing from this list, so `signal_config` reported nothing for the single
+    # highest-impact gate measured on crypto (fades opposing BTC's trend, +2.6 points
+    # on Bollinger Fade) — the exact "is it actually on in production?" question this
+    # command exists to answer.
+    ("SIGNAL_LEADER_GATE", "SIGNAL_LEADER_GATE"),
     ("SIGNAL_SUPPRESS_PROGRESSED", "SIGNAL_SUPPRESS_PROGRESSED"),
     ("SIGNAL_MAX_DELIVERY_AGE_BARS", "SIGNAL_MAX_DELIVERY_AGE_BARS"),
     ("SIGNAL_SHADOW_ASSET_CLASSES", "SIGNAL_SHADOW_ASSET_CLASSES"),
