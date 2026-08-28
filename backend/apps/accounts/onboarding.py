@@ -72,8 +72,9 @@ def provision_default_setup(user, as_plan: str | None = None, include_forex: boo
     """Seed `user` with a default watchlist + followed strategies for their plan.
 
     - Watchlist: the top N active *crypto* symbols (by curated sort order), where
-      N is the plan's `default_watchlist`. N = -1 (Pro) means every active symbol,
-      forex included.
+      N is the plan's `default_watchlist`. N = -1 (UNLIMITED, Pro) means every
+      active symbol, forex included; N = -2 (ALL_CRYPTO, Starter) means every
+      active crypto symbol and no forex.
     - Strategies: the top N active strategies by priority, where N is the plan's
       `default_strategies` (-1 = every active strategy).
 
@@ -101,11 +102,16 @@ def provision_default_setup(user, as_plan: str | None = None, include_forex: boo
     want_symbols = plan.get("default_watchlist", 0)
     added_symbols = 0
     if want_symbols:
-        # -1 = "every symbol we track" (Pro). Unlike the numeric tiers that seed a
-        # crypto-only top-N, this includes forex — it mirrors an uncapped
-        # watchlist_limit, so the seeded list IS the whole roster.
-        all_symbols = want_symbols == -1
-        if all_symbols:
+        # Two "everything" sentinels, and the difference is forex:
+        #   UNLIMITED  (-1, Pro)     — the whole roster, FX pairs included.
+        #   ALL_CRYPTO (-2, Starter) — every crypto symbol, no forex.
+        # Numeric tiers seed a crypto-only top-N. Anything unrecognised and negative
+        # would slice as crypto_qs[:negative] and silently seed almost nothing, so
+        # both sentinels are matched explicitly.
+        from apps.accounts.plans import ALL_CRYPTO, UNLIMITED
+
+        all_symbols = want_symbols in (UNLIMITED, ALL_CRYPTO)
+        if want_symbols == UNLIMITED:
             include_forex = True
         existing_ids = set(
             WatchlistItem.objects.filter(user=user).values_list("symbol_id", flat=True)

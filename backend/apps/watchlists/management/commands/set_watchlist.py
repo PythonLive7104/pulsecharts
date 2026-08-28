@@ -94,7 +94,10 @@ class Command(BaseCommand):
                 + ", ".join(inactive)))
 
         limit = watchlist_limit_for(user)
-        if len(ordered) > limit:
+        # -1 = unlimited (Pro, and Starter since it ships the whole crypto roster).
+        # Without this guard `len(ordered) > -1` is true for ANY non-empty list, so
+        # the command rejected every watchlist on exactly the plans that have no cap.
+        if limit != -1 and len(ordered) > limit:
             raise CommandError(
                 f"{len(ordered)} symbols exceeds this user's plan limit of {limit}.")
 

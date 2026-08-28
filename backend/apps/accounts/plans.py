@@ -26,6 +26,16 @@ FREE = "free"
 STARTER = "starter"
 PRO = "pro"
 
+# Sentinel sizes for `default_watchlist` / `watchlist_limit`.
+#   UNLIMITED  (-1): every symbol we track, forex included.
+#   ALL_CRYPTO (-2): every active CRYPTO symbol, no forex. Seeding-only — the
+#     forex majors are MinPlan.FREE, so a Starter user may still add them by hand;
+#     this governs what onboarding pre-loads, not what they are allowed to hold.
+# Kept distinct so "the whole crypto roster" cannot silently start seeding FX pairs
+# the tier was never meant to ship with.
+UNLIMITED = -1
+ALL_CRYPTO = -2
+
 PLANS: dict[str, dict] = {
     FREE: {
         "key": FREE,
@@ -87,16 +97,22 @@ PLANS: dict[str, dict] = {
         # letting a new fade displace a trend strategy.
         "strategies": 9,
         "signal_weekly_quota": 400,
-        "watchlist_limit": 80,
+        # Uncapped like Pro: the tier ships with the whole crypto roster, so a numeric
+        # cap would leave a user holding more than they could re-add after removing
+        # one. Pro still differs — it seeds forex too, and forex crosses above
+        # MinPlan.FREE stay gated by symbol regardless of watchlist size.
+        "watchlist_limit": UNLIMITED,
         "layout_limit": 10,
-        "default_watchlist": 80,    # symbols pre-loaded at signup (onboarding)
+        # ALL_CRYPTO, not UNLIMITED: every crypto symbol, but onboarding must not
+        # pre-load FX pairs on a tier whose feed is crypto-first.
+        "default_watchlist": ALL_CRYPTO,  # symbols pre-loaded at signup (onboarding)
         "default_strategies": 9,    # 6 trend + all 3 fades
         "custom_strategies_per_month": 0,  # Pro-only feature
         "indicator_tiers": [FREE, STARTER],
         "features": [
             "Everything in Free",
             "RSI, MACD, Bollinger Bands & VWAP",
-            "Watchlist of 80 coins, set up for you",
+            "Every crypto symbol we track, ready to go",
             "9 signal strategies followed by default",
             "Up to 400 signals/week",
             "Telegram signal alerts",
