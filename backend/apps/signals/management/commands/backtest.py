@@ -554,6 +554,13 @@ class Command(BaseCommand):
                             help="Override the overextension guard (ATR stretch beyond EMA21 "
                                  "that blocks a chase entry). 0 disables; live default is 2.0. "
                                  "Sweep to tune, e.g. --overext 1.5.")
+        parser.add_argument("--holdout-frac", type=float, default=None, metavar="F",
+                            help="Reserve the most recent F of each series' bars as an "
+                                 "OUT-OF-SAMPLE test segment and report train vs test side "
+                                 "by side (e.g. 0.3). Every threshold in this project was "
+                                 "chosen and validated on the SAME window, so a setting that "
+                                 "only fits noise is indistinguishable from one that works. "
+                                 "A setting worth keeping holds up on the test half.")
         parser.add_argument("--overlap", action="store_true",
                             help="Report how much each pair of strategies TRADES THE SAME "
                                  "BARS. Confluence counts agreeing strategies as independent "
@@ -730,7 +737,17 @@ class Command(BaseCommand):
             self.stderr.write(self.style.ERROR("--llm needs OPENAI_API_KEY set."))
             return
 
+        holdout = opts.get("holdout_frac")
+        if holdout is not None and not (0.0 < holdout < 1.0):
+            raise CommandError("--holdout-frac must be between 0 and 1 (exclusive), e.g. 0.3")
+
         rb = {svc.slug: _blank(svc.name) for svc in services}
+        # Second, parallel set of buckets for the out-of-sample segment. Split is
+        # CHRONOLOGICAL and per series: the last `holdout` fraction of each symbol's
+        # bars. Per series rather than one global date so every symbol contributes to
+        # both halves — a global cut would hand the test set to whichever symbols
+        # happen to have the most recent history.
+        rb_test = {svc.slug: _blank(svc.name) for svc in services} if holdout else None
         # Per-scheme totals for --exit-lab: index-aligned with EXIT_LAB.
         exit_lab = {"on": bool(opts.get("exit_lab")), "n": 0, "r": [0.0] * len(EXIT_LAB)}
         # Optional breakdowns. Each maps bucket -> the same _blank() shape as `rb`, so
@@ -793,7 +810,7 @@ class Command(BaseCommand):
                                  opts.get("reversion_atr_floor"), opts.get("reversion_atr_cap"),
                                  opts.get("eval_bars"), opts.get("spread_pct"),
                                  leader_tl, opts.get("leader_gate_all", False),
-                                 overlap_sets)
+                                 overlap_sets, rb_test, holdout)
                 series += 1
                 self.stdout.write(f"  · {sym.ticker} {tf}", ending="\r")
             if llm_on and budget["left"] <= 0:
@@ -802,6 +819,15 @@ class Command(BaseCommand):
         self.stdout.write("")
         if llm_on:
             self._report_compare(rb, llm, budget)
+        elif rb_test is not None:
+            self.stdout.write(self.style.MIGRATE_HEADING(
+                f"\n=== IN-SAMPLE (first {(1 - holdout) * 100:.0f}% of each series) ==="))
+            self._report(rb, series)
+            self.stdout.write(self.style.MIGRATE_HEADING(
+                f"\n=== OUT-OF-SAMPLE (last {holdout * 100:.0f}%) — the only half that "
+                "is evidence ==="))
+            self._report(rb_test, series)
+            self._report_holdout_delta(rb, rb_test)
         else:
             self._report(rb, series)
         if overlap_sets:
@@ -890,9 +916,14 @@ class Command(BaseCommand):
                     min_confidence_reversion=None, strategy_floors=None,
                     by_session=None, by_symbol=None, rev_floor=None, rev_cap=None,
                     eval_bars=None, spread_pct=None, leader_tl=None,
-                    leader_all=False, overlap_sets=None):
+                    leader_all=False, overlap_sets=None, rb_test=None,
+                    holdout=None):
         ticker = sym.ticker
         n = len(candles)
+        # First bar index belonging to the out-of-sample segment. Trades are assigned
+        # by ENTRY bar, so a trade opened in train but resolving in test stays a train
+        # trade — the alternative leaks the test window's outcomes into the fit.
+        split_i = int(n * (1.0 - holdout)) if (rb_test is not None and holdout) else None
         threshold = settings.SIGNAL_MIN_CONFIDENCE
         free_at = {svc.slug: MIN_CANDLES for svc in services}
 
@@ -1046,7 +1077,8 @@ class Command(BaseCommand):
 
                 # Rule-based-only mode: record every candidate, move on.
                 if llm is None:
-                    _record(rb[svc.slug], res)
+                    bucket = (rb_test if split_i is not None and i >= split_i else rb)
+                    _record(bucket[svc.slug], res)
                     continue
 
                 # LLM comparison: only spend the budget on paired candidates so
@@ -1098,6 +1130,35 @@ class Command(BaseCommand):
             f"avgMFE={b['mfe']/t:+.1f}% avgMAE={b['mae']/t:+.1f}%"
             + (f"  cost={b['cost']/t:.3f}R" if b["cost"] else "")
         )
+
+    def _report_holdout_delta(self, train: dict, test: dict) -> None:
+        """Per-strategy in-sample vs out-of-sample, so overfitting is visible.
+
+        A strategy that looks strong in-sample and collapses out-of-sample was fitted
+        to noise. The gap matters more than either number alone, which is why they are
+        printed on one line rather than left to be compared across two tables.
+        """
+        self.stdout.write(self.style.MIGRATE_HEADING(
+            "\n  In-sample -> out-of-sample (win% and exp(TP1)):"))
+        for slug in train:
+            a, b = train[slug], test[slug]
+            if not a["trades"] or not b["trades"]:
+                continue
+            # Win% must use the SAME denominator as _line (wins + losses), not
+            # `trades`: trades counts expiries too, so dividing by it printed 53.1%
+            # beside a table reading 66.4% for the same strategy.
+            a_res, b_res = a["wins"] + a["losses"], b["wins"] + b["losses"]
+            if not a_res or not b_res:
+                continue
+            aw = a["wins"] / a_res * 100
+            bw = b["wins"] / b_res * 100
+            ar = a["r_tp1"] / a["trades"]
+            br = b["r_tp1"] / b["trades"]
+            flag = "  <-- decayed" if (bw - aw) <= -5.0 or (br - ar) <= -0.10 else ""
+            self.stdout.write(
+                f"  {a['name'][:26]:26s} {aw:5.1f}% -> {bw:5.1f}%  "
+                f"({bw - aw:+.1f})   {ar:+.2f}R -> {br:+.2f}R  ({br - ar:+.2f}) "
+                f" n={a_res}/{b_res}{flag}")
 
     def _report_overlap(self, sets: dict) -> None:
         """How much each pair of strategies trades the SAME setups.
