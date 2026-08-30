@@ -18,6 +18,17 @@ SERVICES = [
     {
         "name": "MACD Trend Following",
         "slug": "macd-trend-following",
+        # DEACTIVATED 2026-08-30 — not a performance call: `backtest --overlap`
+        # measured this strategy trading a trade-for-trade IDENTICAL set to
+        # momentum-crossover (Jaccard 100%, n=204 each). After the shared gates
+        # (EMA stack200 forces EMA9>21>200, regime forces ADX>=28) its trigger has
+        # no residual condition left, so it was never a second opinion. Four
+        # identical strategies made SIGNAL_CONFLUENCE_MIN=3 self-satisfying: any
+        # trend signal arrived with 4 votes already attached, so the K-of-N
+        # quality bar filtered nothing. momentum-crossover is kept as the
+        # survivor (strictest definition, least absorbed by the gates).
+        "is_active": False,
+
         "strategy_type": "trend",
         "description": "Signal-line crossovers combined with histogram strength.",
         "strategy_focus": (
@@ -39,6 +50,17 @@ SERVICES = [
     {
         "name": "Trend Rider (EMA + RSI)",
         "slug": "trend-rider",
+        # DEACTIVATED 2026-08-30 — not a performance call: `backtest --overlap`
+        # measured this strategy trading a trade-for-trade IDENTICAL set to
+        # momentum-crossover (Jaccard 100%, n=204 each). After the shared gates
+        # (EMA stack200 forces EMA9>21>200, regime forces ADX>=28) its trigger has
+        # no residual condition left, so it was never a second opinion. Four
+        # identical strategies made SIGNAL_CONFLUENCE_MIN=3 self-satisfying: any
+        # trend signal arrived with 4 votes already attached, so the K-of-N
+        # quality bar filtered nothing. momentum-crossover is kept as the
+        # survivor (strictest definition, least absorbed by the gates).
+        "is_active": False,
+
         "strategy_type": "trend",
         "description": "Trade with the EMA 200 trend, fast EMAs aligned and RSI confirming.",
         "strategy_focus": (
@@ -118,8 +140,19 @@ SERVICES = [
     },
     {
         "name": "ADX Directional Trend",
-        "slug": "adx-trend",  # active: +0.15R in backtest, best of the roster
+        "slug": "adx-trend",
         "strategy_type": "trend",
+        # DEACTIVATED 2026-08-30 — not a performance call: `backtest --overlap`
+        # measured this strategy trading a trade-for-trade IDENTICAL set to
+        # momentum-crossover (Jaccard 100%, n=204 each). After the shared gates
+        # (EMA stack200 forces EMA9>21>200, regime forces ADX>=28) its trigger has
+        # no residual condition left, so it was never a second opinion. Four
+        # identical strategies made SIGNAL_CONFLUENCE_MIN=3 self-satisfying: any
+        # trend signal arrived with 4 votes already attached, so the K-of-N
+        # quality bar filtered nothing. momentum-crossover is kept as the
+        # survivor (strictest definition, least absorbed by the gates).
+        "is_active": False,
+
         "description": "Trade only confirmed strong trends (ADX > 25), direction from the EMAs.",
         "strategy_focus": (
             "Trend-strength filtered entry: only act when ADX is above 25 (a genuinely strong "

@@ -554,6 +554,13 @@ class Command(BaseCommand):
                             help="Override the overextension guard (ATR stretch beyond EMA21 "
                                  "that blocks a chase entry). 0 disables; live default is 2.0. "
                                  "Sweep to tune, e.g. --overext 1.5.")
+        parser.add_argument("--overlap", action="store_true",
+                            help="Report how much each pair of strategies TRADES THE SAME "
+                                 "BARS. Confluence counts agreeing strategies as independent "
+                                 "confirmations; if two of them fire on the same setups, that "
+                                 "is one signal counted twice and the K-of-N bar is softer "
+                                 "than it looks. Prints containment (what %% of A's trades B "
+                                 "also took) and Jaccard.")
         parser.add_argument("--leader-gate-all", action="store_true",
                             help="Apply --leader-gate to EVERY strategy, not just fades "
                                  "(live gates reversion only). A trend SELL on an alt while "
@@ -730,6 +737,7 @@ class Command(BaseCommand):
         # _record() fills them with no special-casing.
         by_session = {} if opts.get("by_session") else None
         by_symbol = {} if opts.get("by_symbol") else None
+        overlap_sets = {} if opts.get("overlap") else None
         llm = {svc.slug: _blank(svc.name) for svc in services} if llm_on else None
         # Shared LLM budget + call stats across all series.
         budget = {"left": opts["llm_sample"] if llm_on else 0,
@@ -784,7 +792,8 @@ class Command(BaseCommand):
                                  strategy_floors, by_session, by_symbol,
                                  opts.get("reversion_atr_floor"), opts.get("reversion_atr_cap"),
                                  opts.get("eval_bars"), opts.get("spread_pct"),
-                                 leader_tl, opts.get("leader_gate_all", False))
+                                 leader_tl, opts.get("leader_gate_all", False),
+                                 overlap_sets)
                 series += 1
                 self.stdout.write(f"  · {sym.ticker} {tf}", ending="\r")
             if llm_on and budget["left"] <= 0:
@@ -795,6 +804,8 @@ class Command(BaseCommand):
             self._report_compare(rb, llm, budget)
         else:
             self._report(rb, series)
+        if overlap_sets:
+            self._report_overlap(overlap_sets)
         for title, buckets in (("session", by_session), ("symbol", by_symbol)):
             if not buckets:
                 continue
@@ -879,7 +890,7 @@ class Command(BaseCommand):
                     min_confidence_reversion=None, strategy_floors=None,
                     by_session=None, by_symbol=None, rev_floor=None, rev_cap=None,
                     eval_bars=None, spread_pct=None, leader_tl=None,
-                    leader_all=False):
+                    leader_all=False, overlap_sets=None):
         ticker = sym.ticker
         n = len(candles)
         threshold = settings.SIGNAL_MIN_CONFIDENCE
@@ -1018,6 +1029,11 @@ class Command(BaseCommand):
                     _record(by_session.setdefault(key, _blank(key)), res)
                 if by_symbol is not None:
                     _record(by_symbol.setdefault(ticker, _blank(ticker)), res)
+                if overlap_sets is not None:
+                    # Trade identity = the setup itself, so two strategies entering the
+                    # same bar in the same direction on the same chart collide here.
+                    overlap_sets.setdefault(svc.slug, set()).add(
+                        (ticker, tf, candles[i]["time"], direction))
 
                 if exit_lab and exit_lab["on"]:
                     stop0, tps = res["_levels"]
@@ -1082,6 +1098,57 @@ class Command(BaseCommand):
             f"avgMFE={b['mfe']/t:+.1f}% avgMAE={b['mae']/t:+.1f}%"
             + (f"  cost={b['cost']/t:.3f}R" if b["cost"] else "")
         )
+
+    def _report_overlap(self, sets: dict) -> None:
+        """How much each pair of strategies trades the SAME setups.
+
+        Confluence (``SIGNAL_CONFLUENCE_MIN``) treats agreeing strategies as
+        independent confirmations. Two strategies whose triggers reduce to nested
+        conditions after the shared gates will fire on the same bars, so K-of-N is
+        satisfied by one signal counted K times — a quality bar that is softer than
+        it reads. This prints the evidence rather than leaving it to inference.
+
+        Containment is asymmetric on purpose: A ⊂ B (100% of A inside B) means A is
+        redundant, which a symmetric Jaccard alone would understate.
+        """
+        slugs = sorted(sets, key=lambda k: -len(sets[k]))
+        self.stdout.write(self.style.MIGRATE_HEADING(
+            "\n  Strategy overlap — % of ROW's trades that COLUMN also took:"))
+        head = "".join(f"{s[:10]:>12s}" for s in slugs)
+        self.stdout.write(f"  {'':22s}{head}   n")
+        for a in slugs:
+            A = sets[a]
+            cells = ""
+            for b in slugs:
+                if a == b:
+                    cells += f"{'—':>12s}"
+                    continue
+                pct = 100.0 * len(A & sets[b]) / len(A) if A else 0.0
+                cells += f"{pct:>11.0f}%"
+            self.stdout.write(f"  {a[:22]:22s}{cells}{len(A):>5d}")
+
+        # Pairs worth acting on, called out so the matrix does not have to be read
+        # cell by cell. 90% is the line where a "vote" is not adding information.
+        dupes = []
+        for i, a in enumerate(slugs):
+            for b in slugs[i + 1:]:
+                A, B = sets[a], sets[b]
+                if not A or not B:
+                    continue
+                union = len(A | B)
+                jac = len(A & B) / union if union else 0.0
+                worst = max(len(A & B) / len(A), len(A & B) / len(B))
+                if worst >= 0.90:
+                    dupes.append((worst, jac, a, b))
+        if dupes:
+            self.stdout.write(self.style.WARNING(
+                "\n  Effectively duplicate (>=90% containment) — these are NOT "
+                "independent confluence votes:"))
+            for worst, jac, a, b in sorted(dupes, reverse=True):
+                self.stdout.write(
+                    f"    {a} <-> {b}   containment {worst*100:.0f}%  jaccard {jac*100:.0f}%")
+        else:
+            self.stdout.write("\n  No pair exceeds 90% containment.")
 
     def _report(self, stats, series):
         rows = list(stats.values())

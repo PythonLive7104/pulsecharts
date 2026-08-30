@@ -68,7 +68,7 @@ export const PLAN_FALLBACK = [
       "Everything in Free",
       "RSI, MACD, Bollinger Bands & VWAP",
       "Every crypto symbol we track, ready to go",
-      "9 signal strategies followed by default",
+      "6 signal strategies followed by default",
       "Up to 400 signals/week",
       "Telegram signal alerts",
       "Save up to 10 chart layouts",
