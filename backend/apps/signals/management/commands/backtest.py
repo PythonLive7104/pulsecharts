@@ -554,6 +554,26 @@ class Command(BaseCommand):
                             help="Override the overextension guard (ATR stretch beyond EMA21 "
                                  "that blocks a chase entry). 0 disables; live default is 2.0. "
                                  "Sweep to tune, e.g. --overext 1.5.")
+        parser.add_argument("--confluence-min", type=int, default=None, metavar="K",
+                            help="Simulate DELIVERY-side confluence: only count a setup "
+                                 "when at least K distinct strategies of the same kind fire "
+                                 "on the same (symbol, timeframe, bar, direction). Without "
+                                 "this the backtest scores every strategy standalone, which "
+                                 "is NOT the population users receive — the live feed "
+                                 "collapses agreeing strategies via SIGNAL_CONFLUENCE_MIN. "
+                                 "Agreeing strategies of one kind share entry and stop, so "
+                                 "their outcome is identical and the representative's result "
+                                 "is the group's result.")
+        parser.add_argument("--confluence-min-reversion", type=int, default=None, metavar="K",
+                            help="Confluence floor for mean-reversion (live: "
+                                 "SIGNAL_CONFLUENCE_MIN_REVERSION, currently 1). Defaults to "
+                                 "--confluence-min when unset.")
+        parser.add_argument("--exclude", action="append", default=None, metavar="SLUG",
+                            help="Drop a strategy from the run entirely (repeatable). Answers "
+                                 "'is this strategy earning its place in the confluence vote?' "
+                                 "— which cannot be read off a standalone table, since a "
+                                 "strategy's value there is separate from what it contributes "
+                                 "as a vote.")
         parser.add_argument("--holdout-frac", type=float, default=None, metavar="F",
                             help="Reserve the most recent F of each series' bars as an "
                                  "OUT-OF-SAMPLE test segment and report train vs test side "
@@ -721,6 +741,17 @@ class Command(BaseCommand):
         svc_qs = SignalService.objects.all() if opts["include_inactive"] \
             else SignalService.objects.filter(is_active=True)
         services = list(svc_qs)
+        excluded = {x.strip() for x in (opts.get("exclude") or []) if x.strip()}
+        if excluded:
+            known = {svc.slug for svc in services}
+            unknown = excluded - known
+            if unknown:
+                # Loud, not silent: a typo'd slug would otherwise "exclude" nothing and
+                # the run would look like evidence for keeping the strategy.
+                raise CommandError(f"--exclude: unknown strategy slug(s): {sorted(unknown)}")
+            services = [svc for svc in services if svc.slug not in excluded]
+            self.stdout.write(self.style.WARNING(
+                f"  excluding: {', '.join(sorted(excluded))}"))
         if not services:
             self.stderr.write(self.style.ERROR("No signal services — run seed_signal_services."))
             return
@@ -755,6 +786,9 @@ class Command(BaseCommand):
         by_session = {} if opts.get("by_session") else None
         by_symbol = {} if opts.get("by_symbol") else None
         overlap_sets = {} if opts.get("overlap") else None
+        conf_min = opts.get("confluence_min")
+        conf_min_rev = opts.get("confluence_min_reversion")
+        conf_sim = {} if conf_min else None
         llm = {svc.slug: _blank(svc.name) for svc in services} if llm_on else None
         # Shared LLM budget + call stats across all series.
         budget = {"left": opts["llm_sample"] if llm_on else 0,
@@ -810,7 +844,7 @@ class Command(BaseCommand):
                                  opts.get("reversion_atr_floor"), opts.get("reversion_atr_cap"),
                                  opts.get("eval_bars"), opts.get("spread_pct"),
                                  leader_tl, opts.get("leader_gate_all", False),
-                                 overlap_sets, rb_test, holdout)
+                                 overlap_sets, rb_test, holdout, conf_sim)
                 series += 1
                 self.stdout.write(f"  · {sym.ticker} {tf}", ending="\r")
             if llm_on and budget["left"] <= 0:
@@ -830,6 +864,8 @@ class Command(BaseCommand):
             self._report_holdout_delta(rb, rb_test)
         else:
             self._report(rb, series)
+        if conf_sim:
+            self._report_confluence(conf_sim, conf_min, conf_min_rev, bool(rb_test))
         if overlap_sets:
             self._report_overlap(overlap_sets)
         for title, buckets in (("session", by_session), ("symbol", by_symbol)):
@@ -917,7 +953,7 @@ class Command(BaseCommand):
                     by_session=None, by_symbol=None, rev_floor=None, rev_cap=None,
                     eval_bars=None, spread_pct=None, leader_tl=None,
                     leader_all=False, overlap_sets=None, rb_test=None,
-                    holdout=None):
+                    holdout=None, conf_sim=None):
         ticker = sym.ticker
         n = len(candles)
         # First bar index belonging to the out-of-sample segment. Trades are assigned
@@ -1060,6 +1096,18 @@ class Command(BaseCommand):
                     _record(by_session.setdefault(key, _blank(key)), res)
                 if by_symbol is not None:
                     _record(by_symbol.setdefault(ticker, _blank(ticker)), res)
+                if conf_sim is not None:
+                    kind = pregate.kind_of(svc.slug)
+                    key = (ticker, tf, candles[i]["time"], direction, kind)
+                    ent = conf_sim.get(key)
+                    if ent is None:
+                        # Same kind + same bar + same direction => same entry and stop,
+                        # so every agreeing strategy resolves identically. Storing one
+                        # result is exact here, not an approximation.
+                        conf_sim[key] = [{svc.slug}, res,
+                                         bool(split_i is not None and i >= split_i)]
+                    else:
+                        ent[0].add(svc.slug)
                 if overlap_sets is not None:
                     # Trade identity = the setup itself, so two strategies entering the
                     # same bar in the same direction on the same chart collide here.
@@ -1159,6 +1207,51 @@ class Command(BaseCommand):
                 f"  {a['name'][:26]:26s} {aw:5.1f}% -> {bw:5.1f}%  "
                 f"({bw - aw:+.1f})   {ar:+.2f}R -> {br:+.2f}R  ({br - ar:+.2f}) "
                 f" n={a_res}/{b_res}{flag}")
+
+    def _report_confluence(self, conf_sim: dict, k_trend: int, k_rev, split: bool) -> None:
+        """Score only the setups that would actually have been DELIVERED.
+
+        The standalone tables answer "is this strategy any good". This answers "is the
+        feed any good", which is a different population: the live delivery path keeps a
+        setup only when SIGNAL_CONFLUENCE_MIN strategies of its kind agree, then
+        surfaces ONE card. Counting each agreeing strategy as its own trade — what the
+        standalone tables do — overstates volume and mixes the K-of-N filter's effect
+        into the per-strategy numbers.
+        """
+        from apps.signals.pregate import KIND_REVERSION
+
+        k_rev = k_trend if k_rev is None else k_rev
+        buckets = {}
+
+        def bucket(name, seg):
+            return buckets.setdefault((name, seg), _blank(name))
+
+        for (_t, _tf, _time, _dir, kind), (slugs, res, is_test) in conf_sim.items():
+            need = k_rev if kind == KIND_REVERSION else k_trend
+            if len(slugs) < need:
+                continue
+            seg = "test" if is_test else "train"
+            _record(bucket(kind, seg), res)
+            _record(bucket("DELIVERED", seg), res)
+
+        if not buckets:
+            self.stdout.write(self.style.WARNING(
+                f"\n  Confluence sim (trend {k_trend}-of-N, reversion {k_rev}-of-N): "
+                "NOTHING would be delivered — the floor is unreachable."))
+            return
+
+        self.stdout.write(self.style.MIGRATE_HEADING(
+            f"\n  CONFLUENCE-DELIVERED (trend {k_trend}-of-N, reversion {k_rev}-of-N)"
+            " — one trade per surfaced card:"))
+        segs = ["train", "test"] if split else ["train"]
+        for seg in segs:
+            label = {"train": "in-sample", "test": "OUT-OF-SAMPLE"}[seg]
+            rows = [(n, b) for (n, sg), b in buckets.items() if sg == seg and b["trades"]]
+            if not rows:
+                continue
+            self.stdout.write(f"    [{label}]")
+            for name, b in sorted(rows, key=lambda r: (r[0] != "DELIVERED", r[0])):
+                self.stdout.write("  " + self._line(b))
 
     def _report_overlap(self, sets: dict) -> None:
         """How much each pair of strategies trades the SAME setups.
