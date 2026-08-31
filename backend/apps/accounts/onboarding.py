@@ -30,7 +30,7 @@ logger = logging.getLogger("accounts")
 # would mean no Free or Starter user ever received a mean-reversion signal.
 # Inactive strategies are skipped, so listing one before it's activated is harmless.
 STRATEGY_PRIORITY = [
-    # 1-3: TREND — the three ACTIVE trend strategies, listed first so every tier
+    # 1-2: TREND — the two ACTIVE trend strategies, listed first so every tier
     # follows all of them. Trend confluence is capped at the number of active trend
     # strategies (confluence.confluence_min), so a user following fewer than all
     # three can never clear the floor and would silently receive no trend signals
@@ -38,7 +38,6 @@ STRATEGY_PRIORITY = [
     # trend-rider were retired as measured duplicates on 2026-08-30 while this list
     # still ranked two of them in the top four.
     "momentum-crossover",
-    "ema-ribbon",
     "vwap-trend",
     # 4-6: MEAN REVERSION. Free's default of 4 now picks up bb-fade as its fourth,
     # which the pre-2026-08-30 roster deliberately avoided — with six trend
@@ -53,6 +52,7 @@ STRATEGY_PRIORITY = [
     "macd-trend-following",
     "trend-rider",
     "adx-trend",
+    "ema-ribbon",
     "bollinger-breakout",
     "volatility-breakout",
     "trend-pullback",

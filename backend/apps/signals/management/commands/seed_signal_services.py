@@ -115,7 +115,16 @@ SERVICES = [
     },
     {
         "name": "EMA Ribbon",
-        "slug": "ema-ribbon",  # active: +0.03R in backtest, on par with active peers
+        "slug": "ema-ribbon",
+        # DEACTIVATED 2026-08-31 on OUT-OF-SAMPLE evidence (backtest --holdout-frac).
+        # In-sample it looked joint-best of the trend book (67.9%, +0.28R); on the
+        # held-out third it decayed hardest of any strategy — 58.8%, +0.12R, -9.1
+        # points. That gap is the textbook overfitting signature, and it was invisible
+        # for as long as the backtest scored everything on the window it was tuned on.
+        # Measured as DELIVERED (confluence-simulated) the trend book improves without
+        # it: 51.6% -> 58.3% out-of-sample, on MORE trades, because 2-of-2 with
+        # momentum-crossover + vwap-trend beats 3-of-3 that has to include the decayer.
+        "is_active": False,
         "strategy_type": "trend",
         "description": "Fully-stacked EMA 9/21/200 alignment with price riding the ribbon.",
         "strategy_focus": (
