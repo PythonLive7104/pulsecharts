@@ -583,8 +583,11 @@ SIGNAL_LOSS_BREAKER = env("SIGNAL_LOSS_BREAKER", default="")
 
 SIGNAL_SUPPRESS_PROGRESSED = env.bool("SIGNAL_SUPPRESS_PROGRESSED", default=True)
 # 2. Age, counted in BARS of the signal's own timeframe so one number means the same
-#    thing on 1h and 4h. 0 disables. 4 bars on 1h = 4 hours: long enough to survive a
-#    scan gap or a quota deferral, short enough that the entry is still near the market.
+#    thing on 1h and 4h. 0 disables. Keep it SMALL: `backtest --entry-delay` measured
+#    57.3% / +0.08R entering at the trigger close against 49.6% / -0.06R just ONE bar
+#    later, and 50.7% / -0.04R at 12 bars (out-of-sample, n=228-268). The trigger bar
+#    is where the edge lives, so an aged signal is not a discounted version of a good
+#    trade — it is a different, losing one. See .env.example for the full table.
 SIGNAL_MAX_DELIVERY_AGE_BARS = env.int("SIGNAL_MAX_DELIVERY_AGE_BARS", default=0)
 
 SIGNAL_MIN_CONFIDENCE_BY_STRATEGY = _parse_strategy_floors(
