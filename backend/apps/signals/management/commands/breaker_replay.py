@@ -75,7 +75,7 @@ class Command(BaseCommand):
         # A trend-flip invalidation closes flat at 0R. Excluded from win/loss here for
         # the same reason feed_stats excludes it: it is neither a hit nor a stop.
         rows = [r for r in rows
-                if not (r["outcome"] == Signal.Outcome.INVALID and r["best_tp"] == 0)]
+                if not (r["outcome"] == Signal.Outcome.INVALIDATED and r["best_tp"] == 0)]
         if not rows:
             self.stdout.write(self.style.WARNING("No resolved trades in window."))
             return
