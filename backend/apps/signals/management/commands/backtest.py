@@ -342,7 +342,7 @@ def _atr_of(candles):
 
 def _outcome(direction, snap, future, asset_class="crypto", strategy_slug=None,
              atr_floor=None, atr_cap=None, rev_floor=None, rev_cap=None, eval_bars=None,
-             pullback=None, fill_bars=3):
+             pullback=None, fill_bars=3, delay=None):
     """Deterministic levels + walk for a setup; None if degenerate or unresolved.
 
     Mean-reversion setups get their own (much tighter) ATR stop band — with the trend
@@ -380,7 +380,17 @@ def _outcome(direction, snap, future, asset_class="crypto", strategy_slug=None,
     atr_v = float(snap["atr"])
     forward = future
     waited = 0
-    if pullback:
+    if delay:
+        # MARKET entry `delay` bars later — how much the edge decays with latency,
+        # with none of the adverse selection a limit order introduces (a limit only
+        # fills when price moves against you, which selects for failing setups; this
+        # fills every time, so it isolates delay itself).
+        if len(future) <= delay:
+            return None
+        entry = float(future[delay - 1]["close"])
+        waited = delay
+        forward = future[delay:]
+    elif pullback:
         # Limit sits AGAINST the signal: a BUY waits for a dip, a SELL for a bounce.
         limit = entry - pullback * atr_v if direction == "BUY" else entry + pullback * atr_v
         hit = None
@@ -600,6 +610,13 @@ class Command(BaseCommand):
                                  "the close for a BUY, above for a SELL) instead of at the "
                                  "close. Unfilled setups are dropped, so this buys entry "
                                  "quality with volume.")
+        parser.add_argument("--entry-delay", type=int, default=None, metavar="N",
+                            help="Enter at MARKET N bars after the trigger instead of at "
+                                 "the trigger close. Measures how fast the edge decays "
+                                 "with delivery latency — the question behind "
+                                 "SIGNAL_MAX_DELIVERY_AGE_BARS. Unlike --entry-pullback "
+                                 "this always fills, so it isolates delay from the adverse "
+                                 "selection a resting limit introduces.")
         parser.add_argument("--fill-bars", type=int, default=3, metavar="N",
                             help="Bars the limit stays live before the setup is abandoned "
                                  "(default 3). Waiting is charged against --eval-bars.")
@@ -894,7 +911,8 @@ class Command(BaseCommand):
                                  opts.get("eval_bars"), opts.get("spread_pct"),
                                  leader_tl, opts.get("leader_gate_all", False),
                                  overlap_sets, rb_test, holdout, conf_sim,
-                                 opts.get("entry_pullback"), opts.get("fill_bars", 3))
+                                 opts.get("entry_pullback"), opts.get("fill_bars", 3),
+                                 opts.get("entry_delay"))
                 series += 1
                 self.stdout.write(f"  · {sym.ticker} {tf}", ending="\r")
             if llm_on and budget["left"] <= 0:
@@ -1003,7 +1021,8 @@ class Command(BaseCommand):
                     by_session=None, by_symbol=None, rev_floor=None, rev_cap=None,
                     eval_bars=None, spread_pct=None, leader_tl=None,
                     leader_all=False, overlap_sets=None, rb_test=None,
-                    holdout=None, conf_sim=None, pullback=None, fill_bars=3):
+                    holdout=None, conf_sim=None, pullback=None, fill_bars=3,
+                    delay=None):
         ticker = sym.ticker
         n = len(candles)
         # First bar index belonging to the out-of-sample segment. Trades are assigned
@@ -1126,7 +1145,7 @@ class Command(BaseCommand):
 
                 res = _outcome(direction, snap, future, asset_class, svc.slug,
                                atr_floor, atr_cap, rev_floor, rev_cap, eval_bars,
-                               pullback, fill_bars)
+                               pullback, fill_bars, delay)
                 if res is None:
                     free_at[svc.slug] = i + 1
                     continue
