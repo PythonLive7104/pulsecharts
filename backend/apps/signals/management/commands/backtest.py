@@ -341,12 +341,26 @@ def _atr_of(candles):
 
 
 def _outcome(direction, snap, future, asset_class="crypto", strategy_slug=None,
-             atr_floor=None, atr_cap=None, rev_floor=None, rev_cap=None, eval_bars=None):
+             atr_floor=None, atr_cap=None, rev_floor=None, rev_cap=None, eval_bars=None,
+             pullback=None, fill_bars=3):
     """Deterministic levels + walk for a setup; None if degenerate or unresolved.
 
     Mean-reversion setups get their own (much tighter) ATR stop band — with the trend
     band their TP1 would sit further away than the trade was ever going, so they'd
     look worthless for a reason that has nothing to do with the strategy.
+
+    `pullback` (in ATR) switches entry from MARKET-AT-CLOSE to a LIMIT placed against
+    the signal: below the close for a BUY, above it for a SELL. The engine currently
+    enters at the trigger bar's close, which on a fade means buying the extreme and on
+    a trend entry means buying after the move — and measured avgMAE says the average
+    trade travels ~1.1% against the entry before it resolves. A limit captures part of
+    that as a better fill.
+
+    It is not free, and the cost is the point: an order that never trades is not a
+    trade. If price does not reach the limit within `fill_bars` the setup is DROPPED
+    (returns None), so this buys entry quality with volume — the trade the user asked
+    for. Bars spent waiting are charged against the evaluation clock, so a slow fill
+    cannot smuggle in extra time to reach a target.
     """
     if strategy_slug and pregate.kind_of(strategy_slug) == pregate.KIND_REVERSION:
         floor = rev_floor if rev_floor is not None else (
@@ -362,16 +376,41 @@ def _outcome(direction, snap, future, asset_class="crypto", strategy_slug=None,
             settings.SIGNAL_ATR_STOP_FLOOR.get(asset_class) or settings.SIGNAL_ATR_STOP_FLOOR["crypto"])
         cap = atr_cap if atr_cap is not None else (
             settings.SIGNAL_ATR_STOP_CAP.get(asset_class) or settings.SIGNAL_ATR_STOP_CAP["crypto"])
+    entry = float(snap["close"])
+    atr_v = float(snap["atr"])
+    forward = future
+    waited = 0
+    if pullback:
+        # Limit sits AGAINST the signal: a BUY waits for a dip, a SELL for a bounce.
+        limit = entry - pullback * atr_v if direction == "BUY" else entry + pullback * atr_v
+        hit = None
+        for j, c in enumerate(future[:fill_bars]):
+            touched = (c["low"] <= limit) if direction == "BUY" else (c["high"] >= limit)
+            if touched:
+                hit = j
+                break
+        if hit is None:
+            return None  # never filled — correctly counted as no trade at all
+        entry = limit
+        waited = hit + 1
+        # Resume from the bar AFTER the fill. Using the fill bar itself would let the
+        # same candle that filled the order also register a target or a stop, which
+        # cannot be ordered correctly from OHLC alone and flatters the result.
+        forward = future[waited:]
+
     levels = compute_levels(
-        direction, float(snap["close"]), float(snap["atr"]),
+        direction, entry, atr_v,
         float(snap["swing_high"]), float(snap["swing_low"]),
         atr_stop_mult=floor, max_atr_mult=cap,
     )
     if levels is None:
         return None
     tps = [levels[k] for k in ("tp1", "tp2", "tp3", "tp4") if levels[k] is not None]
-    horizon = future[:eval_bars] if eval_bars else future
-    res = walk(direction, float(snap["close"]), levels["stop_loss"], tps, horizon)
+    # The wait is charged against the clock: eval_bars is a wall-clock budget for the
+    # setup, not for the fill.
+    budget = max(0, eval_bars - waited) if eval_bars else None
+    horizon = forward[:budget] if budget is not None else forward
+    res = walk(direction, entry, levels["stop_loss"], tps, horizon)
     if not (res["terminal"] or res["best_tp"] >= 1):
         # Ran out of road. With the live clock modelled this is an EXPIRED trade and
         # counts as a 0R scratch (run_evaluation closes it flat); without it, the trade
@@ -382,6 +421,8 @@ def _outcome(direction, snap, future, asset_class="crypto", strategy_slug=None,
         else:
             return None
     res["_levels"] = (levels["stop_loss"], tps)  # for --exit-lab's replay
+    res["_entry"] = entry        # actual fill, not the close — spread is a % of THIS
+    res["bars"] = res.get("bars", 0) + waited
     return res
 
 
@@ -554,6 +595,14 @@ class Command(BaseCommand):
                             help="Override the overextension guard (ATR stretch beyond EMA21 "
                                  "that blocks a chase entry). 0 disables; live default is 2.0. "
                                  "Sweep to tune, e.g. --overext 1.5.")
+        parser.add_argument("--entry-pullback", type=float, default=None, metavar="ATR",
+                            help="Enter on a LIMIT this many ATR against the signal (below "
+                                 "the close for a BUY, above for a SELL) instead of at the "
+                                 "close. Unfilled setups are dropped, so this buys entry "
+                                 "quality with volume.")
+        parser.add_argument("--fill-bars", type=int, default=3, metavar="N",
+                            help="Bars the limit stays live before the setup is abandoned "
+                                 "(default 3). Waiting is charged against --eval-bars.")
         parser.add_argument("--confluence-min", type=int, default=None, metavar="K",
                             help="Simulate DELIVERY-side confluence: only count a setup "
                                  "when at least K distinct strategies of the same kind fire "
@@ -844,7 +893,8 @@ class Command(BaseCommand):
                                  opts.get("reversion_atr_floor"), opts.get("reversion_atr_cap"),
                                  opts.get("eval_bars"), opts.get("spread_pct"),
                                  leader_tl, opts.get("leader_gate_all", False),
-                                 overlap_sets, rb_test, holdout, conf_sim)
+                                 overlap_sets, rb_test, holdout, conf_sim,
+                                 opts.get("entry_pullback"), opts.get("fill_bars", 3))
                 series += 1
                 self.stdout.write(f"  · {sym.ticker} {tf}", ending="\r")
             if llm_on and budget["left"] <= 0:
@@ -953,7 +1003,7 @@ class Command(BaseCommand):
                     by_session=None, by_symbol=None, rev_floor=None, rev_cap=None,
                     eval_bars=None, spread_pct=None, leader_tl=None,
                     leader_all=False, overlap_sets=None, rb_test=None,
-                    holdout=None, conf_sim=None):
+                    holdout=None, conf_sim=None, pullback=None, fill_bars=3):
         ticker = sym.ticker
         n = len(candles)
         # First bar index belonging to the out-of-sample segment. Trades are assigned
@@ -1075,7 +1125,8 @@ class Command(BaseCommand):
                         continue
 
                 res = _outcome(direction, snap, future, asset_class, svc.slug,
-                               atr_floor, atr_cap, rev_floor, rev_cap, eval_bars)
+                               atr_floor, atr_cap, rev_floor, rev_cap, eval_bars,
+                               pullback, fill_bars)
                 if res is None:
                     free_at[svc.slug] = i + 1
                     continue
@@ -1085,7 +1136,9 @@ class Command(BaseCommand):
                 # Stored on the result so every bucket (_record) nets it off consistently.
                 if spread_pct:
                     stop0, _tps = res["_levels"]
-                    entry = float(snap["close"])
+                    # The FILL, not the trigger close — with --entry-pullback these
+                    # differ, and the spread is a percentage of the price actually paid.
+                    entry = res.get("_entry", float(snap["close"]))
                     risk_pct = abs(entry - stop0) / entry * 100 if entry else 0
                     res["cost_r"] = (spread_pct / risk_pct) if risk_pct else 0.0
 
