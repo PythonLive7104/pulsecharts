@@ -84,7 +84,7 @@ def breaker_state(asset_class: str, now) -> dict:
     """
     cfg = _config()
     if cfg is None:
-        return {"halted": False, "losses": 0, "threshold": 0}
+        return {"halted": False, "losses": 0, "threshold": 0, "resumes_at": None}
     losses_needed, window_h, cooldown_h = cfg
 
     key = _CACHE_KEY % asset_class
@@ -106,13 +106,13 @@ def breaker_state(asset_class: str, now) -> dict:
         .values_list("resolved_at", flat=True)[:200]
     )
 
-    halted, count = False, 0
+    halted, count, last_loss = False, 0, None
     if recent:
         window_start = now - timedelta(hours=window_h)
         in_window = [t for t in recent if t >= window_start]
         count = len(in_window)
         if count >= losses_needed:
-            halted = True
+            halted, last_loss = True, in_window[0]
         else:
             # Still inside the cooldown from an earlier burst? Look for any window of
             # `window_h` ending within the last `cooldown_h` that met the threshold.
@@ -122,10 +122,14 @@ def breaker_state(asset_class: str, now) -> dict:
                     break
                 burst = [t for t in recent[i:] if t >= anchor - timedelta(hours=window_h)]
                 if len(burst) >= losses_needed:
-                    halted, count = True, len(burst)
+                    halted, count, last_loss = True, len(burst), anchor
                     break
 
-    state = {"halted": halted, "losses": count, "threshold": losses_needed}
+    # When it lifts, so the UI can say "resumes at ..." rather than leaving a user
+    # staring at an empty feed with no idea whether it is broken or deliberate.
+    resumes_at = (last_loss + timedelta(hours=cooldown_h)) if (halted and last_loss) else None
+    state = {"halted": halted, "losses": count, "threshold": losses_needed,
+             "resumes_at": resumes_at.isoformat() if resumes_at else None}
     cache.set(key, state, _CACHE_TTL)
     if halted:
         logger.warning(
@@ -148,3 +152,28 @@ def filter_halted(reps: list, now) -> list:
         if not checked[ac]:
             kept.append(sig)
     return kept
+
+
+def feed_state(now) -> dict:
+    """Breaker summary for the signals feed payload.
+
+    Reports every halted asset class, not just the user's, because a user watching
+    both markets needs to know which half of their feed is paused. Cheap: each class
+    is one cached lookup, and the whole function short-circuits when the breaker is
+    off.
+    """
+    if _config() is None:
+        return {"active": False, "classes": [], "resumes_at": None}
+    halted = {}
+    for asset_class in ("crypto", "forex"):
+        st = breaker_state(asset_class, now)
+        if st["halted"]:
+            halted[asset_class] = st
+    resumes = [st["resumes_at"] for st in halted.values() if st.get("resumes_at")]
+    return {
+        "active": bool(halted),
+        "classes": sorted(halted),
+        # The LAST to lift, so the banner never promises an early resume while
+        # another market is still paused.
+        "resumes_at": max(resumes) if resumes else None,
+    }

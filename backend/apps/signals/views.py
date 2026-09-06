@@ -393,6 +393,12 @@ class SignalFeedView(APIView):
             "crypto_paused": not market_open and settings.SIGNAL_SKIP_CRYPTO_WEEKEND,
             "resumes_at": _next_market_open().isoformat(),
         }
+        # Loss circuit breaker state. Surfaced on the feed for a business reason as
+        # much as a technical one: a bad day where the product visibly stands aside
+        # reads as risk management, whereas the same day with an unexplained empty
+        # feed reads as a product that broke. Inert (active=False) when the breaker
+        # is unconfigured.
+        breaker_state = breaker.feed_state(now)
 
         # No signal access (quota 0) → locked upgrade card instead of a feed. Reached
         # by a free account whose signup trial has run out, and — because plan_key is
@@ -605,6 +611,7 @@ class SignalFeedView(APIView):
                     "limit": limit,
                     "has_more": offset + len(active) < active_total,
                     "pause": pause,
+                    "breaker": breaker_state,
                     "resolved": [],
                     "disclaimer": "Informational only. Not financial advice.",
                 }
@@ -648,6 +655,7 @@ class SignalFeedView(APIView):
                 "limit": limit,
                 "has_more": offset + len(active) < active_total,
                 "pause": pause,
+                "breaker": breaker_state,
                 "trade_updates": trade_updates,
                 "resolved": SignalSerializer(resolved, many=True).data,
                 "disclaimer": "Informational only. Not financial advice.",

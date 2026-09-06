@@ -7,6 +7,7 @@ import { useStore } from "../store/useStore";
 import ThemeToggle from "../components/ThemeToggle";
 import SignalCard from "../components/SignalCard";
 import StrategyBuilder from "../components/StrategyBuilder";
+import BreakerNotice from "../components/BreakerNotice";
 import WeekendNotice from "../components/WeekendNotice";
 import { timeAgo, fullTime } from "../lib/time";
 import Logo from "../components/Logo";
@@ -414,6 +415,7 @@ export default function SignalsPage() {
         )}
 
         <WeekendNotice pause={feed?.pause} />
+        <BreakerNotice breaker={feed?.breaker} />
 
         <section className="feed">
           <div className="feed-head">

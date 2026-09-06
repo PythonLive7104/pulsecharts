@@ -2286,3 +2286,43 @@ a.brand:hover { text-decoration: none; }
      "never renews" tail. Price + CTA always survive. */
   .lt-banner-sub, .lt-banner-tail { display: none; }
 }
+
+/* --- loss circuit breaker notice ------------------------------------------
+   Amber, not red: the feed pausing is the system working as designed, and a red
+   banner would read as an outage. Sits inline above the cards rather than as a
+   modal (WeekendNotice) because it is live state to glance at, not a one-off
+   acknowledgement. */
+.breaker-notice {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  margin: 0 0 14px;
+  padding: 12px 14px;
+  border: 1px solid rgba(217, 119, 6, 0.35);
+  border-left: 3px solid #d97706;
+  border-radius: 8px;
+  background: rgba(217, 119, 6, 0.08);
+  font-size: 13px;
+  line-height: 1.5;
+}
+.breaker-dot {
+  flex: none;
+  width: 8px;
+  height: 8px;
+  margin-top: 6px;
+  border-radius: 50%;
+  background: #d97706;
+  /* Slow, low-contrast pulse — signals "live state" without being a distraction
+     on a page a user may leave open all day. */
+  animation: breaker-pulse 2.4s ease-in-out infinite;
+}
+@keyframes breaker-pulse {
+  0%, 100% { opacity: 1; }
+  50%      { opacity: 0.35; }
+}
+/* Respect a user's reduced-motion preference — this is decorative. */
+@media (prefers-reduced-motion: reduce) {
+  .breaker-dot { animation: none; }
+}
+.breaker-copy { display: flex; flex-direction: column; gap: 3px; }
+.breaker-sub { opacity: 0.75; font-size: 12px; }
