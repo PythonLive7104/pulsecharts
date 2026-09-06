@@ -561,6 +561,26 @@ SIGNAL_MAX_CRYPTO_PER_DIRECTION = env.int("SIGNAL_MAX_CRYPTO_PER_DIRECTION", def
 #    best_tp >= 1 means price already reached TP1 and kept going. That is not an entry
 #    any more, it is somebody else's open trade. Suppressed for NEW deliveries only —
 #    a user who already received it keeps seeing it progress in their feed.
+# --- loss circuit breaker ---------------------------------------------------
+# "losses/window_hours/cooldown_hours" — after this many stop-outs inside the
+# window, delivery for that asset class pauses for the cooldown. Empty disables.
+#
+# Every other guard judges a SETUP on the bar it fires. On 2026-08-19 and
+# 2026-09-03 each individual signal looked normal; the MARKET was abnormal, and
+# nothing in the system could see that. 2026-09-03: 28 delivered trades, 20 losses,
+# with BOTH directions failing (BUY 20.0%, SELL 30.4%) — whipsaw, not a directional
+# regime. Strip that single day and the week ran 72%.
+#
+# The exposure caps do not help here. They cap CONCURRENT open trades, so on a day
+# where everything stops out inside the hour the slots free up and refill: 23 SELLs
+# went out on 2026-09-03 against a cap of 12, never breaching it. They limit how
+# much is held at once, not how fast it is lost.
+#
+# This reads OUTCOMES instead, and is the only mechanism that can conclude "today is
+# not working" and stop. Global per asset class, not per user: the failure is
+# market-wide and every user holds the same book.
+SIGNAL_LOSS_BREAKER = env("SIGNAL_LOSS_BREAKER", default="")
+
 SIGNAL_SUPPRESS_PROGRESSED = env.bool("SIGNAL_SUPPRESS_PROGRESSED", default=True)
 # 2. Age, counted in BARS of the signal's own timeframe so one number means the same
 #    thing on 1h and 4h. 0 disables. 4 bars on 1h = 4 hours: long enough to survive a

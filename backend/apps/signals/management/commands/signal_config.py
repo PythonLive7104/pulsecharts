@@ -37,6 +37,7 @@ SETTINGS = [
     # on Bollinger Fade) — the exact "is it actually on in production?" question this
     # command exists to answer.
     ("SIGNAL_LEADER_GATE", "SIGNAL_LEADER_GATE"),
+    ("SIGNAL_LOSS_BREAKER", "SIGNAL_LOSS_BREAKER"),
     ("SIGNAL_SUPPRESS_PROGRESSED", "SIGNAL_SUPPRESS_PROGRESSED"),
     ("SIGNAL_MAX_DELIVERY_AGE_BARS", "SIGNAL_MAX_DELIVERY_AGE_BARS"),
     ("SIGNAL_SHADOW_ASSET_CLASSES", "SIGNAL_SHADOW_ASSET_CLASSES"),

@@ -22,6 +22,7 @@ from apps.accounts.plans import PRO, is_paid, plan_key
 from apps.market_data.forex import market_open as forex_market_open
 from apps.watchlists.models import WatchlistItem, watchlist_limit_for
 
+from . import breaker
 from . import confluence
 from .engine import SignalEngineError
 from .models import (
@@ -498,6 +499,10 @@ class SignalFeedView(APIView):
             # Same idea one asset class over: alts co-move with BTC, so N open
             # same-direction crypto calls are one bet N times. Counts the user's
             # still-open crypto trades so the cap holds across scans.
+            # Market-state guard, applied BEFORE the caps: when the market is
+            # stopping everything out, the right number of new signals is zero, and
+            # there is no point spending cap slots or quota on them.
+            reps = breaker.filter_halted(reps, now)
             reps = confluence.cap_crypto_direction(
                 reps,
                 already_open=Signal.objects.filter(

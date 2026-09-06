@@ -23,6 +23,7 @@ from apps.market_data.forex import market_open as forex_market_open
 from apps.market_data.models import Symbol
 from apps.watchlists.models import WatchlistItem
 
+from . import breaker
 from . import confluence
 from .engine import SignalEngineError, generate_signal
 from .evaluate import outcome_label, walk
@@ -1218,6 +1219,9 @@ def run_telegram_push() -> dict:
         )
         # Crypto's correlated-direction cap. Telegram is where a burst is felt most —
         # 92 pushes in a day is not a feed, it is an alarm going off.
+        # Same market-state guard as the feed. Telegram is where a bad day is felt
+        # hardest — the losses arrive as push notifications.
+        reps = breaker.filter_halted(reps, now)
         reps = confluence.cap_crypto_direction(
             reps,
             already_open=Signal.objects.filter(
