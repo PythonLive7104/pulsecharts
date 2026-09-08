@@ -328,6 +328,20 @@ def _close_streak(closes: list[float]) -> int:
     return n if up else -n
 
 
+def _mom_atr(closes: list[float], atr: float | None, bars: int = 6) -> float | None:
+    """Recent price change over `bars`, in ATR. Signed: +2.5 = up 2.5 ATR.
+
+    ATR-normalised so one threshold means the same on a quiet major and a volatile
+    alt. This is the coin's OWN momentum, which is what a fade is standing in front
+    of — distinct from the leader gate (BTC's trend) and from ADX, which lags badly
+    through the first leg of a move and read 22 ("ranging") on ATOM while it was
+    running +5% into a vertical high.
+    """
+    if atr is None or atr <= 0 or len(closes) <= bars:
+        return None
+    return (closes[-1] - closes[-1 - bars]) / atr
+
+
 def compute_indicators(candles: list[dict]) -> dict:
     """Snapshot of indicator values for the most recent completed candle.
 
@@ -373,6 +387,8 @@ def compute_indicators(candles: list[dict]) -> dict:
         # reversion trigger that owes nothing to an oscillator, so it fires on bars
         # the band/VWAP strategies don't.
         "close_streak": _close_streak(closes),
+        # 6-bar price change in ATR — the symbol's own momentum (see _mom_atr).
+        "mom6_atr": _mom_atr(closes, _atr(candles), 6),
         "macd_line": macd_line,
         "macd_signal": macd_signal,
         "macd_hist": macd_hist,

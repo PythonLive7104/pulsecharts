@@ -610,6 +610,12 @@ class Command(BaseCommand):
                                  "the close for a BUY, above for a SELL) instead of at the "
                                  "close. Unfilled setups are dropped, so this buys entry "
                                  "quality with volume.")
+        parser.add_argument("--fade-momentum-veto", type=float, default=None, metavar="ATR",
+                            help="Block a mean-reversion entry when the symbol has moved "
+                                 "more than this many ATR AGAINST it over the last 6 bars. "
+                                 "Nothing else catches this: is_overextended only blocks "
+                                 "chases, the leader gate reads BTC not the coin, and ADX "
+                                 "lags through the first leg of a move.")
         parser.add_argument("--entry-delay", type=int, default=None, metavar="N",
                             help="Enter at MARKET N bars after the trigger instead of at "
                                  "the trigger close. Measures how fast the edge decays "
@@ -912,7 +918,7 @@ class Command(BaseCommand):
                                  leader_tl, opts.get("leader_gate_all", False),
                                  overlap_sets, rb_test, holdout, conf_sim,
                                  opts.get("entry_pullback"), opts.get("fill_bars", 3),
-                                 opts.get("entry_delay"))
+                                 opts.get("entry_delay"), opts.get("fade_momentum_veto"))
                 series += 1
                 self.stdout.write(f"  · {sym.ticker} {tf}", ending="\r")
             if llm_on and budget["left"] <= 0:
@@ -1022,7 +1028,7 @@ class Command(BaseCommand):
                     eval_bars=None, spread_pct=None, leader_tl=None,
                     leader_all=False, overlap_sets=None, rb_test=None,
                     holdout=None, conf_sim=None, pullback=None, fill_bars=3,
-                    delay=None):
+                    delay=None, fade_veto=None):
         ticker = sym.ticker
         n = len(candles)
         # First bar index belonging to the out-of-sample segment. Trades are assigned
@@ -1111,6 +1117,13 @@ class Command(BaseCommand):
                         and svc.slug not in EMA_STACK_EXEMPT):
                     want = "up" if direction == "BUY" else "down"
                     if htf_struct_now != want:  # opposite trend or choppy (None) → skip
+                        continue
+
+                # Symbol's OWN momentum veto (reversion only). Separate from the
+                # leader gate below, which reads BTC: an alt running on its own news
+                # clears that gate and still runs a fade over.
+                if fade_veto and pregate.kind_of(svc.slug) == pregate.KIND_REVERSION:
+                    if pregate.fade_momentum_veto(snap, direction, fade_veto):
                         continue
 
                 # Market-leader regime gate: a fade opposing the leader's trend is

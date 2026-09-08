@@ -537,6 +537,45 @@ EMA_GATE_MODE = "stack50"
 OVEREXT_ATR_MULT = 0.0
 
 
+def fade_momentum_veto(ind: dict, direction: str, mult: float) -> bool:
+    """True = BLOCK this mean-reversion entry: the symbol is moving hard AGAINST it.
+
+    The existing guards cannot see this case. `is_overextended` blocks a CHASE (a SELL
+    with price far below EMA21); a SELL fade with price far ABOVE EMA21 is the setup
+    itself, so it is never blocked. The leader gate reads BTC, so a single alt running
+    on its own news passes it. ADX lags through the first leg of a move — it read 22,
+    "ranging", on ATOM-USD on 2026-09-08 while the coin was +5% and printing new highs,
+    and the fade issued there was stopped out inside two minutes.
+
+    MEASURED AND REJECTED (2026-09-08). The hypothesis above is WRONG, and the flag is
+    kept only so the negative is reproducible — do not enable it without new evidence.
+    Out-of-sample, delivered, on the reversion book (baseline 58.3% / +0.10R, n=223):
+
+        veto 3.0 ATR   56.6%  +0.07R  n=159
+        veto 2.0 ATR   56.5%  +0.06R  n=69
+        veto 1.5 ATR   60.0%  +0.14R  n=35     <- 84% of volume cut; not a peak
+        veto 1.0 ATR   52.9%  +0.00R  n=17
+
+    Both thresholds with a usable sample are WORSE than no veto: the filter removes
+    more winners than losers. The reading is that a large stretch is the fade's EDGE
+    rather than its weakness — the further price has run, the better the snap-back on
+    average — so the ATOM-USD trade that prompted this was a better-than-average setup
+    that simply lost. Roughly four fades in ten do.
+
+    0 disables (the default, and the correct setting).
+    """
+    if mult <= 0:
+        return False
+    mom = ind.get("mom6_atr")
+    if mom is None:
+        return False  # fails OPEN — a missing indicator must not silence the feed
+    if direction == "SELL":
+        return mom > mult   # ripping up: do not short it yet
+    if direction == "BUY":
+        return -mom > mult  # collapsing: do not catch it yet
+    return False
+
+
 def is_overextended(ind: dict, direction: str) -> bool:
     """True if price has stretched more than OVEREXT_ATR_MULT × ATR beyond EMA21 in
     the trade's direction — a chase entry into an extended move. Returns False when
