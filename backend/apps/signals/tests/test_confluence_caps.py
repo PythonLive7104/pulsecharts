@@ -120,3 +120,33 @@ class FreshEntryQTests(SimpleTestCase):
         # An unmapped frame gets no cutoff rather than vanishing from the feed.
         rendered = str(fresh_entry_q(timezone.now()))
         self.assertIn("NOT", rendered.upper())
+
+
+class EntryDriftTests(SimpleTestCase):
+    """The adverse mirror of SIGNAL_SUPPRESS_PROGRESSED.
+
+    mae_pct is NEGATIVE and risk_pct POSITIVE, so the comparison is easy to invert;
+    these pin the direction down.
+    """
+
+    @override_settings(SIGNAL_SUPPRESS_PROGRESSED=False, SIGNAL_MAX_DELIVERY_AGE_BARS=0,
+                       SIGNAL_MAX_ENTRY_DRIFT=0)
+    def test_zero_disables(self):
+        from django.utils import timezone
+
+        from apps.signals.confluence import fresh_entry_q
+
+        self.assertEqual(len(fresh_entry_q(timezone.now())), 0)
+
+    @override_settings(SIGNAL_SUPPRESS_PROGRESSED=False, SIGNAL_MAX_DELIVERY_AGE_BARS=0,
+                       SIGNAL_MAX_ENTRY_DRIFT=0.35)
+    def test_builds_a_drift_clause(self):
+        from django.utils import timezone
+
+        from apps.signals.confluence import fresh_entry_q
+
+        rendered = str(fresh_entry_q(timezone.now()))
+        self.assertIn("mae_pct", rendered)
+        # Null mae (evaluator has not run yet) must be KEPT, not dropped — a brand-new
+        # signal is the freshest thing in the feed.
+        self.assertIn("mae_pct__isnull", rendered)

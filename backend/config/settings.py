@@ -589,6 +589,22 @@ SIGNAL_SUPPRESS_PROGRESSED = env.bool("SIGNAL_SUPPRESS_PROGRESSED", default=True
 #    is where the edge lives, so an aged signal is not a discounted version of a good
 #    trade — it is a different, losing one. See .env.example for the full table.
 SIGNAL_MAX_DELIVERY_AGE_BARS = env.int("SIGNAL_MAX_DELIVERY_AGE_BARS", default=0)
+# 3. Entry drift: refuse a signal that has already run AGAINST itself by this
+#    fraction of its own risk (R) before the user ever saw it. The mirror of
+#    SIGNAL_SUPPRESS_PROGRESSED, which only covers a signal that has already run in
+#    the user's FAVOUR to TP1 — the adverse side was left unguarded.
+#
+#    Worked example (ATOM-USD, 2026-09-08): SELL entry 1.6965, stop 1.7153, so
+#    R = 1.11%. By the time the user acted, price was 1.7140 — 93% of the way to the
+#    stop. What the card showed as reward:risk 1:1 was, at that fill, 1:27.9 AGAINST
+#    them: 0.0013 of room left to lose, 0.0363 needed to reach TP1. The signal was
+#    sound; it had simply already happened. No stop width, strategy filter or TP
+#    setting can rescue that arithmetic.
+#
+#    Free to compute: run_evaluation already writes mae_pct on STILL-PENDING rows, so
+#    this reads stored state rather than fetching a price per card.
+#    0 disables. 0.35 = drop anything that has given back a third of its risk.
+SIGNAL_MAX_ENTRY_DRIFT = env.float("SIGNAL_MAX_ENTRY_DRIFT", default=0.0)
 
 SIGNAL_MIN_CONFIDENCE_BY_STRATEGY = _parse_strategy_floors(
     env("SIGNAL_MIN_CONFIDENCE_BY_STRATEGY", default="")

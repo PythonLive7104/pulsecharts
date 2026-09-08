@@ -18,7 +18,7 @@ from __future__ import annotations
 from collections import defaultdict
 
 from django.conf import settings
-from django.db.models import Q
+from django.db.models import F, Q
 
 from .models import Signal
 from .pregate import kind_of
@@ -389,6 +389,14 @@ def fresh_entry_q(now):
         # best_tp >= 1 on a PENDING row = TP1 already tagged and the trade is still
         # running. Whatever that is, it is not a fresh entry at the printed price.
         q &= Q(best_tp=0)
+
+    drift = float(getattr(settings, "SIGNAL_MAX_ENTRY_DRIFT", 0) or 0)
+    if drift > 0:
+        # mae_pct is NEGATIVE (max adverse excursion from entry, in %), and risk_pct is
+        # positive, so "given back `drift` of R" is mae_pct <= -drift * risk_pct.
+        # Null mae_pct means the evaluator has not run on it yet: keep it, since a
+        # brand-new signal is the freshest thing in the feed.
+        q &= Q(mae_pct__isnull=True) | Q(mae_pct__gt=F("risk_pct") * -drift)
 
     bars = int(getattr(settings, "SIGNAL_MAX_DELIVERY_AGE_BARS", 0) or 0)
     if bars > 0:
