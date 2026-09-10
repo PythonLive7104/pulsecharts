@@ -795,6 +795,36 @@ def candidate_direction(strategy_slug: str, indicators: dict) -> str | None:
     return direction
 
 
+def explain_direction(strategy_slug: str, indicators: dict):
+    """``candidate_direction`` that also says WHY it returned None.
+
+    Returns ``(direction | None, blocked_by | None)``. Same gate order and the same
+    helpers, so it can never disagree with the live path about the outcome — it only
+    adds attribution.
+
+    Exists because "why did nothing fire on this chart?" was previously answered by
+    reading code and guessing, which produced two wrong diagnoses in a row. A gate
+    that silently rejects every candidate on a trending symbol is indistinguishable,
+    from the outside, from a strategy that simply had no setup.
+    """
+    fn = DIRECTIONS.get(strategy_slug)
+    if fn is None:
+        return None, "no-such-strategy"
+    direction = fn(indicators)
+    if not direction:
+        return None, "no-trigger"
+    for label, ok in (
+        ("ema-stack", passes_ema_gate),
+        ("overextended", passes_overext_gate),
+        ("rsi-extreme", passes_rsi_gate),
+        ("structure", passes_structure_gate),
+        ("fib-zone", passes_fib_gate),
+    ):
+        if not ok(strategy_slug, indicators, direction):
+            return None, label
+    return direction, None
+
+
 def candidate_direction_for_service(service, indicators: dict) -> str | None:
     """Directional bias for any service. Custom (user-created) strategies carry a
     ``rule_config`` and are evaluated generically, BYPASSING the system quality gates

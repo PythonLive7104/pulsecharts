@@ -22,6 +22,7 @@ No database writes. Caveats are printed in the output footer — read them.
 
 import json
 import os
+from collections import defaultdict
 
 import requests
 from django.conf import settings
@@ -610,6 +611,15 @@ class Command(BaseCommand):
                                  "the close for a BUY, above for a SELL) instead of at the "
                                  "close. Unfilled setups are dropped, so this buys entry "
                                  "quality with volume.")
+        parser.add_argument("--gate-stats", action="store_true",
+                            help="Count WHY candidates were rejected, per gate and per "
+                                 "strategy, instead of only reporting what survived. "
+                                 "Answers 'why did nothing fire on this chart' with "
+                                 "attribution rather than inference — a gate that "
+                                 "silently rejects every candidate on a trending symbol "
+                                 "looks identical, from outside, to a strategy that had "
+                                 "no setup. Pair with --max-symbols 1 and a watchlist of "
+                                 "one to interrogate a single chart.")
         parser.add_argument("--fade-momentum-veto", type=float, default=None, metavar="ATR",
                             help="Block a mean-reversion entry when the symbol has moved "
                                  "more than this many ATR AGAINST it over the last 6 bars. "
@@ -861,6 +871,7 @@ class Command(BaseCommand):
         conf_min = opts.get("confluence_min")
         conf_min_rev = opts.get("confluence_min_reversion")
         conf_sim = {} if conf_min else None
+        gate_stats = defaultdict(int) if opts.get("gate_stats") else None
         llm = {svc.slug: _blank(svc.name) for svc in services} if llm_on else None
         # Shared LLM budget + call stats across all series.
         budget = {"left": opts["llm_sample"] if llm_on else 0,
@@ -918,7 +929,8 @@ class Command(BaseCommand):
                                  leader_tl, opts.get("leader_gate_all", False),
                                  overlap_sets, rb_test, holdout, conf_sim,
                                  opts.get("entry_pullback"), opts.get("fill_bars", 3),
-                                 opts.get("entry_delay"), opts.get("fade_momentum_veto"))
+                                 opts.get("entry_delay"), opts.get("fade_momentum_veto"),
+                                 gate_stats)
                 series += 1
                 self.stdout.write(f"  · {sym.ticker} {tf}", ending="\r")
             if llm_on and budget["left"] <= 0:
@@ -938,6 +950,8 @@ class Command(BaseCommand):
             self._report_holdout_delta(rb, rb_test)
         else:
             self._report(rb, series)
+        if gate_stats:
+            self._report_gates(gate_stats)
         if conf_sim:
             self._report_confluence(conf_sim, conf_min, conf_min_rev, bool(rb_test))
         if overlap_sets:
@@ -1028,7 +1042,7 @@ class Command(BaseCommand):
                     eval_bars=None, spread_pct=None, leader_tl=None,
                     leader_all=False, overlap_sets=None, rb_test=None,
                     holdout=None, conf_sim=None, pullback=None, fill_bars=3,
-                    delay=None, fade_veto=None):
+                    delay=None, fade_veto=None, gate_stats=None):
         ticker = sym.ticker
         n = len(candles)
         # First bar index belonging to the out-of-sample segment. Trades are assigned
@@ -1084,9 +1098,16 @@ class Command(BaseCommand):
             for svc in services:
                 if i < free_at[svc.slug] or not passes_pregate(svc.slug, snap):
                     continue
-                direction = candidate_direction(svc.slug, snap)
+                if gate_stats is not None:
+                    direction, blocked = pregate.explain_direction(svc.slug, snap)
+                    if blocked:
+                        gate_stats[(svc.slug, blocked)] += 1
+                else:
+                    direction = candidate_direction(svc.slug, snap)
                 if direction not in ("BUY", "SELL"):
                     continue
+                if gate_stats is not None:
+                    gate_stats[(svc.slug, "PASSED-to-regime")] += 1
 
                 # Regime bound, by strategy kind: trend/breakout need ADX at or above
                 # the floor; a fade needs it at or below the reversion ceiling (it is
@@ -1096,8 +1117,12 @@ class Command(BaseCommand):
                         ceiling = (rev_adx_max if rev_adx_max is not None
                                    else settings.SIGNAL_ADX_MAX_REVERSION)
                         if bar_adx is None or bar_adx > ceiling:
+                            if gate_stats is not None:
+                                gate_stats[(svc.slug, "adx-above-fade-ceiling")] += 1
                             continue
                     elif bar_adx is None or bar_adx < adx_min:
+                        if gate_stats is not None:
+                            gate_stats[(svc.slug, "adx-below-floor")] += 1
                         continue
 
                 # HTF 200-EMA bias. --htf-bias applies it to every strategy;
@@ -1136,9 +1161,10 @@ class Command(BaseCommand):
                     while lp + 1 < len(leader_tl) and leader_tl[lp + 1][0] <= bar_t:
                         lp += 1
                     lead_state = leader_tl[lp][1] if lp >= 0 else None
-                    if lead_state == "up" and direction == "SELL":
-                        continue
-                    if lead_state == "down" and direction == "BUY":
+                    if ((lead_state == "up" and direction == "SELL")
+                            or (lead_state == "down" and direction == "BUY")):
+                        if gate_stats is not None:
+                            gate_stats[(svc.slug, "leader-gate")] += 1
                         continue
 
                 # Conviction floor — the same score the live feed gates on. Mean
@@ -1154,6 +1180,8 @@ class Command(BaseCommand):
                     if strategy_floors and svc.slug in strategy_floors:
                         floor = strategy_floors[svc.slug]
                     if confidence_score(direction, snap, svc.slug) < floor:
+                        if gate_stats is not None:
+                            gate_stats[(svc.slug, "confidence-floor")] += 1
                         continue
 
                 res = _outcome(direction, snap, future, asset_class, svc.slug,
@@ -1292,6 +1320,28 @@ class Command(BaseCommand):
                 f"  {a['name'][:26]:26s} {aw:5.1f}% -> {bw:5.1f}%  "
                 f"({bw - aw:+.1f})   {ar:+.2f}R -> {br:+.2f}R  ({br - ar:+.2f}) "
                 f" n={a_res}/{b_res}{flag}")
+
+    def _report_gates(self, stats: dict) -> None:
+        """Per-strategy rejection attribution: which gate killed how many candidates.
+
+        "PASSED-to-regime" is the count that cleared the pregate chain and reached the
+        ADX/leader/confidence stage, so a strategy showing a big rejection count and a
+        tiny pass count is being gated out rather than finding nothing.
+        """
+        by_slug: dict = defaultdict(dict)
+        for (slug, reason), n in stats.items():
+            by_slug[slug][reason] = n
+        self.stdout.write(self.style.MIGRATE_HEADING(
+            "\n  Gate attribution — why candidates were rejected:"))
+        for slug in sorted(by_slug):
+            reasons = by_slug[slug]
+            passed = reasons.pop("PASSED-to-regime", 0)
+            triggered = passed + sum(reasons.values())
+            self.stdout.write(
+                f"    {slug:24s} triggered={triggered:<6d} reached-regime={passed}")
+            for reason, n in sorted(reasons.items(), key=lambda kv: -kv[1]):
+                pct = 100.0 * n / triggered if triggered else 0
+                self.stdout.write(f"        {reason:24s} {n:6d}  ({pct:4.1f}%)")
 
     def _report_confluence(self, conf_sim: dict, k_trend: int, k_rev, split: bool) -> None:
         """Score only the setups that would actually have been DELIVERED.
