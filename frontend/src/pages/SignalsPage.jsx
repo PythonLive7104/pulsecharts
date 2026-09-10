@@ -80,9 +80,9 @@ export default function SignalsPage() {
     // they still share the same round trip) but NOT awaiting them keeps the whole page
     // from being held hostage by the slowest request — previously a single Promise.all
     // over all five meant a blank "Loading…" until every last one returned.
-    // Realized accuracy is a STAFF-ONLY analysis surface (the API 403s for everyone
-    // else). Users still see every trade they were sent — outcomes and all — in Trade
-    // updates and Past results; only the aggregate stat panel is internal.
+    // Realized accuracy is the user's OWN measured track record over the signals they
+    // were actually delivered, shown to them (?scope=all — the product-wide aggregate —
+    // is still staff-only). Catch stays: a stats failure must not blank the feed.
     api.signalAccuracy().then(setAccuracy).catch(() => setAccuracy(null));
     api.telegramStatus().then(setTg).catch(() => setTg(null));
 

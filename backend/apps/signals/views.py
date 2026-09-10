@@ -672,32 +672,34 @@ class SignalAccuracyView(APIView):
     teaser list, which is explicitly a strategy history — but a percentage rendered as
     a headline reads as "how did MY signals do", so it must answer that question.)
 
-    Staff can pass ?scope=all for the product-wide figure across every user's signals.
-    STAFF-ONLY. This is an internal analysis surface — it exists so the operator can
-    study which strategies are actually working and tune them. Users are NOT left in the
-    dark by this: every trade they were sent stays fully visible to them in Trade updates
-    and Past results (direction, entry, stop, targets, and the win/loss/flat outcome of
-    each). What's staff-gated is only the AGGREGATE — nothing about an individual trade
-    is hidden, and no outcome is withheld or restated.
+    VISIBLE TO THE USER whose record it is (2026-09-11). It was staff-only, which
+    had it backwards: a user could see every individual trade they were sent but never
+    the aggregate of their own results. Hiding the total while showing every part of it
+    protects nobody and reads, correctly, as something to hide — especially after a
+    losing week. The figure is measured, scoped to what this user was actually
+    delivered, carries its own sample size, and discloses the undecided open trades
+    beside it so it cannot cherry-pick.
 
-    The line that must not be crossed: this panel being private is fine; pairing it with
-    accuracy or performance CLAIMS in marketing is not. Section 13.7 is explicit — do not
-    advertise a hit rate that isn't backed by exactly this kind of measured, disclosed
-    evidence. Keep the number private if you like; do not make claims about it.
+    ?scope=all remains STAFF-ONLY: that is the product-wide tuning aggregate across
+    every user's signals, not anyone's own record.
 
-    Staff can pass ?scope=all for the product-wide figure across every user's signals —
-    a wider sample for tuning than any single account provides.
+    The line that must not be crossed is unchanged and is about MARKETING, not this
+    panel. Section 13.7: do not advertise a hit rate. Showing a user their own measured
+    track record, with n and the open trades disclosed, is the opposite of a claim —
+    it is the evidence a claim would need, and it is the only honest basis on which to
+    ask someone to keep paying.
     """
 
     def get(self, request):
         user = request.user
 
-        if not user.is_staff:
-            return Response(
-                {"detail": "Not available."}, status=status.HTTP_403_FORBIDDEN
-            )
-
         if request.query_params.get("scope") == "all":
+            # Product-wide aggregate stays STAFF-ONLY: it is an internal tuning
+            # surface across every user's signals, not anyone's own record.
+            if not user.is_staff:
+                return Response(
+                    {"detail": "Not available."}, status=status.HTTP_403_FORBIDDEN
+                )
             base = Signal.objects.filter(
                 service__owner__isnull=True,
                 direction__in=[Signal.Direction.BUY, Signal.Direction.SELL],
