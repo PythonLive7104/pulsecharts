@@ -1049,6 +1049,14 @@ CELERY_BEAT_SCHEDULE = {
     },
     # Daily cleanup: purge resolved signals + seen alerts past the retention
     # window so the database doesn't grow without bound.
+    # Accumulates the open-interest history Hyperliquid does not serve
+    # retrospectively (see market_data.models.MarketContext). Nothing reads it yet —
+    # it has to exist for months before the idea it supports can be tested at all.
+    # One API call per tick covers every coin.
+    "record-market-context": {
+        "task": "apps.market_data.tasks.record_market_context",
+        "schedule": env.float("MARKET_CONTEXT_INTERVAL", default=900.0),  # 15 min
+    },
     "purge-old-data": {
         "task": "apps.signals.tasks.purge_old_data",
         "schedule": env.float("PURGE_INTERVAL", default=86400.0),  # once a day

@@ -160,3 +160,33 @@ def fetch_candles_since(coin: str, ticker: str, interval: str, start_ms: int, *,
         timeout=timeout,
     )
     return [normalize_candle(c, ticker) for c in (resp.json() or [])]
+
+
+def fetch_asset_contexts(*, timeout: float = 10.0) -> dict[str, dict]:
+    """Current per-coin context keyed by coin name: open interest, funding, mark px.
+
+    POST /info {"type": "metaAndAssetCtxs"} -> [meta, [ctx, ...]] where the two lists
+    are POSITIONALLY aligned with meta["universe"]. One request covers every coin, so
+    recording the whole universe costs a single call.
+
+    Returns {} rather than raising on a malformed payload: this feeds a background
+    recorder whose only job is to accumulate history, and a bad poll should skip an
+    hour, never break the beat loop.
+    """
+    resp = _post_info({"type": "metaAndAssetCtxs"}, timeout=timeout)
+    data = resp.json()
+    if not (isinstance(data, list) and len(data) >= 2):
+        return {}
+    meta, ctxs = data[0], data[1]
+    universe = (meta or {}).get("universe") or []
+    if not isinstance(ctxs, list) or len(ctxs) != len(universe):
+        # Positional alignment is the whole contract; if the lengths disagree the
+        # pairing is unsafe and silently mis-attributing OI across coins would be
+        # worse than recording nothing.
+        return {}
+    out: dict[str, dict] = {}
+    for entry, ctx in zip(universe, ctxs):
+        name = (entry or {}).get("name")
+        if name and isinstance(ctx, dict):
+            out[name] = ctx
+    return out
