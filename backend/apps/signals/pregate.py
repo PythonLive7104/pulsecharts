@@ -764,10 +764,28 @@ def passes_structure_gate(strategy_slug: str, indicators: dict, direction: str) 
 
 def passes_fib_gate(strategy_slug: str, indicators: dict, direction: str) -> bool:
     """Whether `direction` is allowed given the Fib-pullback requirement — only enter
-    after a retracement into the zone, never chasing an extended move. Applies to
-    EVERY strategy (breakouts included): with the 200-EMA trend filter off, the Fib
-    zone is the mandatory entry confirmation, so it is deliberately NOT exempted.
-    (No-op anyway when the gate is disabled — is_in_fib_zone returns True.)"""
+    a TREND after a retracement into the zone, never chasing an extended move.
+
+    TREND STRATEGIES ONLY (2026-09-11). It previously applied to every strategy,
+    on the reasoning that with SIGNAL_EMA200_TREND_FILTER off the Fib zone was the
+    mandatory entry confirmation. That filter is ON now, and applying the gate to
+    everything is actively destructive: measured out-of-sample, requiring a pullback
+    of every strategy took the reversion book from n=223 to n=5 — it does not filter
+    fades, it deletes them.
+
+    It is also conceptually wrong for the exempt kinds. A fade trades the counter-move
+    itself, so demanding a retracement first asks it to wait for the very thing it
+    exists to trade. A breakout fires on extension by definition, so a pullback
+    requirement contradicts its premise.
+
+    On trend it measured 51.1% / -0.00R -> 57.7% / +0.09R (n=68 -> 36), with avgMAE
+    improving -3.2% -> -2.6%: entering on the retrace means less of the move happens
+    against you after you are in. Small sample, coherent mechanism.
+
+    No-op when the gate is disabled (is_in_fib_zone returns True at MIN=0).
+    """
+    if strategy_slug in EMA_STACK_EXEMPT:  # breakouts + mean reversion
+        return True
     return is_in_fib_zone(indicators, direction)
 
 
