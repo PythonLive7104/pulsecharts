@@ -415,11 +415,15 @@ export default function SignalsPage() {
           />
         )}
 
+        {/* WeekendNotice is a modal (fixed position), so it is fine as a sibling of
+            the flex columns. BreakerNotice and PushToggle render INLINE, so they must
+            live inside .feed — as direct children of .signals-body (display:flex)
+            they became a third column and squeezed the feed to a sliver. */}
         <WeekendNotice pause={feed?.pause} />
-        <BreakerNotice breaker={feed?.breaker} />
-        <PushToggle />
 
         <section className="feed">
+          <BreakerNotice breaker={feed?.breaker} />
+          <PushToggle />
           <div className="feed-head">
             <h1>Your signal feed</h1>
             {feed && (
