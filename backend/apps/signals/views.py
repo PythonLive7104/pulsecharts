@@ -472,7 +472,14 @@ class SignalFeedView(APIView):
             candidates = list(
                 Signal.objects.filter(
                     confluence.deliverable_q(),  # custom strategies bypass the conf floor
-                    confluence.fresh_entry_q(now),  # not already run to TP1 / not stale
+                    # Feed-specific age window: this path is PULL-based, so it must
+                    # tolerate a user who checks a few times a day rather than one who
+                    # is watching continuously. Telegram keeps the tighter cap.
+                    confluence.fresh_entry_q(
+                        now,
+                        max_bars=(settings.SIGNAL_MAX_DELIVERY_AGE_BARS_FEED
+                                  or settings.SIGNAL_MAX_DELIVERY_AGE_BARS),
+                    ),
                     service_id__in=followed_ids,
                     symbol_id__in=watched_ids,
                     direction__in=[Signal.Direction.BUY, Signal.Direction.SELL],

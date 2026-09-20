@@ -604,6 +604,21 @@ SIGNAL_MAX_DELIVERY_AGE_BARS = env.int("SIGNAL_MAX_DELIVERY_AGE_BARS", default=0
 #    Free to compute: run_evaluation already writes mae_pct on STILL-PENDING rows, so
 #    this reads stored state rather than fetching a price per card.
 #    0 disables. 0.35 = drop anything that has given back a third of its risk.
+# Age cap for the IN-APP FEED specifically. 0/unset = use the base cap above.
+#
+# The right window is a property of the CHANNEL. Telegram pushes every 120s and
+# comfortably meets a 1-bar cap, which is what buys the accuracy: the same signal
+# measures 57-63% entered on its trigger bar against 54% four bars later and 51% at
+# twelve. The in-app feed is PULL-based — it only delivers when a user opens the page
+# — so the same 1-bar cap silently discarded everything: 203 signals generated over
+# three days on 2026-09-17..19, zero delivered in-app.
+#
+# So: keep the base cap tight for Telegram, and give the feed a window a human
+# actually checks within. The honest cost is ~3 points on in-app signals; the
+# alternative was an empty page. Closing that gap properly means PUSH for the web
+# feed, after which this can come back down to match.
+SIGNAL_MAX_DELIVERY_AGE_BARS_FEED = env.int("SIGNAL_MAX_DELIVERY_AGE_BARS_FEED", default=0)
+
 SIGNAL_MAX_ENTRY_DRIFT = env.float("SIGNAL_MAX_ENTRY_DRIFT", default=0.0)
 
 SIGNAL_MIN_CONFIDENCE_BY_STRATEGY = _parse_strategy_floors(

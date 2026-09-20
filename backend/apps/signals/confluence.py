@@ -375,12 +375,21 @@ _BAR_SECONDS = {
 }
 
 
-def fresh_entry_q(now):
+def fresh_entry_q(now, *, max_bars=None):
     """Filter restricting delivery to signals still usable as an ENTRY.
 
-    Returns a Q that is empty (matches everything) when both guards are off, so the
+    Returns a Q that is empty (matches everything) when the guards are off, so the
     caller can always AND it in. ``now`` is passed rather than read here so one
     request uses a single consistent clock.
+
+    ``max_bars`` overrides SIGNAL_MAX_DELIVERY_AGE_BARS because the right window is a
+    property of the CHANNEL, not of the signal. Measured, the same signal is worth
+    57-63% entered on its trigger bar, 54% four bars later and 51% at twelve — so a
+    strict cap is what buys accuracy. But Telegram PUSHES every 120s while the in-app
+    feed is PULL-based and only delivers when someone opens the page, so a one-hour
+    window that Telegram comfortably meets silently discarded everything in-app: 203
+    signals generated over three days, zero delivered. One global number forces both
+    channels onto the same compromise and gets the worst of each.
     """
     from datetime import timedelta
 
@@ -398,7 +407,8 @@ def fresh_entry_q(now):
         # brand-new signal is the freshest thing in the feed.
         q &= Q(mae_pct__isnull=True) | Q(mae_pct__gt=F("risk_pct") * -drift)
 
-    bars = int(getattr(settings, "SIGNAL_MAX_DELIVERY_AGE_BARS", 0) or 0)
+    bars = int(max_bars if max_bars is not None
+               else (getattr(settings, "SIGNAL_MAX_DELIVERY_AGE_BARS", 0) or 0))
     if bars > 0:
         # Per-timeframe cutoff: the same bar count means a different wall-clock age on
         # 1h than on 4h, which is the point — staleness is measured in bars, not hours.
