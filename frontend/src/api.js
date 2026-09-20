@@ -157,6 +157,15 @@ export const api = {
     request(`/me/signals/feed/${offset ? `?offset=${offset}` : ""}`),
   signalAccuracy: () => request("/signal-services/accuracy/"),
 
+  // Web push. The feed is pull-based, so without server-initiated push a signal is
+  // only delivered when someone opens the page — which is why the feed needs a looser
+  // freshness window than Telegram, at a measured cost in accuracy.
+  pushConfig: () => request("/push/config/"),
+  pushSubscribe: (sub) =>
+    request("/me/push-subscriptions/", { method: "POST", body: sub }),
+  pushUnsubscribe: (body = {}) =>
+    request("/me/push-subscriptions/", { method: "DELETE", body }),
+
   // --- referrals (earn credits, redeem for a plan) ---
   referral: () => request("/me/referral/"),
   referralSetCode: (code) => request("/me/referral/code/", { method: "POST", body: { code } }),

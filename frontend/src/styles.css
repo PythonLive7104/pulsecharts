@@ -2326,3 +2326,30 @@ a.brand:hover { text-decoration: none; }
 }
 .breaker-copy { display: flex; flex-direction: column; gap: 3px; }
 .breaker-sub { opacity: 0.75; font-size: 12px; }
+
+/* --- signal push toggle ---------------------------------------------------
+   A delivery-SPEED control, not a preference: without push the feed only
+   delivers when the page is opened, which is a measurably worse product. Styled
+   as a quiet inline row so it reads as a setting rather than a promo. */
+.push-toggle {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin: 0 0 14px;
+  padding: 10px 14px;
+  border: 1px solid rgba(127, 127, 127, 0.25);
+  border-radius: 8px;
+  font-size: 13px;
+}
+.push-copy { display: flex; flex-direction: column; gap: 2px; flex: 1 1 260px; }
+.push-toggle button {
+  padding: 6px 14px;
+  border-radius: 6px;
+  border: 1px solid rgba(127, 127, 127, 0.35);
+  background: transparent;
+  cursor: pointer;
+  font: inherit;
+}
+.push-toggle button:disabled { opacity: 0.5; cursor: not-allowed; }
+.push-msg { flex-basis: 100%; font-size: 12px; opacity: 0.8; }

@@ -28,7 +28,8 @@ from . import confluence
 from .engine import SignalEngineError, generate_signal
 from .evaluate import outcome_label, walk
 from .indicators import compute_indicators
-from .models import Signal, SignalService, TelegramDelivery, UserSignalSubscription
+from .models import (Signal, SignalDelivery, SignalService, TelegramDelivery,
+                     UserSignalSubscription)
 from .pregate import EMA_STACK_EXEMPT, candidate_direction_for_service
 from .quota import SIGNAL_QUOTA_WINDOW, signal_quota_for
 
@@ -774,6 +775,10 @@ def purge_old_data():
 from datetime import timedelta  # noqa: E402
 
 TELEGRAM_LOOKBACK = timedelta(hours=6)  # don't push signals older than this
+# Candidate window for web push. The STRICT age cap (fresh_entry_q) is the real
+# constraint — this only bounds the query, and a wide bound would just scan rows
+# the cap is about to reject anyway.
+WEB_PUSH_LOOKBACK = timedelta(hours=6)
 
 # How long after a signal resolves we'll still send its "trade update". Sized to
 # outlast any plausible worker/beat outage — the window is anchored to the signal's
@@ -1247,6 +1252,152 @@ def run_telegram_push() -> dict:
         "telegram push: sent=%(sent)d closed=%(closed)d progressed=%(progressed)d", summary
     )
     return summary
+
+
+def run_web_push() -> dict:
+    """Server-initiated delivery for the IN-APP feed.
+
+    The feed was pull-only: a signal was delivered when a user opened the page, so
+    the freshness window had to be loose enough for human browsing habits, which
+    costs measured accuracy (57-63% on the trigger bar vs 54% four bars later). This
+    task does what a feed load does — same confluence, same freshness guards, same
+    caps, same quota — on a 120s clock, and writes the SAME SignalDelivery rows. The
+    notification is the prompt; the card is already waiting when the user arrives.
+
+    Uses the STRICT base age cap, not the feed's looser one: the whole point is that
+    push removes the reason the feed needed a wider window.
+
+    Failure-tolerant by design — a push-service outage must never break the beat loop
+    or mark a signal delivered that the user never saw, so a row is written only after
+    at least one endpoint accepts the notification.
+    """
+    from django.contrib.auth import get_user_model
+
+    from . import webpush
+    from .models import WebPushSubscription
+
+    User = get_user_model()
+
+    if not webpush.is_configured():
+        return {"skipped": "web push not configured"}
+
+    now = timezone.now()
+    week_cutoff = now - SIGNAL_QUOTA_WINDOW
+    shadowed = confluence.shadowed_asset_classes()
+    sent = 0
+
+    user_ids = (
+        WebPushSubscription.objects.filter(is_active=True)
+        .values_list("user_id", flat=True).distinct()
+    )
+    for user in User.objects.filter(id__in=list(user_ids)):
+        quota = signal_quota_for(user)
+        if quota == 0:
+            continue
+        # Same ownership re-check as the feed and Telegram: a subscription row must
+        # never push another user's PRIVATE custom strategy, however it got there.
+        followed = list(
+            UserSignalSubscription.objects.filter(user=user)
+            .filter(Q(service__owner__isnull=True) | Q(service__owner=user))
+            .values_list("service_id", flat=True)
+        )
+        watched = list(
+            WatchlistItem.objects.filter(user=user).values_list("symbol_id", flat=True)
+        )
+        if not followed or not watched:
+            continue
+
+        unlimited = quota < 0
+        remaining = None
+        if not unlimited:
+            used = SignalDelivery.objects.filter(
+                user=user, delivered_at__gte=week_cutoff
+            ).count()
+            remaining = quota - used
+            if remaining <= 0:
+                continue
+
+        delivered_trades = set(
+            SignalDelivery.objects.filter(user=user, delivered_at__gte=now - WEB_PUSH_LOOKBACK)
+            .values_list(
+                "signal__symbol_id", "signal__timeframe",
+                "signal__direction", "signal__entry_price",
+            )
+        )
+        candidates = list(
+            Signal.objects.filter(
+                confluence.deliverable_q(),
+                confluence.fresh_entry_q(now),  # STRICT cap — push is why we can
+                service_id__in=followed,
+                symbol_id__in=watched,
+                direction__in=[Signal.Direction.BUY, Signal.Direction.SELL],
+                outcome=Signal.Outcome.PENDING,
+                generated_at__gte=now - WEB_PUSH_LOOKBACK,
+            ).select_related("symbol", "service")
+        )
+        reps = [
+            r for r in confluence.collapse(candidates)
+            if (r.symbol_id, r.timeframe, r.direction, r.entry_price) not in delivered_trades
+        ]
+        reps.sort(key=lambda s: s.generated_at)  # oldest first, so quota fills in order
+        if shadowed:
+            reps = [r for r in reps if r.symbol.asset_class not in shadowed]
+        reps = breaker.filter_halted(reps, now)
+        reps = confluence.cap_currency_exposure(
+            reps,
+            already_open=Signal.objects.filter(
+                deliveries__user=user, outcome=Signal.Outcome.PENDING,
+                symbol__asset_class="forex",
+            ).select_related("symbol"),
+        )
+        reps = confluence.cap_crypto_direction(
+            reps,
+            already_open=Signal.objects.filter(
+                deliveries__user=user, outcome=Signal.Outcome.PENDING,
+                symbol__asset_class="crypto",
+            ).select_related("symbol"),
+        )
+        if not unlimited:
+            reps = reps[:remaining]
+        if not reps:
+            continue
+
+        subs = list(WebPushSubscription.objects.filter(user=user, is_active=True))
+        for sig in reps:
+            payload = webpush.format_signal(sig)
+            any_ok = False
+            for sub in subs:
+                ok, reason = webpush.send_push(sub, payload)
+                if ok:
+                    any_ok = True
+                    sub.last_used_at = now
+                    sub.save(update_fields=["last_used_at"])
+                elif reason == "gone":
+                    # Only a 404/410 deactivates. Transient failures leave the row
+                    # alone so an outage cannot unsubscribe everybody at once.
+                    sub.is_active = False
+                    sub.last_error = reason
+                    sub.save(update_fields=["is_active", "last_error"])
+            if not any_ok:
+                # Never mark delivered on a failed push: the user would lose the
+                # signal from their feed without ever having been told about it.
+                continue
+            SignalDelivery.objects.get_or_create(user=user, signal=sig)
+            n = getattr(sig, "confluence_count", None)
+            if n:
+                Signal.objects.filter(pk=sig.pk, confluence_count__isnull=True).update(
+                    confluence_count=n
+                )
+            sent += 1
+
+    summary = {"sent": sent}
+    logger.info("web push: sent=%(sent)d", summary)
+    return summary
+
+
+@shared_task(name="apps.signals.tasks.push_web_signals")
+def push_web_signals():
+    return run_web_push()
 
 
 @shared_task(name="apps.signals.tasks.push_telegram_signals")

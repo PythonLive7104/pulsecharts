@@ -14,7 +14,7 @@ from django.db import IntegrityError
 from django.db.models import Q
 from django.utils import timezone
 from django.utils.text import slugify
-from rest_framework import generics, status
+from rest_framework import generics, permissions, status
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
@@ -762,3 +762,72 @@ class SignalAccuracyView(APIView):
         stats["min_sample"] = MIN_ACCURACY_SAMPLE
         stats["scope"] = "delivered"
         return Response(stats)
+
+
+class WebPushConfigView(APIView):
+    """GET /api/push/config/ — the VAPID public key the browser needs to subscribe.
+
+    Public key only; the private key never leaves the server. `enabled: false` when
+    web push is unconfigured, so the UI can hide the control rather than offering a
+    button that cannot work.
+    """
+
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request):
+        from . import webpush
+
+        return Response({
+            "enabled": webpush.is_configured(),
+            "public_key": settings.VAPID_PUBLIC_KEY if webpush.is_configured() else "",
+        })
+
+
+class WebPushSubscribeView(APIView):
+    """POST /api/me/push-subscriptions/   — register this browser
+    DELETE /api/me/push-subscriptions/   — unregister it (body: {"endpoint": ...})
+
+    Upserts on `endpoint`: re-subscribing the same browser returns the same endpoint
+    from the push service, so this must not accumulate duplicate rows — and it
+    REACTIVATES a row previously marked dead, which is how a user recovers after
+    clearing site data.
+
+    The endpoint is also re-pointed at the current user, since a shared browser can
+    hand the same subscription to a second account; leaving it on the first would
+    push one user's signals to another.
+    """
+
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request):
+        from .models import WebPushSubscription
+
+        endpoint = (request.data.get("endpoint") or "").strip()
+        keys = request.data.get("keys") or {}
+        p256dh = (keys.get("p256dh") or "").strip()
+        auth = (keys.get("auth") or "").strip()
+        if not (endpoint and p256dh and auth):
+            return Response(
+                {"detail": "endpoint and keys.p256dh / keys.auth are required."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        WebPushSubscription.objects.update_or_create(
+            endpoint=endpoint,
+            defaults={
+                "user": request.user, "p256dh": p256dh, "auth": auth,
+                "is_active": True, "last_error": "",
+            },
+        )
+        return Response({"subscribed": True}, status=status.HTTP_201_CREATED)
+
+    def delete(self, request):
+        from .models import WebPushSubscription
+
+        endpoint = (request.data.get("endpoint") or "").strip()
+        qs = WebPushSubscription.objects.filter(user=request.user)
+        # No endpoint = "unsubscribe me everywhere", which is what a user toggling the
+        # setting off on a device they no longer have expects.
+        if endpoint:
+            qs = qs.filter(endpoint=endpoint)
+        deleted, _ = qs.delete()
+        return Response({"unsubscribed": deleted})

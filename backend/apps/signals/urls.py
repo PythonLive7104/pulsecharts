@@ -8,6 +8,8 @@ from .views import (
     SignalServiceListView,
     SubscriptionDeleteView,
     SubscriptionListCreateView,
+    WebPushConfigView,
+    WebPushSubscribeView,
 )
 
 urlpatterns = [
@@ -18,4 +20,6 @@ urlpatterns = [
     path("me/signal-subscriptions/", SubscriptionListCreateView.as_view(), name="signal-subscriptions"),
     path("me/signal-subscriptions/<int:pk>/", SubscriptionDeleteView.as_view(), name="signal-subscription-detail"),
     path("me/signals/feed/", SignalFeedView.as_view(), name="signal-feed"),
+    path("push/config/", WebPushConfigView.as_view(), name="webpush-config"),
+    path("me/push-subscriptions/", WebPushSubscribeView.as_view(), name="webpush-subscribe"),
 ]

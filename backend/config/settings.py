@@ -619,6 +619,15 @@ SIGNAL_MAX_DELIVERY_AGE_BARS = env.int("SIGNAL_MAX_DELIVERY_AGE_BARS", default=0
 # feed, after which this can come back down to match.
 SIGNAL_MAX_DELIVERY_AGE_BARS_FEED = env.int("SIGNAL_MAX_DELIVERY_AGE_BARS_FEED", default=0)
 
+# --- Web Push (VAPID) -------------------------------------------------------
+# Generate a keypair once:
+#   python -c "from py_vapid import Vapid01; v=Vapid01(); v.generate_keys(); \
+#              print(v.private_key_pem().decode()); print(v.public_key_urlsafe_base64())"
+# Both empty = web push is off and every related endpoint reports unavailable.
+VAPID_PUBLIC_KEY = env("VAPID_PUBLIC_KEY", default="")
+VAPID_PRIVATE_KEY = env("VAPID_PRIVATE_KEY", default="")
+VAPID_CLAIM_EMAIL = env("VAPID_CLAIM_EMAIL", default=CONTACT_US_EMAIL)
+
 SIGNAL_MAX_ENTRY_DRIFT = env.float("SIGNAL_MAX_ENTRY_DRIFT", default=0.0)
 
 SIGNAL_MIN_CONFIDENCE_BY_STRATEGY = _parse_strategy_floors(
@@ -1058,6 +1067,13 @@ CELERY_BEAT_SCHEDULE = {
         "schedule": env.float("ALERT_CHECK_INTERVAL", default=30.0),
     },
     # Push new signals to linked premium users' Telegram (no-op if unconfigured).
+    # Server-initiated delivery for the IN-APP feed. Without it the feed only
+    # delivers when someone opens the page, which is why it cannot use the tight
+    # freshness window Telegram does. Same cadence as Telegram for the same reason.
+    "push-web-signals": {
+        "task": "apps.signals.tasks.push_web_signals",
+        "schedule": env.float("WEB_PUSH_INTERVAL", default=120.0),
+    },
     "push-telegram-signals": {
         "task": "apps.signals.tasks.push_telegram_signals",
         "schedule": env.float("TELEGRAM_PUSH_INTERVAL", default=120.0),

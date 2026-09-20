@@ -27,6 +27,12 @@ django-cors-headers>=4.4
 websockets>=12.0
 requests>=2.32
 
+# --- Web Push (VAPID) for the in-app feed ---
+# Delivery latency measurably decides whether a signal wins: the same call is worth
+# 57-63% entered on its trigger bar and 51% twelve bars later. The feed was PULL-only,
+# so it could not use the tight window Telegram does. This makes it server-initiated.
+pywebpush>=2.0
+
 # --- Auth tokens for the React SPA ---
 djangorestframework-simplejwt>=5.3
 

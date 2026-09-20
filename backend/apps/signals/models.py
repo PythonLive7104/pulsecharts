@@ -232,3 +232,43 @@ class TelegramDelivery(models.Model):
 
     def __str__(self):
         return f"{self.user_id} <-tg- signal {self.signal_id}"
+
+
+class WebPushSubscription(models.Model):
+    """A browser push endpoint for one user, from the Push API.
+
+    Web push exists here for the same reason the Telegram push loop does: the in-app
+    feed was PULL-based, so a signal was only delivered when someone happened to open
+    the page. Measured, that costs real accuracy — the same signal is worth 57-63%
+    entered on its trigger bar, 54% four bars later and 51% at twelve — and on
+    2026-09-17..19 it cost the feed everything: 203 signals generated, zero delivered
+    in-app, because nothing survived a one-hour window nobody was there to collect
+    from. Server-initiated push is what lets the feed use the tight window that buys
+    the accuracy.
+
+    One row per browser/device: a user may have several. `endpoint` is unique because
+    the push service issues one per subscription, and re-subscribing the same browser
+    returns the same endpoint (so this upserts rather than duplicating).
+    """
+
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="push_subscriptions"
+    )
+    endpoint = models.URLField(max_length=500, unique=True)
+    # Public key + auth secret from PushSubscription.getKey(); opaque to us, required
+    # for payload encryption.
+    p256dh = models.CharField(max_length=200)
+    auth = models.CharField(max_length=100)
+    created_at = models.DateTimeField(auto_now_add=True)
+    last_used_at = models.DateTimeField(null=True, blank=True)
+    # Set when the push service returns 404/410 (subscription gone). Kept rather than
+    # deleted so a re-subscribe from the same browser reuses the row, and so a
+    # transient outage cannot silently unsubscribe everyone.
+    is_active = models.BooleanField(default=True)
+    last_error = models.CharField(max_length=200, blank=True, default="")
+
+    class Meta:
+        indexes = [models.Index(fields=["user", "is_active"])]
+
+    def __str__(self):
+        return f"{self.user_id} · {self.endpoint[:40]}…"
