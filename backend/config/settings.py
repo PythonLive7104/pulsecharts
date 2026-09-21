@@ -648,6 +648,25 @@ SIGNAL_MIN_CONFIDENCE_BY_STRATEGY = _parse_strategy_floors(
 # apps/signals/apps.py). Confluence counts agreement only among the strategies a user
 # FOLLOWS, so a cap below the floor makes the threshold unreachable and that tier gets
 # ZERO signals, silently.
+#
+# LIVE VALUE IS 1 (2026-09-21), and the reason is a trap worth spelling out. Measured
+# out-of-sample with the HTF filter and pullback gate both active:
+#
+#     conf 2   trend 66.7%  +0.23R  n=28     <- better on paper
+#     conf 1   trend 62.5%  +0.16R  n=33
+#
+# Conf 2 is the stronger number and was deployed on it. Live, it delivered ZERO trend
+# signals in two days (and 2 in the preceding week): with only TWO active trend
+# strategies, conf 2 means UNANIMITY, on top of ADX 28, the EMA stack, structure, the
+# overextension guard, the RSI cap, a pullback into the retrace zone and 4h agreement.
+# Stacked, that bar is essentially never cleared — and a 66.7% strategy that never
+# fires is worth exactly nothing.
+#
+# The backtest cannot see this, because it scores a fixed historical window rather
+# than asking whether the config produces a usable feed. So: check DELIVERED volume
+# before taking the better win rate. The floor is capped at the active count per kind
+# (confluence.confluence_min), so retiring strategies silently tightens this even when
+# the number is untouched.
 SIGNAL_CONFLUENCE_MIN = env.int("SIGNAL_CONFLUENCE_MIN", default=3)
 
 # Confluence floor for MEAN-REVERSION signals, which are a structurally separate
