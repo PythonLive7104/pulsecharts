@@ -39,6 +39,10 @@ STRATEGY_PRIORITY = [
     # still ranked two of them in the top four.
     "momentum-crossover",
     "vwap-trend",
+    # BREAKOUT — ranked with the trend strategies, not the fades. It trades WITH the
+    # move, and Free's default of 4 was always meant to be the non-fade set. Its
+    # confluence floor is capped at 1 (only one active breakout), so it fires alone.
+    "bollinger-breakout",
     # 4-6: MEAN REVERSION. Free's default of 4 now picks up bb-fade as its fourth,
     # which the pre-2026-08-30 roster deliberately avoided — with six trend
     # strategies there were enough to fill Free without one. Low stakes in practice:
@@ -53,7 +57,6 @@ STRATEGY_PRIORITY = [
     "trend-rider",
     "adx-trend",
     "ema-ribbon",
-    "bollinger-breakout",
     "volatility-breakout",
     "trend-pullback",
 ]

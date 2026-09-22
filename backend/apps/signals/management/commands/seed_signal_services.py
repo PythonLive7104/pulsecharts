@@ -85,9 +85,26 @@ SERVICES = [
     {
         "name": "Bollinger Breakout",
         "slug": "bollinger-breakout",
-        "is_active": False,  # disabled: weakest of the roster — negative at TP1 (-0.06R)
-                             # and only +0.04R even under scale-out (n=332); other breakout
-                             # strategies (volatility, donchian) were cut for the same reason.
+        # REACTIVATED 2026-09-22. The old verdict ("weakest of the roster, -0.06R at
+        # TP1") came from a backtest that modelled NO costs, NO expiry clock, NO
+        # out-of-sample split and NO confluence collapse — every figure from that era
+        # was overstated ~2-3x and three other ideas reversed direction once measured
+        # properly. Re-measured out-of-sample, delivered, against the live config:
+        #
+        #     baseline (5 active)    feed 61.8%  +0.17R  n=132
+        #     + bollinger-breakout   feed 62.1%  +0.18R  n=244
+        #       (its own book:            62.6%  +0.19R  n=112)
+        #
+        # Better win rate, better expectancy AND 85% more signals — the only change
+        # this quarter to improve all three. It works because breakouts are in
+        # EMA_STACK_EXEMPT, so they skip the EMA stack, structure, overextension, RSI
+        # and pullback gates that --gate-stats showed rejecting ~80% of trend
+        # candidates. That makes it a genuinely different mechanism rather than
+        # another threshold, and it trades WITH the move rather than fading it.
+        #
+        # volatility-breakout was measured in the same run and stays OFF: 60.4%/+0.15R,
+        # and adding it on top DROPPED the feed to 61.0%/+0.16R.
+        "is_active": True,
         "strategy_type": "breakout",
         "description": "Close beyond a Bollinger Band on expanding volume — breakout continuation.",
         "strategy_focus": (
