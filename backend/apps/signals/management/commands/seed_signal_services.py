@@ -209,7 +209,16 @@ SERVICES = [
         # ADX <= 20, a regime the trend book is gated out of, so it adds trades rather
         # than duplicating them. NOTE: is_active is in `defaults`, so flipping the row
         # in the admin without changing this line gets reverted by the next seed run.
-        "is_active": True,
+        # DEACTIVATED 2026-09-22. Not a performance failure — measured
+        # out-of-sample the fade book ran 61.6%%/+0.17R (n=99), genuinely
+        # profitable. It is a PRODUCT decision: fades sell into strength, so
+        # every losing one looks like a short issued into a rally, and that
+        # behaviour drove the user complaints and churn through September.
+        # Dropping all three takes the delivered feed from 62.1%%/+0.18R (n=244)
+        # to 62.6%%/+0.19R (n=145): 41%% fewer signals, all trading WITH the move,
+        # at slightly better quality. Reversible — nothing about generation
+        # changes, and re-enabling restores the old mix exactly.
+        "is_active": False,
     },
     {
         "name": "RSI Exhaustion Reversal",
@@ -236,7 +245,16 @@ SERVICES = [
         # ACTIVE 2026-08-03. Reverses the earlier call: it read -0.03R at n=36, but
         # 55.6% / +0.27R at n=180 on the 20-symbol run. The small sample was the
         # wrong one.
-        "is_active": True,
+        # DEACTIVATED 2026-09-22. Not a performance failure — measured
+        # out-of-sample the fade book ran 61.6%%/+0.17R (n=99), genuinely
+        # profitable. It is a PRODUCT decision: fades sell into strength, so
+        # every losing one looks like a short issued into a rally, and that
+        # behaviour drove the user complaints and churn through September.
+        # Dropping all three takes the delivered feed from 62.1%%/+0.18R (n=244)
+        # to 62.6%%/+0.19R (n=145): 41%% fewer signals, all trading WITH the move,
+        # at slightly better quality. Reversible — nothing about generation
+        # changes, and re-enabling restores the old mix exactly.
+        "is_active": False,
     },
 
     {
@@ -272,7 +290,16 @@ SERVICES = [
         # duplicating them. The three that stayed off: Sweep Reversal (+0.13R) and
         # Down-Streak (+0.10R) fire hugely often but at half the quality; Volume
         # Climax (+0.03R) was the weakest of the group.
-        "is_active": True,
+        # DEACTIVATED 2026-09-22. Not a performance failure — measured
+        # out-of-sample the fade book ran 61.6%%/+0.17R (n=99), genuinely
+        # profitable. It is a PRODUCT decision: fades sell into strength, so
+        # every losing one looks like a short issued into a rally, and that
+        # behaviour drove the user complaints and churn through September.
+        # Dropping all three takes the delivered feed from 62.1%%/+0.18R (n=244)
+        # to 62.6%%/+0.19R (n=145): 41%% fewer signals, all trading WITH the move,
+        # at slightly better quality. Reversible — nothing about generation
+        # changes, and re-enabling restores the old mix exactly.
+        "is_active": False,
     },
     {
         "name": "Down-Streak Reversion",
