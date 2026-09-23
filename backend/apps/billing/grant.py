@@ -35,10 +35,13 @@ from apps.common.email import send_payment_admin_alert, send_payment_confirmatio
 
 logger = logging.getLogger("billing.grant")
 
-# Days of access granted per successful one-time payment. 31, not 30 — a month of
-# access that reliably covers a 31-day month, and the value every existing
-# Subscription was written against. Changing it silently reprices every plan.
-GRANT_DAYS = 31
+# Days of access granted per successful one-time payment.
+#
+# 30 since 2026-09-23 (was 31). Applies to NEW grants only — Subscription rows
+# already written kept the 31-day renewal_date they were granted, and nothing
+# recalculates them. Paid time also EXTENDS rather than replaces, so a user buying
+# again mid-plan adds 30 days to whatever is left.
+GRANT_DAYS = 30
 
 
 def apply_paid_grant(user, plan: str, reference: str, paid: int) -> None:
