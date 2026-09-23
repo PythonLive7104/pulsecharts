@@ -5,6 +5,7 @@ import { useEffect, useState } from "react";
 import { useStore } from "../../store/useStore";
 import { api } from "../../api";
 import { LIFETIME_FALLBACK, PLAN_FALLBACK, isLifetime, planNeverExpires } from "../../lib/plans";
+import CryptoCheckout from "../../components/CryptoCheckout";
 import LifetimePrice from "../../components/LifetimePrice";
 
 export default function BillingPage() {
@@ -132,27 +133,36 @@ export default function BillingPage() {
     }
   }
 
+  // Which plan the crypto checkout is open for (null = closed). The card processor
+  // declined this account (trading sites are outside their acceptable-use policy),
+  // so upgrading opens a wallet + QR panel rather than redirecting to a checkout.
+  const [payFor, setPayFor] = useState(null);
+
   async function upgrade(plan) {
-    setBusy(true);
+    // api.checkout() is deliberately left in place for when a card processor is
+    // available again; nothing calls it while payment is crypto-only.
     setNotice(null);
-    try {
-      const session = await api.checkout(plan);
-      if (session?.checkout_url) window.location.href = session.checkout_url;
-    } catch (e) {
-      // 503 coming-soon (BILLING_LIVE false) or other — show a friendly message.
-      setNotice(
-        e.status === 503
-          ? "Premium billing is coming soon — we're finishing payment setup. Check back shortly!"
-          : e.message
-      );
-    } finally {
-      setBusy(false);
-    }
+    setPayFor(plan);
   }
+
+  const payPlan = payFor
+    ? [...plans, LIFETIME_FALLBACK].find((p) => p.key === payFor)
+    : null;
 
   return (
     <div className="account-pages">
       <h1>Plan &amp; Billing</h1>
+
+      {payPlan && (
+        <div className="cc-backdrop" role="dialog" aria-modal="true">
+          <CryptoCheckout
+            plan={payPlan.key}
+            planLabel={payPlan.label}
+            priceUsd={payPlan.price_usd}
+            onClose={() => setPayFor(null)}
+          />
+        </div>
+      )}
 
       <div className="card">
         <h2>Current plan</h2>

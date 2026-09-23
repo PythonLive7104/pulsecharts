@@ -198,6 +198,29 @@ CAMPAIGN_DAILY_CAP = env.int("CAMPAIGN_DAILY_CAP", default=40)
 # Minimum days between marketing emails to the SAME user, across all campaigns.
 CAMPAIGN_MIN_DAYS_BETWEEN = env.int("CAMPAIGN_MIN_DAYS_BETWEEN", default=7)
 
+# --- Manual crypto payments ----------------------------------------------
+# Paystack declined this account (trading sites are outside their acceptable-use
+# policy), so subscriptions are paid by direct transfer to these wallets and
+# APPROVED BY STAFF in the admin. No automatic confirmation: nothing is granted
+# until a human has checked the chain.
+#
+# Addresses are public by nature — they are receiving addresses, not secrets — but
+# they still live in .env rather than here so a wallet can be rotated without a
+# deploy, and so this file (which IS committed) never carries them.
+#
+# An empty address hides that asset from checkout entirely, so a half-configured
+# deployment cannot show a user an address that receives nothing.
+#
+# NETWORK IS LOAD-BEARING. USDT exists on several chains and sending on the wrong
+# one loses the funds irrecoverably, so the network label is displayed with every
+# address and is part of the config rather than something the UI guesses.
+CRYPTO_WALLET_USDT = env("CRYPTO_WALLET_USDT", default="")
+CRYPTO_WALLET_USDT_NETWORK = env("CRYPTO_WALLET_USDT_NETWORK", default="TRC20 (Tron)")
+CRYPTO_WALLET_BTC = env("CRYPTO_WALLET_BTC", default="")
+CRYPTO_WALLET_BTC_NETWORK = env("CRYPTO_WALLET_BTC_NETWORK", default="Bitcoin")
+CRYPTO_WALLET_LTC = env("CRYPTO_WALLET_LTC", default="")
+CRYPTO_WALLET_LTC_NETWORK = env("CRYPTO_WALLET_LTC_NETWORK", default="Litecoin")
+
 # --- Referral commission --------------------------------------------------
 # Percentage of a payment credited to whoever referred the payer. Earned on a
 # VERIFIED charge, tracked as a ReferralCommission row, and settled out of band —

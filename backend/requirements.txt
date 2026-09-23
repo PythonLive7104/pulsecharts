@@ -27,6 +27,11 @@ django-cors-headers>=4.4
 websockets>=12.0
 requests>=2.32
 
+# --- Crypto payment QR codes ---
+# SVG output (qrcode.image.svg), so no Pillow/native build and the frontend needs no
+# QR dependency of its own.
+qrcode>=7.4
+
 # --- Web Push (VAPID) for the in-app feed ---
 # Delivery latency measurably decides whether a signal wins: the same call is worth
 # 57-63% entered on its trigger bar and 51% twelve bars later. The feed was PULL-only,

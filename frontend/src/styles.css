@@ -2353,3 +2353,89 @@ a.brand:hover { text-decoration: none; }
 }
 .push-toggle button:disabled { opacity: 0.5; cursor: not-allowed; }
 .push-msg { flex-basis: 100%; font-size: 12px; opacity: 0.8; }
+
+/* --- crypto checkout -------------------------------------------------------
+   Modal over the billing page. Two things carry real money risk and are styled
+   to match: the NETWORK (wrong chain = funds gone) and the "submitted for
+   review" state (a plan is NOT active until staff confirm the transaction). */
+.cc-backdrop {
+  position: fixed; inset: 0; z-index: 60;
+  display: flex; align-items: center; justify-content: center;
+  padding: 20px; background: rgba(0, 0, 0, 0.55);
+  overflow-y: auto;
+}
+.cc-wrap {
+  width: 100%; max-width: 460px;
+  background: var(--bg-elev); color: var(--text);
+  border: 1px solid var(--border); border-radius: 14px;
+  padding: 22px; box-shadow: 0 18px 50px rgba(0, 0, 0, 0.35);
+}
+.cc-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; }
+.cc-head h3 { margin: 0 0 2px; font-size: 18px; }
+.cc-close {
+  border: 0; background: transparent; font-size: 26px; line-height: 1;
+  cursor: pointer; color: inherit; opacity: 0.6; padding: 0 4px;
+}
+.cc-close:hover { opacity: 1; }
+
+.cc-assets { display: flex; gap: 8px; margin: 16px 0 14px; }
+.cc-asset {
+  flex: 1; padding: 9px 0; border-radius: 9px; cursor: pointer;
+  border: 1px solid var(--border); background: transparent; color: inherit;
+  font: inherit; font-weight: 600;
+}
+.cc-asset.on { border-color: var(--accent); background: rgba(59, 130, 246, 0.12); }
+
+.cc-pay { display: flex; gap: 16px; align-items: flex-start; flex-wrap: wrap; }
+/* The QR is an inline <svg> from the API, so it needs sizing here. */
+.cc-qr {
+  flex: none; width: 132px; height: 132px; padding: 8px;
+  background: #fff; border-radius: 10px;
+}
+.cc-qr svg { width: 100%; height: 100%; display: block; }
+.cc-details { flex: 1 1 200px; min-width: 0; }
+
+.cc-network { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; }
+.cc-net-tag {
+  font-size: 11px; text-transform: uppercase; letter-spacing: 0.04em;
+  padding: 2px 7px; border-radius: 5px;
+  background: rgba(217, 119, 6, 0.15); color: #b45309;
+}
+.cc-label { display: block; font-size: 12px; opacity: 0.75; margin-bottom: 5px; }
+.cc-addr-row { display: flex; gap: 6px; align-items: stretch; }
+.cc-addr {
+  flex: 1; min-width: 0; padding: 8px 10px; border-radius: 8px;
+  background: rgba(127, 127, 127, 0.12); font-size: 12px;
+  /* Addresses are long and must never be truncated — a partially copied address
+     sends the money nowhere recoverable. */
+  word-break: break-all; line-height: 1.4;
+}
+.cc-addr-row button {
+  flex: none; padding: 0 12px; border-radius: 8px; cursor: pointer;
+  border: 1px solid var(--border); background: transparent; color: inherit; font: inherit;
+}
+.cc-warn { font-size: 12px; margin: 10px 0 0; color: #b45309; }
+
+.cc-form { margin-top: 18px; display: flex; flex-direction: column; gap: 8px; }
+.cc-form input {
+  padding: 10px 12px; border-radius: 9px; font: inherit;
+  border: 1px solid var(--border); background: transparent; color: inherit;
+}
+.cc-primary {
+  padding: 11px 16px; border-radius: 9px; border: 0; cursor: pointer;
+  background: var(--accent); color: #fff; font: inherit; font-weight: 600;
+}
+.cc-primary:disabled { opacity: 0.5; cursor: not-allowed; }
+.cc-err { color: #dc2626; font-size: 13px; margin: 2px 0 0; }
+.cc-foot { font-size: 12px; margin: 4px 0 0; }
+
+.cc-done { text-align: center; }
+.cc-tick {
+  width: 48px; height: 48px; margin: 4px auto 12px; border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  background: rgba(22, 163, 74, 0.15); color: #16a34a; font-size: 26px;
+}
+@media (max-width: 480px) {
+  .cc-pay { justify-content: center; }
+  .cc-details { flex-basis: 100%; }
+}

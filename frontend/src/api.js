@@ -123,6 +123,12 @@ export const api = {
       body: { old_password: oldPassword, new_password: newPassword },
     }),
   checkout: (plan) => request("/billing/checkout/", { method: "POST", body: { plan } }),
+
+  // Manual crypto payment. Submitting a claim grants NOTHING — staff confirm the
+  // transaction on-chain and approve in the admin.
+  cryptoWallets: () => request("/billing/crypto/wallets/"),
+  cryptoClaim: (body) => request("/billing/crypto/claim/", { method: "POST", body }),
+  cryptoClaims: () => request("/billing/crypto/claim/"),
   billingHistory: () => request("/billing/history/"),
   plans: () => request("/plans/", { auth: false }),
   entitlements: () => request("/me/entitlements/"),
