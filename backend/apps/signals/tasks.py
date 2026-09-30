@@ -45,6 +45,20 @@ _HTF_MAP = {
     "30m": "4h", "1h": "4h", "2h": "1d", "4h": "1d",
 }
 
+INTERVAL_SECONDS = {
+    "1m": 60, "3m": 180, "5m": 300, "15m": 900, "30m": 1800,
+    "1h": 3600, "2h": 7200, "4h": 14400, "8h": 28800, "12h": 43200, "1d": 86400,
+}
+
+
+def _closed_candles(candles: list[dict], timeframe: str, now=None) -> list[dict]:
+    """Drop bars whose close time is still in the future."""
+    interval = INTERVAL_SECONDS.get(timeframe)
+    if interval is None:
+        return candles
+    cutoff = (now or timezone.now()).timestamp()
+    return [c for c in candles if c["time"] + interval <= cutoff]
+
 
 def _htf_direction(sym, htf: str, cache: dict) -> str | None:
     """Higher-timeframe trend bias on the last closed candle: 'BUY' (up),
@@ -54,7 +68,7 @@ def _htf_direction(sym, htf: str, cache: dict) -> str | None:
         return cache[key]
     direction = "ERR"
     try:
-        candles = get_candles(sym, htf, limit=300)
+        candles = _closed_candles(get_candles(sym, htf, limit=300), htf)
         if len(candles) >= MIN_CANDLES:
             ind = compute_indicators(candles)
             close, ema200 = ind["close"], ind["ema200"]
@@ -79,7 +93,7 @@ def _htf_structure(sym, htf: str, cache: dict) -> str | None:
         return cache[key]
     result: str | None = "ERR"
     try:
-        candles = get_candles(sym, htf, limit=300)
+        candles = _closed_candles(get_candles(sym, htf, limit=300), htf)
         if len(candles) >= MIN_CANDLES:
             result = compute_indicators(candles).get("structure")  # 'up' | 'down' | None
     except (requests.RequestException, ValueError):
@@ -201,7 +215,7 @@ def leader_trend(timeframe: str) -> str | None:
     if lead is None:
         return None
     try:
-        candles = get_candles(lead, timeframe, limit=120)
+        candles = _closed_candles(get_candles(lead, timeframe, limit=120), timeframe)
     except (requests.RequestException, ValueError):
         logger.warning("leader gate: BTC candle fetch failed — gate open this scan")
         return None
@@ -367,7 +381,7 @@ def run_scan(symbol_limit: int | None = None, use_pregate: bool | None = None) -
             continue
         for tf in settings.SIGNAL_TIMEFRAMES:
             try:
-                candles = get_candles(sym, tf, limit=300)
+                candles = _closed_candles(get_candles(sym, tf, limit=300), tf)
             except (requests.RequestException, ValueError):
                 logger.warning("candle fetch failed: %s %s", sym.ticker, tf)
                 continue
@@ -537,12 +551,6 @@ def scan_all_signals():
 
 # --- outcome evaluation (Section 13.7, 18) ---
 
-INTERVAL_SECONDS = {
-    "1m": 60, "3m": 180, "5m": 300, "15m": 900, "30m": 1800,
-    "1h": 3600, "2h": 7200, "4h": 14400, "8h": 28800, "12h": 43200, "1d": 86400,
-}
-
-
 def _invalidate_trend_breaks(sym, tf, ind, now) -> int:
     """Close open calls on (sym, tf) whose EMA-stack thesis has broken.
 
@@ -631,7 +639,10 @@ def run_evaluation(limit: int | None = None) -> dict:
             candles = get_candles_since(sig.symbol, sig.timeframe, gen_ms)
         except (requests.RequestException, ValueError):
             continue
-        eval_candles = [c for c in candles if c["time"] > gen_s]
+        eval_candles = [
+            c for c in _closed_candles(candles, sig.timeframe, now=now)
+            if c["time"] > gen_s
+        ]
         if not eval_candles:
             still += 1
             continue  # too soon — no candle has closed since generation

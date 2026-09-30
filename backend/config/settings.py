@@ -952,13 +952,10 @@ SIGNAL_DAILY_QUOTA = {
     "premium": env.int("SIGNAL_QUOTA_PREMIUM", default=50),
 }
 
-# Which timeframes the signal engine evaluates (Section 20.1).
-# 1h/4h: backtested best expectancy (52% win, +0.63R exit-at-best). A 15m/1h trial
-# measurably degraded the edge (45% win, NEGATIVE exit-at-TP1) — lower frames are
-# noisier and fees eat the smaller moves — so the engine stays on 1h/4h. The
-# compressed 1/1.5/2/3 TP geometry already delivers the TP3/TP4 fills without
-# dropping to a lower frame. Avoid 1m/5m entirely.
-SIGNAL_TIMEFRAMES = env.list("SIGNAL_TIMEFRAMES", default=["1h", "4h"])
+# Swing/position timeframes: 4h for multi-day setups, 1d for longer-term setups.
+# Lower frames are deliberately excluded from generated signals; charting still
+# supports them. Validate these horizons out of sample before making performance claims.
+SIGNAL_TIMEFRAMES = env.list("SIGNAL_TIMEFRAMES", default=["4h", "1d"])
 
 # Skip crypto signal generation during the weekend window (Fri 21:00 → Sun 21:00
 # UTC, same window used to close forex). Weekend crypto is thin and choppy and

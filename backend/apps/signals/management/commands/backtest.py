@@ -42,7 +42,7 @@ from apps.signals.pregate import (
     confidence_score,
     passes_pregate,
 )
-from apps.signals.tasks import _HTF_MAP
+from apps.signals.tasks import _HTF_MAP, _closed_candles
 
 # --- frozen candle snapshot (--cache-dir) -----------------------------------
 # Every run of this command refetches live candles, so the N-bar window slides
@@ -895,7 +895,9 @@ class Command(BaseCommand):
             if lead is None:
                 raise CommandError("--leader-gate needs BTC in the scanned symbol set")
             try:
-                lc = get_candles(lead, timeframes[0], limit=opts["candles"])
+                lc = _closed_candles(
+                    get_candles(lead, timeframes[0], limit=opts["candles"]), timeframes[0]
+                )
             except (requests.RequestException, ValueError):
                 raise CommandError("--leader-gate: could not fetch leader candles") from None
             leader_tl = _leader_timeline(lc, *leader_gate)
@@ -911,7 +913,7 @@ class Command(BaseCommand):
                 if llm_on and budget["left"] <= 0:
                     break
                 try:
-                    candles = get_candles(sym, tf, limit=opts["candles"])
+                    candles = _closed_candles(get_candles(sym, tf, limit=opts["candles"]), tf)
                 except (requests.RequestException, ValueError):
                     continue
                 if len(candles) < MIN_CANDLES + 5:
@@ -995,7 +997,9 @@ class Command(BaseCommand):
         if not htf:
             return None
         try:
-            hc = get_candles(sym, htf, limit=max(htf_limit, 300))
+            hc = _closed_candles(
+                get_candles(sym, htf, limit=max(htf_limit, 300)), htf
+            )
         except (requests.RequestException, ValueError):
             return None
         if len(hc) < 20:  # need a couple of pivots each side to classify anything
@@ -1017,7 +1021,9 @@ class Command(BaseCommand):
         if not htf:
             return None
         try:
-            hc = get_candles(sym, htf, limit=max(htf_limit, 300))
+            hc = _closed_candles(
+                get_candles(sym, htf, limit=max(htf_limit, 300)), htf
+            )
         except (requests.RequestException, ValueError):
             return None
         if len(hc) < 210:  # 200 EMA + a bar to hand it forward

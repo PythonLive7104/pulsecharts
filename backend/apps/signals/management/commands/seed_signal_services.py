@@ -73,6 +73,13 @@ SERVICES = [
     {
         "name": "VWAP Trend",
         "slug": "vwap-trend",
+        # DEACTIVATED 2026-09-30. On the frozen 20-symbol 4h holdout its standalone
+        # book was -0.33R across 20 trades. In the current roster it is also the
+        # second trend vote required alongside Momentum Crossover; their delivered
+        # trend subset was -0.31R across 9 trades. Removing it lets the remaining
+        # trend service surface independently; validate on a larger, cost-adjusted
+        # sample before treating this as durable edge.
+        "is_active": False,
         "strategy_type": "trend",
         "description": "Price holding above/below session VWAP with momentum agreeing.",
         "strategy_focus": (
