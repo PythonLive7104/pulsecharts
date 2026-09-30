@@ -326,7 +326,7 @@ class SubscriptionListCreateView(generics.ListCreateAPIView):
                 {"detail": "Trading signals aren't available on your plan. Upgrade to follow strategies."},
                 status=status.HTTP_403_FORBIDDEN,
             )
-        if following >= allowed:
+        if allowed != -1 and following >= allowed:
             return Response(
                 {"detail": (
                     f"Your plan lets you follow {allowed} "

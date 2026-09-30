@@ -59,6 +59,8 @@ docker compose exec -T web python manage.py seed_forex \
   || say "$c_warn" "  seed_forex failed — continuing."
 say "$c_info" "▶ Seeding signal strategies…"
 docker compose exec -T web python manage.py seed_signal_services
+say "$c_info" "▶ Following all active strategies for every user…"
+docker compose exec -T web python manage.py provision_defaults --strategies-only
 
 # 5b. Register the Telegram webhook (idempotent). Without this Telegram has no
 # URL to deliver /start to, so "Connect Telegram" silently does nothing. Skips

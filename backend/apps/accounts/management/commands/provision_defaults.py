@@ -42,6 +42,11 @@ class Command(BaseCommand):
             help="Also seed the active forex pairs (signup seeds crypto only).",
         )
         parser.add_argument(
+            "--strategies-only",
+            action="store_true",
+            help="Add all active strategy follows without changing watchlists.",
+        )
+        parser.add_argument(
             "--dry-run",
             action="store_true",
             help="Report who would be provisioned without writing anything.",
@@ -73,7 +78,8 @@ class Command(BaseCommand):
                 continue
 
             result = provision_default_setup(
-                user, as_plan=opts.get("as_plan"), include_forex=opts["include_forex"]
+                user, as_plan=opts.get("as_plan"), include_forex=opts["include_forex"],
+                strategies_only=opts["strategies_only"],
             )
             if result["symbols"] or result["strategies"]:
                 users_touched += 1

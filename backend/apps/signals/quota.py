@@ -90,6 +90,8 @@ def strategies_allowed_for(user) -> int:
 
     plan = plan_for(user)
     limit = plan["strategies"]
+    if limit == -1:
+        return -1
     if plan["key"] != PRO:
         return limit
     from .models import SignalService

@@ -77,7 +77,7 @@ class SignalsConfig(AppConfig):
         bad = {
             key: p["strategies"]
             for key, p in PLANS.items()
-            if p.get("strategies", 0) < floor
+            if p.get("strategies", 0) != -1 and p.get("strategies", 0) < floor
         }
         if bad:
             raise ImproperlyConfigured(

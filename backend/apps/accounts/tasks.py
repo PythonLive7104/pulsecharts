@@ -298,18 +298,14 @@ def enforce_plan_limits() -> dict:
     free_layouts = PLANS[FREE]["layout_limit"]
     free_strategies = PLANS[FREE]["strategies"]
 
-    candidates = (
-        User.objects.annotate(
-            n_wl=Count("watchlist_items", distinct=True),
-            n_layouts=Count("chart_layouts", distinct=True),
-            n_subs=Count("signal_subscriptions", distinct=True),
-        )
-        .filter(
-            Q(n_wl__gt=free_wl)
-            | Q(n_layouts__gt=free_layouts)
-            | Q(n_subs__gt=free_strategies)
-        )
-    )
+    over_limit = Q(n_wl__gt=free_wl) | Q(n_layouts__gt=free_layouts)
+    if free_strategies != -1:
+        over_limit |= Q(n_subs__gt=free_strategies)
+    candidates = User.objects.annotate(
+        n_wl=Count("watchlist_items", distinct=True),
+        n_layouts=Count("chart_layouts", distinct=True),
+        n_subs=Count("signal_subscriptions", distinct=True),
+    ).filter(over_limit)
 
     users_trimmed = wl_removed = layouts_removed = strategies_removed = 0
     for user in candidates.iterator():

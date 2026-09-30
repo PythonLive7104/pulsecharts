@@ -23,12 +23,8 @@ logger = logging.getLogger("accounts")
 # active services are ever followed; any active service not listed here is
 # appended after these (ordered by id), so a newly added strategy still gets
 # picked up for Pro's "follow everything".
-# Order matters: Free follows the first 4 and Starter the first 6, so anything below
-# position 6 is invisible to every tier except Pro. `bb-fade` sits at 3 deliberately —
-# it is the only NON-trend strategy, and the whole point of adding it is that it pays
-# when the trend book doesn't. Leaving it at the end (where an unlisted slug lands)
-# would mean no Free or Starter user ever received a mean-reversion signal.
-# Inactive strategies are skipped, so listing one before it's activated is harmless.
+# Ordering is only for stable presentation. Every tier follows every active built-in
+# strategy by default; inactive strategies are skipped.
 STRATEGY_PRIORITY = [
     # Put the active trend strategy first; its confluence floor is capped at the
     # number of active trend strategies. Retired duplicate trend services stay last.
@@ -77,7 +73,10 @@ def _ordered_active_services():
 
 
 @transaction.atomic
-def provision_default_setup(user, as_plan: str | None = None, include_forex: bool = False) -> dict:
+def provision_default_setup(
+    user, as_plan: str | None = None, include_forex: bool = False,
+    strategies_only: bool = False,
+) -> dict:
     """Seed `user` with a default watchlist + followed strategies for their plan.
 
     - Watchlist: the top N active *crypto* symbols (by curated sort order), where
@@ -99,10 +98,11 @@ def provision_default_setup(user, as_plan: str | None = None, include_forex: boo
 
     Idempotent: symbols/strategies the user already has are skipped, so re-running
     never duplicates. Returns a summary of what was added (for logging/commands).
+    ``strategies_only`` skips watchlist seeding, for safe strategy-only backfills.
     """
     from apps.accounts.plans import PLANS, plan_for
     from apps.market_data.models import Symbol
-    from apps.signals.models import UserSignalSubscription
+    from apps.signals.models import SignalService, UserSignalSubscription
     from apps.watchlists.models import WatchlistItem
 
     plan = PLANS[as_plan] if as_plan else plan_for(user)
@@ -110,7 +110,7 @@ def provision_default_setup(user, as_plan: str | None = None, include_forex: boo
     # --- Watchlist: top N active crypto symbols ---
     want_symbols = plan.get("default_watchlist", 0)
     added_symbols = 0
-    if want_symbols:
+    if want_symbols and not strategies_only:
         # Two "everything" sentinels, and the difference is forex:
         #   UNLIMITED  (-1, Pro)     — the whole roster, FX pairs included.
         #   ALL_CRYPTO (-2, Starter) — every crypto symbol, no forex.
@@ -151,6 +151,10 @@ def provision_default_setup(user, as_plan: str | None = None, include_forex: boo
         services = _ordered_active_services()
         if want_strategies > 0:
             services = services[:want_strategies]
+        else:
+            services.extend(
+                SignalService.objects.filter(is_active=True, owner=user).order_by("name")
+            )
         followed_ids = set(
             UserSignalSubscription.objects.filter(user=user).values_list(
                 "service_id", flat=True

@@ -2,7 +2,7 @@
 
 Single source of truth for what each plan unlocks. Three tiers:
 
-  - free     — live charts + a small taste of the signal feed (4 strategies)
+    - free     — live charts + a time-limited taste of the signal feed
   - starter  — core premium indicators + a real signal feed
   - pro      — everything, unlimited signals
 
@@ -43,18 +43,9 @@ PLANS: dict[str, dict] = {
         "price_usd": 0,
         "period": "",
         "tagline": "Live crypto charts and a taste of signals.",
-        # MUST be >= settings.SIGNAL_CONFLUENCE_MIN. Confluence counts agreement only
-        # among the strategies a user FOLLOWS (the feed filters candidates by
-        # followed_ids before collapse), so a follow cap below the threshold makes it
-        # arithmetically impossible for enough strategies to agree — the tier gets
-        # ZERO signals, silently. Sits one ABOVE the floor so a free user has some
-        # slack (any 3 of their 4 may agree) rather than needing unanimity.
-        #
-        # These 4 are all TREND strategies. The mean-reversion pair is deliberately
-        # ranked below them in onboarding.STRATEGY_PRIORITY so it lands on Starter/Pro
-        # only — a fade inside Free's 4 would leave 3 trend strategies and force
-        # unanimity (3-of-3) on the trend feed.
-        "strategies": 4,            # strategies a user can follow
+        # All plans follow every active strategy by default; signal access and weekly
+        # quotas remain governed by this plan's separate settings below.
+        "strategies": -1,
         # 0 = NO signal access: the feed returns the locked upgrade card and Telegram
         # sends an upgrade nudge instead of signals. Signals are the paid product, so
         # the free tier (which includes every LAPSED paid plan — plan_key is
@@ -68,10 +59,7 @@ PLANS: dict[str, dict] = {
         "watchlist_limit": 20,
         "layout_limit": 1,
         "default_watchlist": 20,    # symbols pre-loaded at signup (onboarding)
-        # Must also be >= the confluence floor: the cap only sets what a user MAY
-        # follow, this sets what they actually DO follow out of the box. A free user
-        # left below the floor would see nothing at all.
-        "default_strategies": 4,    # 4 trend strategies; no fades on Free
+        "default_strategies": -1,   # follow every active built-in strategy
         "custom_strategies_per_month": 0,  # Pro-only feature
         "indicator_tiers": [FREE],
         "features": [
@@ -88,14 +76,7 @@ PLANS: dict[str, dict] = {
         "price_usd": 19,
         "period": "mo",
         "tagline": "Core indicators and a real signal feed.",
-        # Kept clear of Free's cap: the ladder is slack-above-the-confluence-floor
-        # (Free: 3-of-4, Starter: 3-of-6, Pro: 3-of-7+), so more strategies followed
-        # means more setups clear the threshold.
-        # 9 = 6 trend + the 3 mean-reversion strategies followed by default. Same
-        # reasoning as Free: the cap must leave enough TREND strategies followed to
-        # reach the 3-of-N confluence floor, so it grows with the roster rather than
-        # letting a new fade displace a trend strategy.
-        "strategies": 9,
+        "strategies": -1,
         "signal_weekly_quota": 400,
         # Uncapped like Pro: the tier ships with the whole crypto roster, so a numeric
         # cap would leave a user holding more than they could re-add after removing
@@ -106,14 +87,14 @@ PLANS: dict[str, dict] = {
         # ALL_CRYPTO, not UNLIMITED: every crypto symbol, but onboarding must not
         # pre-load FX pairs on a tier whose feed is crypto-first.
         "default_watchlist": ALL_CRYPTO,  # symbols pre-loaded at signup (onboarding)
-        "default_strategies": 9,    # 6 trend + all 3 fades
+        "default_strategies": -1,   # follow every active built-in strategy
         "custom_strategies_per_month": 0,  # Pro-only feature
         "indicator_tiers": [FREE, STARTER],
         "features": [
             "Everything in Free",
             "RSI, MACD, Bollinger Bands & VWAP",
             "Every crypto symbol we track, ready to go",
-            "3 signal strategies followed by default",
+            "Every active signal strategy followed by default",
             "Up to 400 signals/week",
             "Telegram signal alerts",
             "Save up to 10 chart layouts",
@@ -125,12 +106,7 @@ PLANS: dict[str, dict] = {
         "price_usd": 39,
         "period": "mo",
         "tagline": "Every indicator and strategy, unlimited signals.",
-        # Follow cap = 8 active built-in strategies + 5 custom (Pro-only) a user can
-        # build. Custom follows auto-subscribe and bypass this cap at creation but
-        # still count toward it, so the cap must cover both or re-following a built-in
-        # gets blocked once customs exist. Keep in sync with active built-ins +
-        # custom_strategies_per_month.
-        "strategies": 13,
+        "strategies": -1,
         "signal_weekly_quota": -1,
         # -1 = every symbol we track. Pro is the "watch the whole market" tier, so
         # rather than a number that silently caps below the roster every time
