@@ -35,13 +35,13 @@ const SIGNAL_FEATURES = [
   },
   {
     icon: "🤝",
-    title: "Only when strategies agree",
-    body: "Eight strategies scan every coin and pair you watch. A signal is only sent when several of them independently call the same setup, so you get the ones they concur on rather than every twitch.",
+    title: "Three focused strategies",
+    body: "Momentum Crossover looks for established directional setups. Bollinger Breakout and Volatility Breakout must agree before a breakout signal is surfaced.",
   },
   {
     icon: "📈",
-    title: "Trend and mean-reversion",
-    body: "Trend strategies trade breakouts and momentum; mean-reversion strategies fade extremes when markets go quiet. Between them you get signals in trending and ranging markets, not just one.",
+    title: "Built for swing trading",
+    body: "The signal engine evaluates completed 4-hour and daily candles, focusing on confirmed momentum and breakout setups rather than intrabar scalps.",
   },
   {
     icon: "🧾",
@@ -368,7 +368,7 @@ export default function LandingPage() {
           <div className="step">
             <span className="step-num">4</span>
             <h3>Follow signal strategies</h3>
-            <p>Open the Signals page and follow the algorithmic strategies you like — Momentum, MACD Trend, Trend Rider, Breakouts and more. Your feed shows only the strategies you follow. On <strong>Pro</strong>, you can even <strong>describe your own strategy in a sentence and have AI build it</strong> for you.</p>
+            <p>Open the Signals page to follow Momentum Crossover, Bollinger Breakout and Volatility Breakout. Follow both breakout strategies to receive their confirmed breakout calls. On <strong>Pro</strong>, you can also <strong>describe your own strategy in a sentence and have AI build it</strong> for you.</p>
           </div>
           <div className="step">
             <span className="step-num">5</span>
@@ -420,7 +420,7 @@ export default function LandingPage() {
           <div className="feature feature-hero">
             <div className="feature-icon">🤖</div>
             <h3>Algorithmic trading signals <span className="feature-tag premium">Premium</span></h3>
-            <p>An always-on engine scans the strategies you follow across <strong>both crypto and forex</strong>, and only surfaces the setups that clear its confidence bar — no firehose of noise.</p>
+            <p>An always-on engine scans your followed strategies across crypto markets and surfaces setups from completed 4-hour and daily candles.</p>
             <ul className="feature-points">
               <li>Entry, stop-loss and three take-profit targets (TP1–TP3)</li>
               <li>Risk/reward math, in percent and in dollars per $100 traded</li>

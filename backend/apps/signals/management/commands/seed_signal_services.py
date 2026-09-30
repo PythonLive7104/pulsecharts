@@ -39,7 +39,14 @@ SERVICES = [
     {
         "name": "Volatility Breakout",
         "slug": "volatility-breakout",
-        "is_active": False,  # disabled: negative expectancy in 3 straight backtests (~-0.5R), gated AND native
+        # PROVISIONALLY ACTIVATED 2026-09-30 after frozen 4h and 1d holdout screens.
+        # At an illustrative 0.10% round-trip cost, requiring agreement with
+        # Bollinger Breakout produced +0.20R over 28 4h breakout trades and +0.13R
+        # over 30 daily breakout trades. Combined delivered feed: 4h +0.15R / n=68
+        # vs +0.09R / n=80 before; 1d +0.20R / n=53 vs +0.16R / n=62 before.
+        # One recent window and currently-listed symbols only; keep monitoring and
+        # revalidate across regimes and with actual execution costs before claims.
+        "is_active": True,
         "strategy_type": "breakout",
         "description": "ATR expansion combined with a break of a recent price range.",
         "strategy_focus": (
@@ -109,8 +116,9 @@ SERVICES = [
         # candidates. That makes it a genuinely different mechanism rather than
         # another threshold, and it trades WITH the move rather than fading it.
         #
-        # volatility-breakout was measured in the same run and stays OFF: 60.4%/+0.15R,
-        # and adding it on top DROPPED the feed to 61.0%/+0.16R.
+        # Volatility Breakout was later re-evaluated specifically on the 4h swing
+        # horizon; its measured breakout-category agreement is documented on that
+        # strategy's seed entry below.
         "is_active": True,
         "strategy_type": "breakout",
         "description": "Close beyond a Bollinger Band on expanding volume — breakout continuation.",

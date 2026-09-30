@@ -30,19 +30,14 @@ logger = logging.getLogger("accounts")
 # would mean no Free or Starter user ever received a mean-reversion signal.
 # Inactive strategies are skipped, so listing one before it's activated is harmless.
 STRATEGY_PRIORITY = [
-    # 1-2: TREND — the two ACTIVE trend strategies, listed first so every tier
-    # follows all of them. Trend confluence is capped at the number of active trend
-    # strategies (confluence.confluence_min), so a user following fewer than all
-    # three can never clear the floor and would silently receive no trend signals
-    # at all. That is exactly what happened when adx-trend / macd-trend-following /
-    # trend-rider were retired as measured duplicates on 2026-08-30 while this list
-    # still ranked two of them in the top four.
+    # Put the active trend strategy first; its confluence floor is capped at the
+    # number of active trend strategies. Retired duplicate trend services stay last.
     "momentum-crossover",
     "vwap-trend",
-    # BREAKOUT — ranked with the trend strategies, not the fades. It trades WITH the
-    # move, and Free's default of 4 was always meant to be the non-fade set. Its
-    # confluence floor is capped at 1 (only one active breakout), so it fires alone.
+    # Breakouts are a separate category. Both active breakout strategies should be
+    # followed together because delivery requires their agreement.
     "bollinger-breakout",
+    "volatility-breakout",
     # 4-6: MEAN REVERSION. Free's default of 4 now picks up bb-fade as its fourth,
     # which the pre-2026-08-30 roster deliberately avoided — with six trend
     # strategies there were enough to fill Free without one. Low stakes in practice:
