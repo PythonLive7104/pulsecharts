@@ -953,8 +953,8 @@ SIGNAL_DAILY_QUOTA = {
 }
 
 # Swing/position timeframes: 4h for multi-day setups, 1d for longer-term setups.
-# Lower frames are deliberately excluded from generated signals; charting still
-# supports them. Validate these horizons out of sample before making performance claims.
+# With a broad symbol universe, prefer waiting for confirmed setups on these slower
+# frames over increasing frequency with noisier 1h entries.
 SIGNAL_TIMEFRAMES = env.list("SIGNAL_TIMEFRAMES", default=["4h", "1d"])
 
 # Skip crypto signal generation during the weekend window (Fri 21:00 → Sun 21:00
