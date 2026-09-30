@@ -60,6 +60,36 @@ def _closed_candles(candles: list[dict], timeframe: str, now=None) -> list[dict]
     return [c for c in candles if c["time"] + interval <= cutoff]
 
 
+def _same_direction_repeat_ready(last_signal_at, now, timeframe: str, cooldown_bars: int) -> bool:
+    """Allow a continuation signal only after its timeframe-based cooldown."""
+    if last_signal_at is None:
+        return True
+    interval = INTERVAL_SECONDS.get(timeframe, 3600)
+    return (now - last_signal_at).total_seconds() >= interval * max(1, cooldown_bars)
+
+
+def _scan_direction_allows(direction_by_symbol: dict[int, str], symbol_id: int,
+                           direction: str) -> bool:
+    """Keep one accepted direction per symbol during a single scan pass."""
+    return direction_by_symbol.get(symbol_id, direction) == direction
+
+
+def _invalidate_opposite_pending(sym, direction: str, now, service=None) -> int:
+    """Close conflicting calls without letting private strategies affect others."""
+    pending = Signal.objects.filter(
+        symbol=sym,
+        outcome=Signal.Outcome.PENDING,
+        direction__in=[Signal.Direction.BUY, Signal.Direction.SELL],
+    )
+    if service is not None and service.owner_id is not None:
+        pending = pending.filter(service=service)
+    else:
+        pending = pending.filter(service__owner__isnull=True)
+    return pending.exclude(direction=direction).update(
+        outcome=Signal.Outcome.INVALIDATED, resolved_at=now
+    )
+
+
 def _htf_direction(sym, htf: str, cache: dict) -> str | None:
     """Higher-timeframe trend bias on the last closed candle: 'BUY' (up),
     'SELL' (down), None (choppy), or 'ERR' if candles couldn't be fetched."""
@@ -246,6 +276,7 @@ def run_scan(symbol_limit: int | None = None, use_pregate: bool | None = None) -
     # Built-in (owner=None) strategies scan every watched symbol. Custom (Pro
     # user-created) strategies scan ONLY their owner's watchlist — see custom_by_symbol.
     system_services = list(SignalService.objects.filter(is_active=True, owner__isnull=True))
+    system_service_ids = {service.id for service in system_services}
     custom_services = list(
         SignalService.objects.filter(is_active=True, owner__isnull=False).select_related("owner")
     )
@@ -301,13 +332,10 @@ def run_scan(symbol_limit: int | None = None, use_pregate: bool | None = None) -
     else:
         symbols = list(watched)
 
-    # Dedup: while a strategy has an open (PENDING) call on a symbol+timeframe,
-    # don't issue another in the *same* direction — one live call per strategy per
-    # symbol per timeframe until it hits SL/TP. A fresh call is only allowed when
-    # the trend flips (the cheap directional bias points the opposite way), in
-    # which case the stale opposite call is invalidated. Keying by timeframe is
-    # essential: a 1h and a 4h call are different trades, so a flip on one frame
-    # must not invalidate — or re-fire against — an open call on another.
+    # Open calls no longer suppress every later setup in the same direction: a new
+    # qualifying setup may add a continuation call after the timeframe cooldown.
+    # Opposite calls are invalidated symbol-wide, including across strategy/timeframe,
+    # before the new direction is stored.
     open_dirs: dict[tuple[int, int, str], str] = {}
     for s in (
         Signal.objects.filter(outcome=Signal.Outcome.PENDING)
@@ -330,12 +358,13 @@ def run_scan(symbol_limit: int | None = None, use_pregate: bool | None = None) -
 
     cooldown_bars = settings.SIGNAL_REENTRY_COOLDOWN_BARS
     last_sig_at: dict[tuple[int, int, str, str], object] = {}
-    if cooldown_bars > 0:
+    repeat_cooldown_bars = max(1, cooldown_bars)
+    if repeat_cooldown_bars > 0:
         longest_bar = max(
             (INTERVAL_SECONDS.get(tf, 3600) for tf in settings.SIGNAL_TIMEFRAMES),
             default=3600,
         )
-        cutoff = now - timedelta(seconds=longest_bar * cooldown_bars)
+        cutoff = now - timedelta(seconds=longest_bar * repeat_cooldown_bars)
         for s in (
             Signal.objects.filter(generated_at__gte=cutoff)
             .values("symbol_id", "service_id", "timeframe", "direction")
@@ -353,6 +382,8 @@ def run_scan(symbol_limit: int | None = None, use_pregate: bool | None = None) -
     htf_structure_on = settings.SIGNAL_HTF_STRUCTURE_ENABLED
     htf_cache: dict[tuple[int, str], str | None] = {}  # (symbol_id, htf) -> trend bias
     htf_struct_cache: dict[tuple[int, str], str | None] = {}  # (symbol_id, htf) -> structure
+    scan_direction_by_symbol: dict[int, str] = {}
+    direction_conflict_skipped = 0
     scan_hour_utc = timezone.now().astimezone(dt_timezone.utc).hour
     fx_only = set(settings.SIGNAL_FOREX_STRATEGIES or ())
     from .pregate import KIND_REVERSION, kind_of
@@ -408,13 +439,25 @@ def run_scan(symbol_limit: int | None = None, use_pregate: bool | None = None) -
                     continue
                 pair = (sym.id, svc.id, tf)
                 cand = candidate_direction_for_service(svc, indicators)
+                if cand and not _scan_direction_allows(
+                    scan_direction_by_symbol, sym.id, cand
+                ):
+                    direction_conflict_skipped += 1
+                    continue
                 open_dir = open_dirs.get(pair)
-                if open_dir:
-                    # Open call exists: only proceed if the trend has flipped.
-                    if cand is None or cand == open_dir:
-                        deduped += 1
+                if open_dir and cand is None:
+                    deduped += 1
+                    continue
+                if open_dir and cand == open_dir:
+                    # Same-direction follow-up: require elapsed bars, not elapsed
+                    # scans, so a slow 4h/1d scan cannot repeat the same setup.
+                    last = last_sig_at.get((sym.id, svc.id, tf, cand))
+                    if not _same_direction_repeat_ready(
+                        last, now, tf, repeat_cooldown_bars
+                    ):
+                        cooled += 1
                         continue
-                elif cooldown_bars and cand is not None:
+                elif not open_dir and cooldown_bars and cand is not None:
                     # No open call, but a same-direction one may have just closed.
                     # Hold off re-issuing for the cooldown window (anti-chase, C).
                     last = last_sig_at.get((sym.id, svc.id, tf, cand))
@@ -477,22 +520,25 @@ def run_scan(symbol_limit: int | None = None, use_pregate: bool | None = None) -
                     continue
 
                 if sig:
-                    # If a call is still open and the model agreed with it
-                    # (same direction), don't stack a duplicate — only a real
-                    # flip warrants a new call.
-                    if open_dir and sig["direction"] == open_dir:
-                        deduped += 1
-                        continue
-                    if open_dir:
-                        # Trend flipped — close out the now-stale opposite call on
-                        # THIS timeframe only (a 4h flip must not touch a 1h call).
-                        n = Signal.objects.filter(
-                            symbol=sym, service=svc, timeframe=tf,
-                            outcome=Signal.Outcome.PENDING,
-                        ).update(
-                            outcome=Signal.Outcome.INVALIDATED, resolved_at=now
-                        )
-                        invalidated += n
+                    # A confirmed new direction replaces all conflicting open calls
+                    # for this symbol, regardless of which strategy or timeframe
+                    # opened them. Persist closures before the new signal so the
+                    # notification worker can send closure updates first.
+                    n = _invalidate_opposite_pending(sym, sig["direction"], now, service=svc)
+                    invalidated += n
+                    if n:
+                        for open_pair, direction in list(open_dirs.items()):
+                            same_scope = (
+                                open_pair[1] == svc.id
+                                if svc.is_custom
+                                else open_pair[1] in system_service_ids
+                            )
+                            if (
+                                open_pair[0] == sym.id
+                                and direction != sig["direction"]
+                                and same_scope
+                            ):
+                                del open_dirs[open_pair]
                     # Daily 200-EMA confirmation: is price on the trend-supporting
                     # side of the daily 200 EMA for this direction? Reuses the cached
                     # HTF lookup (one daily fetch per symbol per scan). None when the
@@ -504,12 +550,15 @@ def run_scan(symbol_limit: int | None = None, use_pregate: bool | None = None) -
                         if daily_dir in ("BUY", "SELL")
                         else None
                     )
+                    signal_at = timezone.now()
                     Signal.objects.create(
                         symbol=sym, service=svc, timeframe=tf,
-                        generated_at=timezone.now(),
+                        generated_at=signal_at,
                         daily_ema200_aligned=daily_aligned, **sig,
                     )
                     open_dirs[pair] = sig["direction"]
+                    scan_direction_by_symbol[sym.id] = sig["direction"]
+                    last_sig_at[(sym.id, svc.id, tf, sig["direction"])] = signal_at
                     created += 1
 
     cost = (
@@ -523,6 +572,7 @@ def run_scan(symbol_limit: int | None = None, use_pregate: bool | None = None) -
         "deduped": deduped,               # skipped: same-direction call still open (free)
         "cooled": cooled,                 # skipped: same-direction re-entry within cooldown (free)
         "invalidated": invalidated,       # stale opposite calls closed on a trend flip
+        "direction_conflict_skipped": direction_conflict_skipped,
         "regime_skipped": regime_skipped, "leader_blocked": leader_blocked,  # skipped: ranging market / HTF disagreement (free)
         "htf_struct_skipped": htf_struct_skipped,  # skipped: HTF swing structure disagreed (free)
         "gated": stats["gated"],          # skipped before any LLM call (free)
