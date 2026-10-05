@@ -59,6 +59,17 @@ class Command(BaseCommand):
     def handle(self, *args, **opts):
         w = self.stdout.write
 
+        from django.conf import settings
+
+        if getattr(settings, "SIGNAL_UNIVERSE_TOP_N", 0) > 0:
+            # Both write Symbol.signals_enabled. With the universe on, its daily
+            # refresh decides crypto membership, so a prune here would be undone by
+            # tomorrow's refresh (and a --restore-all re-enabled until then).
+            w(self.style.WARNING(
+                f"Note: SIGNAL_UNIVERSE_TOP_N={settings.SIGNAL_UNIVERSE_TOP_N} manages "
+                "crypto signals_enabled daily (apps.market_data.universe) — crypto "
+                "changes made here last only until the next refresh."))
+
         if opts["restore_all"]:
             n = Symbol.objects.filter(signals_enabled=False).update(signals_enabled=True)
             w(self.style.SUCCESS(f"Re-enabled signal scanning on {n} symbol(s)."))

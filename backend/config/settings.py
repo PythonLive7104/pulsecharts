@@ -1046,6 +1046,16 @@ SIGNAL_FREE_TRIAL_DAYS = env.int("SIGNAL_FREE_TRIAL_DAYS", default=30)
 # all. Leave at 0 unless candle-fetch load actually becomes a problem.
 SIGNAL_SCAN_SYMBOL_LIMIT = env.int("SIGNAL_SCAN_SYMBOL_LIMIT", default=0)
 
+# Signal universe (apps.market_data.universe): only the N most-traded crypto coins on
+# Hyperliquid (7-day average volume, re-ranked daily) get signals; the rest stay
+# chartable but are skipped by the scan (Symbol.signals_enabled). Measured on 36
+# coins, 2019-2026: the edge is ~+0.09R/trade on the most liquid coins vs ~+0.03R on
+# the rest, before the extra real-world costs of thin markets. 0 = off (manual).
+SIGNAL_UNIVERSE_TOP_N = env.int("SIGNAL_UNIVERSE_TOP_N", default=20)
+# ...counting only coins with this many days of daily history on Hyperliquid, so a
+# brand-new launch topping the volume chart waits for a track record. 0 = no check.
+SIGNAL_UNIVERSE_MIN_HISTORY_DAYS = env.int("SIGNAL_UNIVERSE_MIN_HISTORY_DAYS", default=365)
+
 # Outcome evaluation (Section 13.7, 18): how many candles after generation before an
 # unresolved call is closed out. 48 bars = 2 days on 1h, 8 days on 4h.
 #
@@ -1157,6 +1167,12 @@ CELERY_BEAT_SCHEDULE = {
     "record-market-context": {
         "task": "apps.market_data.tasks.record_market_context",
         "schedule": env.float("MARKET_CONTEXT_INTERVAL", default=900.0),  # 15 min
+    },
+    # Re-rank the signal universe by volume (SIGNAL_UNIVERSE_TOP_N). Daily is plenty:
+    # the ranking is a 7-day average and membership has hysteresis.
+    "refresh-signal-universe": {
+        "task": "apps.market_data.tasks.refresh_signal_universe",
+        "schedule": env.float("SIGNAL_UNIVERSE_INTERVAL", default=86400.0),
     },
     "purge-old-data": {
         "task": "apps.signals.tasks.purge_old_data",
