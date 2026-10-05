@@ -63,7 +63,14 @@ def _bybit_side(direction: str) -> str:
 
 
 def _tp_for(sig: Signal) -> float | None:
-    """The single take-profit level to bracket to, per AUTO_TRADE_TP_LEVEL."""
+    """The single take-profit level to bracket to.
+
+    A full-exit-at-TP1 signal always brackets to TP1 — that IS its plan, and the
+    track record scores it there. Scale-out signals that fall back to a single TP
+    (tranches below the exchange minimum) use AUTO_TRADE_TP_LEVEL as before.
+    """
+    if sig.exit_model == Signal.ExitModel.TP1:
+        return sig.tp1
     level = getattr(settings, "AUTO_TRADE_TP_LEVEL", "tp2")
     return {"tp1": sig.tp1, "tp2": sig.tp2, "tp3": sig.tp3}.get(level, sig.tp2)
 
@@ -202,7 +209,10 @@ def _place_one(client: BybitClient, cred: BrokerCredential, sig: Signal,
     tranches = (
         split_scaleout(plan.qty, SCALEOUT_FRACTIONS,
                        qty_step=instrument.qty_step, min_order_qty=instrument.min_order_qty)
-        if settings.AUTO_TRADE_SCALEOUT else []
+        # The ladder only exists for scale-out signals; a full-exit signal closes the
+        # whole position at TP1 on a single bracket.
+        if settings.AUTO_TRADE_SCALEOUT and sig.exit_model == Signal.ExitModel.SCALEOUT
+        else []
     )
     ladder = any(t > 0 for t in tranches)
     entry_tp = None if ladder else _tp_for(sig)  # single-TP path brackets on the entry

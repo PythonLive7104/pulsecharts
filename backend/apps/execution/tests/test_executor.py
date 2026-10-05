@@ -131,6 +131,9 @@ class ExecutorTests(TestCase):
             risk_pct=3.0, reward_tp1_pct=3.0, reward_tp2_pct=6.0, reward_tp3_pct=9.0,
             risk_reward_tp1=1.0, risk_reward_tp2=2.0, risk_reward_tp3=3.0,
             dollar_risk=3.0, dollar_tp1=3.0, dollar_tp2=6.0, dollar_tp3=9.0,
+            # These tests pin the scale-out ladder and its fallbacks; full-exit (tp1)
+            # signals are covered by the tests that pass exit_model explicitly.
+            exit_model=Signal.ExitModel.SCALEOUT,
         )
         defaults.update(over)
         return Signal.objects.create(**defaults)
@@ -161,6 +164,16 @@ class ExecutorTests(TestCase):
         self.assertTrue(ex.scaleout)
         self.assertEqual(ex.take_profit, 103.0)  # first target recorded for the card
         self.assertAlmostEqual(rung_qty, ex.qty, places=6)  # rungs cover the whole size
+
+    def test_full_exit_signal_brackets_at_tp1_with_no_ladder(self):
+        # A tp1 signal's plan is "close everything at TP1": one bracket, no rungs,
+        # even with AUTO_TRADE_SCALEOUT on and AUTO_TRADE_TP_LEVEL pointing elsewhere.
+        self._make_signal(exit_model=Signal.ExitModel.TP1)
+        result = self._run()
+        self.assertEqual(result["placed"], 1)
+        self.assertEqual(len(FakeBybit.rungs), 0)
+        self.assertEqual(FakeBybit.placed[0]["take_profit"], 103.0)  # tp1
+        self.assertFalse(TradeExecution.objects.get(user=self.user).scaleout)
 
     @override_settings(AUTO_TRADE_SCALEOUT=False)
     def test_single_tp_fallback_when_scaleout_off(self):

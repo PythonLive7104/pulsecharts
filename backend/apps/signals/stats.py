@@ -29,13 +29,47 @@ from .models import Signal
 
 TP_OUTCOMES = {"TP1", "TP2", "TP3", "TP4"}
 
-# Realized R per outcome under the live 50/25/25 scale-out model (§19.2): bank ½ at
-# TP1, ¼ at TP2, ¼ at TP3, stop trails to breakeven after TP1 so any unfilled tranche
-# closes flat. TP1 = ½×1R, TP2 = ½×1R + ¼×2R, TP3 = ½×1R + ¼×2R + ¼×3R. Front-loading
-# to TP1 (where ~half of winners top out) beats the old even-thirds split by ~0.02R in
-# backtest without abandoning the runner. A stop hit before any TP loses the full 1R;
-# a trend-flip invalidation closes flat at 0.
+# Realized R of a WIN, per exit model, keyed by the furthest target reached. This is
+# the one definition of "what a trade earned": the stats here, feed_stats,
+# breaker_replay and prune_signal_symbols all read it, each with the row's own
+# Signal.exit_model, so a trade is always scored under the plan it was issued with.
+#
+#   tp1      — whole position closed at TP1: every win is exactly +1R.
+#   scaleout — 50/25/25 (§19.2): bank ½ at TP1, ¼ at TP2, ¼ at TP3, stop to
+#              breakeven after TP1 so an unfilled tranche closes flat.
+#              TP1 = ½×1R, TP2 = ½×1R + ¼×2R, TP3 = ½×1R + ¼×2R + ¼×3R.
+#
+# A stop hit before any TP loses the full 1R under both; a trend-flip invalidation
+# closes flat at 0.
+WIN_R = {
+    "tp1": {1: 1.0, 2: 1.0, 3: 1.0, 4: 1.0},
+    "scaleout": {1: 0.5, 2: 1.0, 3: 1.75, 4: 3.0},
+}
+# Kept for anything still importing the old name: the scale-out row of WIN_R.
 SCALEOUT_R = {"TP1": 0.5, "TP2": 1.0, "TP3": 1.75, "TP4": 3.0, "SL": -1.0, "INVALID": 0.0}
+
+
+def win_r(exit_model: str, best_tp: int) -> float:
+    """R of a trade that reached ``best_tp`` (>= 1). Unknown models score as
+    scale-out, which every pre-exit_model row was."""
+    table = WIN_R.get(exit_model, WIN_R["scaleout"])
+    return table.get(min(max(best_tp, 1), 4), 0.0)
+
+
+def trade_r(exit_model: str, best_tp: int) -> float:
+    """R of a RESOLVED trade from how far it got: a target reached is a win (see
+    win_r), none reached is a full stop-out. Callers exclude flat closes
+    (invalidated / expired with no target) before calling, as they always have."""
+    return win_r(exit_model, best_tp) if best_tp >= 1 else -1.0
+
+
+def outcome_r(exit_model: str, outcome: str) -> float:
+    """R for a stored outcome label: TP1-4 win, SL -1R, anything else flat (0)."""
+    if outcome in TP_OUTCOMES:
+        return win_r(exit_model, int(outcome[2:]))
+    if outcome == "SL":
+        return -1.0
+    return 0.0
 
 
 def _effective_outcome(outcome: str, best_tp: int) -> str:
@@ -57,7 +91,7 @@ def _effective_outcome(outcome: str, best_tp: int) -> str:
     return outcome
 
 
-def _summarize(counts: dict, running: int = 0) -> dict:
+def _summarize(counts: dict, running: int = 0, total_r: float = 0.0) -> dict:
     wins = sum(counts.get(o, 0) for o in TP_OUTCOMES)
     losses = counts.get("SL", 0)
     # Trend-flip invalidations close flat — neither win nor loss. Kept out of the
@@ -65,9 +99,9 @@ def _summarize(counts: dict, running: int = 0) -> dict:
     breakeven = counts.get("INVALID", 0)
     resolved = wins + losses
     # Per-trade expectancy in R, over every closed trade that committed capital
-    # (wins + losses + flat trend-flip closes; pending/expired excluded).
+    # (wins + losses + flat trend-flip closes; pending/expired excluded). total_r is
+    # summed per trade by the caller, under each trade's own exit model.
     closed = resolved + breakeven
-    total_r = sum(SCALEOUT_R.get(o, 0.0) * n for o, n in counts.items())
     return {
         "wins": wins,
         "losses": losses,
@@ -87,8 +121,9 @@ def _summarize(counts: dict, running: int = 0) -> dict:
     }
 
 
-def _trade_counts(qs) -> dict:
-    """Outcome counts over distinct TRADES rather than Signal rows.
+def _trade_counts(qs) -> tuple[dict, int, float]:
+    """Outcome counts over distinct TRADES rather than Signal rows, plus the trades'
+    total R under each one's own exit model.
 
     A trade is (symbol, timeframe, direction, entry_price): every strategy that
     called the same setup shares those, and they resolve together. A later, distinct
@@ -98,22 +133,24 @@ def _trade_counts(qs) -> dict:
     """
     rank = {"SL": 0, "EXPIRED": 1, "INVALID": 2, "PENDING": 3,
             "TP1": 4, "TP2": 5, "TP3": 6, "TP4": 7}
-    trades: dict[tuple, tuple[str, bool]] = {}
+    trades: dict[tuple, tuple[str, bool, str]] = {}
     for r in qs.values("symbol_id", "timeframe", "direction", "entry_price",
-                       "outcome", "best_tp"):
+                       "outcome", "best_tp", "exit_model"):
         key = (r["symbol_id"], r["timeframe"], r["direction"], r["entry_price"])
         outcome = _effective_outcome(r["outcome"], r["best_tp"])
         still_open = r["outcome"] == "PENDING"
         cur = trades.get(key)
         if cur is None or rank.get(outcome, 9) < rank.get(cur[0], 9):
-            trades[key] = (outcome, still_open)
+            trades[key] = (outcome, still_open, r["exit_model"])
     counts: dict[str, int] = {}
     running = 0
-    for outcome, still_open in trades.values():
+    total_r = 0.0
+    for outcome, still_open, exit_model in trades.values():
         counts[outcome] = counts.get(outcome, 0) + 1
+        total_r += outcome_r(exit_model, outcome)
         if still_open and outcome in TP_OUTCOMES:
             running += 1
-    return counts, running
+    return counts, running, total_r
 
 
 def accuracy_stats(base=None) -> dict:
@@ -127,43 +164,45 @@ def accuracy_stats(base=None) -> dict:
     """
     if base is None:
         base = Signal.objects.filter(service__owner__isnull=True)
-    overall_counts, overall_running = _trade_counts(base)
+    overall_counts, overall_running, overall_r = _trade_counts(base)
 
     # Per-strategy: same effective-outcome mapping as the overall figure, so an open
     # trade that banked TP1 lands in both or neither. (Rolled up in Python rather than
-    # via annotate() because the mapping depends on best_tp, not just outcome.)
+    # via annotate() because the mapping depends on best_tp and exit_model.)
     per_service: dict[str, dict] = {}
-    rows = base.values("service__slug", "service__name", "outcome", "best_tp").annotate(
-        n=Count("id")
-    )
+    rows = base.values(
+        "service__slug", "service__name", "outcome", "best_tp", "exit_model"
+    ).annotate(n=Count("id"))
     for r in rows:
         slug = r["service__slug"]
         bucket = per_service.setdefault(
-            slug, {"name": r["service__name"], "_counts": {}, "_running": 0}
+            slug, {"name": r["service__name"], "_counts": {}, "_running": 0, "_r": 0.0}
         )
         outcome = _effective_outcome(r["outcome"], r["best_tp"])
         bucket["_counts"][outcome] = bucket["_counts"].get(outcome, 0) + r["n"]
+        bucket["_r"] += outcome_r(r["exit_model"], outcome) * r["n"]
         if r["outcome"] == "PENDING" and outcome in TP_OUTCOMES:
             bucket["_running"] += r["n"]
 
     strategies = []
     for slug, b in per_service.items():
         strategies.append(
-            {"slug": slug, "name": b["name"], **_summarize(b["_counts"], b["_running"])}
+            {"slug": slug, "name": b["name"],
+             **_summarize(b["_counts"], b["_running"], b["_r"])}
         )
     strategies.sort(key=lambda s: (s["win_rate"] is None, -(s["win_rate"] or 0)))
 
     return {
-        "overall": _summarize(overall_counts, overall_running),
+        "overall": _summarize(overall_counts, overall_running, overall_r),
         "strategies": strategies,
-        "note": "Win = reached TP1+ before stop. A still-running trade that already "
-                "banked TP1 counts at its locked-in floor — half is secured and the "
-                "stop is at breakeven, so it can't become a loss. Open trades that "
-                "haven't tagged a target yet are undecided and are NOT counted (they're "
-                "shown separately, so the win rate isn't just the open winners). "
-                "Invalidated (trend flipped) and expired trades close flat and are "
-                "excluded from the win rate. Counted once per "
-                "trade, not once per strategy that called it. avg_r = per-trade "
-                "expectancy under the 50/25/25 scale-out model (TP1=+0.5R, TP2=+1R, "
-                "TP3=+1.75R, SL=-1R, trend-flip=0R).",
+        "note": "Win = reached TP1 before the stop. Each trade is scored under the exit "
+                "plan it was issued with: full exit at TP1 (win = +1R) for current "
+                "signals; the older 50/25/25 scale-out (TP1=+0.5R, TP2=+1R, TP3=+1.75R) "
+                "for earlier ones. A still-running scale-out trade that already banked "
+                "TP1 counts at its locked-in floor — half is secured and the stop is at "
+                "breakeven, so it can't become a loss. Open trades that haven't tagged a "
+                "target yet are undecided and are NOT counted. Invalidated (trend "
+                "flipped) and expired trades close flat and are excluded from the win "
+                "rate. Counted once per trade, not once per strategy that called it. "
+                "avg_r = per-trade expectancy (SL=-1R, trend-flip=0R).",
     }

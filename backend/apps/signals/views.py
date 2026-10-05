@@ -113,6 +113,7 @@ def _trade_updates(delivered_ids, now):
                 "timeframe": s.timeframe,
                 "outcome": s.outcome,
                 "best_tp": s.best_tp,
+                "exit_model": s.exit_model,
                 "strategy": s.service.name,
                 "at": s.resolved_at.isoformat(),
             }
@@ -144,6 +145,7 @@ def _trade_updates(delivered_ids, now):
                 "timeframe": s.timeframe,
                 "outcome": s.outcome,
                 "best_tp": s.best_tp,
+                "exit_model": s.exit_model,
                 "strategy": s.service.name,
                 "at": at.isoformat(),
             }

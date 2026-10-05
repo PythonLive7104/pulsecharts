@@ -233,9 +233,11 @@ export default function SignalsPage() {
 
   // Recent trade updates (closures) — shown in-app to everyone, so free/starter
   // who don't use Telegram still see when a trade hit TP/SL or the trend flipped.
-  // Scale-out model (§19.2): 50/25/25 — half banked at TP1, a quarter at TP2, a
-  // quarter at TP3, stop to breakeven after TP1, so a TP1/TP2 close means the runner
-  // came back to breakeven with the earlier partial(s) already secured; TP3 is a full run.
+  // Each update carries its trade's exit_model. Full-exit ("tp1") trades close in one
+  // go at the target. Older scale-out trades (§19.2, 50/25/25) read as they were
+  // traded: a TP1/TP2 close means the runner came back to breakeven with the earlier
+  // partial(s) already secured; TP3 is a full run.
+  const FULL_EXIT_WIN_MSG = "✅ Target hit · closed in full (+1R)";
   const CLOSURE_MSG = {
     TP1: "✅ TP1 banked · runner to breakeven",
     TP2: "✅ TP1 & TP2 banked · runner to breakeven",
@@ -258,7 +260,8 @@ export default function SignalsPage() {
       };
     }
     return {
-      u, at: u.at, msg: CLOSURE_MSG[u.outcome] || u.outcome,
+      u, at: u.at,
+      msg: win && u.exit_model === "tp1" ? FULL_EXIT_WIN_MSG : CLOSURE_MSG[u.outcome] || u.outcome,
       cls: win ? "win" : u.outcome === "SL" ? "loss" : "neutral",
     };
   });
@@ -338,7 +341,7 @@ export default function SignalsPage() {
               <p className="muted">
                 {feed?.trial_expired
                   ? "Your 30 days of free signals are up. New setups are still being found — you'll start seeing them again on a paid plan."
-                  : "Buy/sell signals with entry, stop-loss and TP1–TP3 targets, a confidence score and the reasoning behind each call are included on the Starter and Pro plans."}
+                  : "4h buy/sell signals with an entry, a stop-loss, one profit target, a confidence score and the reasoning behind each call are included on the Starter and Pro plans."}
               </p>
               {/* Named separately from the generic "Upgrade" so a lapsed user reads it
                   as "choose a plan", not "you already had this". */}

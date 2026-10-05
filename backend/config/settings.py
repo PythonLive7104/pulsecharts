@@ -189,6 +189,21 @@ FOREX_ENABLED = env.bool("FOREX_ENABLED", default=True)
 # keeps request volume low against the public endpoint.
 FOREX_POLL_INTERVAL = env.float("FOREX_POLL_INTERVAL", default=15.0)
 
+# --- Long-history research data (apps.market_data.history) ----------------
+# Where `manage.py fetch_history` keeps Binance's monthly kline archives and where
+# `backtest --history` reads them. Research only — nothing on a request path reads
+# it — so it lives on the machine running backtests, not in the deployed image.
+HISTORY_DIR = env("HISTORY_DIR", default=str(BASE_DIR / "history"))
+
+# Round-trip trading cost every backtest charges by default, as % of price, per asset
+# class (newPRD §4: results are cost-adjusted or they are not results). Crypto 0.1% ≈
+# Hyperliquid taker fees both ways plus a little slippage; forex ≈ 1 pip on EUR/USD.
+# `backtest --gross` disables it, `--spread-pct` overrides it.
+BACKTEST_COST_PCT = {
+    "crypto": env.float("BACKTEST_COST_PCT_CRYPTO", default=0.1),
+    "forex": env.float("BACKTEST_COST_PCT_FOREX", default=0.0087),
+}
+
 # --- Marketing email campaigns ---------------------------------------------
 # Hard ceiling on MARKETING emails per calendar day, across every campaign. This is a
 # deliverability guard, not a preference: a young sending domain that suddenly emits
@@ -952,10 +967,13 @@ SIGNAL_DAILY_QUOTA = {
     "premium": env.int("SIGNAL_QUOTA_PREMIUM", default=50),
 }
 
-# Swing/position timeframes: 4h for multi-day setups, 1d for longer-term setups.
-# With a broad symbol universe, prefer waiting for confirmed setups on these slower
-# frames over increasing frequency with noisier 1h entries.
-SIGNAL_TIMEFRAMES = env.list("SIGNAL_TIMEFRAMES", default=["4h", "1d"])
+# Signal timeframes: 4h only. Measured on 7.7 years of BTC (backtest --history,
+# 0.1% round trip, split 2024-01-01): 4h is net positive in AND out of sample, 1h
+# loses -0.05R per trade in both — its tighter stops make the same fee cost about
+# twice the R. 1d is NOT a signal timeframe, but it is still read as the
+# higher-timeframe filter for 4h calls (_HTF_MAP) and for the daily-200-EMA line on
+# the card. Re-add a frame only when a long-history backtest shows it net positive.
+SIGNAL_TIMEFRAMES = env.list("SIGNAL_TIMEFRAMES", default=["4h"])
 
 # Skip crypto signal generation during the weekend window (Fri 21:00 → Sun 21:00
 # UTC, same window used to close forex). Weekend crypto is thin and choppy and
@@ -1040,6 +1058,19 @@ SIGNAL_SCAN_SYMBOL_LIMIT = env.int("SIGNAL_SCAN_SYMBOL_LIMIT", default=0)
 # A call that already banked TP1/TP2 closes at that banked level, not as EXPIRED.
 SIGNAL_EVAL_BARS = env.int("SIGNAL_EVAL_BARS", default=48)
 
+# How a trade is managed once delivered — and therefore how its result is scored.
+#   "tp1"      — close the WHOLE position at TP1 (1R). Default.
+#   "scaleout" — the old 50/25/25 ladder: half at TP1, a quarter at TP2 and TP3,
+#                stop to breakeven after TP1.
+# Measured on 7.7 years of BTC 4h, net of a 0.1% round trip: full exit at TP1 made
+# +0.05R in-sample and +0.10R out-of-sample per trade, vs +0.02R / +0.03R for the
+# ladder — the runner rarely pays for the half it gives up at TP1. Each Signal stores
+# the model it was issued under (Signal.exit_model), so switching this never
+# rescores past trades. It is also a rule setting, so a switch mints new versions.
+SIGNAL_EXIT_MODEL = env("SIGNAL_EXIT_MODEL", default="tp1")
+if SIGNAL_EXIT_MODEL not in ("tp1", "scaleout"):
+    raise ValueError(f"SIGNAL_EXIT_MODEL must be 'tp1' or 'scaleout', got {SIGNAL_EXIT_MODEL!r}")
+
 # Per-asset-class override of the expiry clock. Forex needs far longer: measured over
 # 22 pairs / 100 days / 1h with a 1-pip spread charged, Bollinger Fade on a 3.0-4.0xATR
 # stop improves monotonically with holding time —
@@ -1060,11 +1091,11 @@ SIGNAL_EVAL_BARS_BY_ASSET = {
 # user feed (run for weeks, validate realized accuracy before any claims, 13.7).
 SIGNAL_SHADOW_MODE = env.bool("SIGNAL_SHADOW_MODE", default=False)
 
-# Daily housekeeping: how long to keep RESOLVED signals (and their deliveries) and
+# Daily housekeeping: how long to keep RESOLVED, NEVER-DELIVERED signals and
 # already-seen triggered price alerts before purging them, to keep the database
-# small. Open (PENDING) calls are never purged regardless of age. NOTE: realized
-# accuracy stats and the "Recent results" history only span this window — raise it
-# (e.g. 30) if you want a longer accuracy track record, lower it to free more DB.
+# small. Two kinds of signal are never purged regardless of age: open (PENDING)
+# calls, and anything a user was delivered or traded (tasks.never_delivered) — that
+# is the permanent track record (newPRD §5/§37), so this window no longer limits it.
 SIGNAL_RETENTION_DAYS = env.int("SIGNAL_RETENTION_DAYS", default=30)
 
 # SHORTER retention for calls that closed FLAT — invalidated (trend flipped) and

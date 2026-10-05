@@ -16,6 +16,7 @@ from collections import defaultdict
 from django.core.management.base import BaseCommand
 
 from apps.signals.models import Signal
+from apps.signals.tasks import never_delivered
 
 
 class Command(BaseCommand):
@@ -57,5 +58,11 @@ class Command(BaseCommand):
             )
             return
 
-        deleted, _ = Signal.objects.filter(id__in=dupe_ids).delete()
-        self.stdout.write(self.style.SUCCESS(f"Deleted {len(dupe_ids)} duplicate signals ({deleted} rows incl. deliveries)."))
+        # A duplicate a user was already handed stays: it's on their record and will
+        # resolve like any other open call. Only the never-seen copies are removed.
+        deleted, _ = never_delivered(Signal.objects.filter(id__in=dupe_ids)).delete()
+        kept = Signal.objects.filter(id__in=dupe_ids).count()
+        self.stdout.write(self.style.SUCCESS(
+            f"Deleted {deleted} undelivered duplicate signals; kept {kept} that a user "
+            "was already delivered."
+        ))

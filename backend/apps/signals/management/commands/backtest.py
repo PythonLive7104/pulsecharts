@@ -28,6 +28,7 @@ import requests
 from django.conf import settings
 from django.core.management.base import BaseCommand, CommandError
 
+from apps.market_data import history
 from apps.market_data.feeds import get_candles as _fetch_candles
 from apps.market_data.models import Symbol
 from apps.signals.engine import generate_judgment
@@ -57,9 +58,52 @@ from apps.signals.tasks import _HTF_MAP, _closed_candles
 # every arm of a sweep; delete it to pull fresh data.
 _CACHE_DIR: str | None = None
 
+# --- long history (--history) ------------------------------------------------
+# Hyperliquid's candle API reaches back a few thousand bars at most — one regime.
+# --history reads Binance's monthly archive instead (manage.py fetch_history), so a
+# run can span years and several market cycles (newPRD §11-12). Every candle this
+# command reads goes through get_candles below, so the series, the HTF timelines
+# and the leader timeline all switch source together.
+#
+# Set in handle(): {"root": Path, "start": ts|None, "end": ts|None}.
+_HISTORY: dict | None = None
+_HISTORY_CACHE: dict[tuple[str, str], list[dict]] = {}
+# Bars loaded BEFORE --start so indicators and HTF timelines are warm on the first
+# evaluated bar. Trades are only taken from --start on (see _run_series).
+HISTORY_WARMUP_BARS = 600
+# Live computes indicators on the last 300 closed candles (tasks.run_scan fetches
+# limit=300). Over years of bars, recomputing on the whole prefix is quadratic AND
+# differs from live, so --history uses the live window by default.
+LIVE_INDICATOR_WINDOW = 300
+# Set in handle(); read by _run_series.
+_START_TS: int | None = None
+_SPLIT_TS: int | None = None
+_INDICATOR_WINDOW: int | None = None
+
+
+def _history_candles(symbol, interval):
+    pair = history.pair_for(symbol)
+    if pair is None:
+        return []
+    key = (pair, interval)
+    if key not in _HISTORY_CACHE:
+        candles = history.load(pair, interval, end_ts=_HISTORY["end"], root=_HISTORY["root"])
+        if _HISTORY["start"] is not None and candles:
+            first = next((k for k, c in enumerate(candles) if c["time"] >= _HISTORY["start"]),
+                         len(candles))
+            candles = candles[max(0, first - HISTORY_WARMUP_BARS):]
+        _HISTORY_CACHE[key] = candles
+    return _HISTORY_CACHE[key]
+
 
 def get_candles(symbol, interval="1h", limit=300):
-    """``feeds.get_candles``, memoised to ``--cache-dir`` when one is set."""
+    """``feeds.get_candles``, memoised to ``--cache-dir`` when one is set.
+
+    With --history the archive replaces the live feed and ``limit`` is ignored: the
+    whole --start/--end range (plus warmup) is returned.
+    """
+    if _HISTORY is not None:
+        return _history_candles(symbol, interval)
     if _CACHE_DIR is None:
         return _fetch_candles(symbol, interval, limit=limit)
     path = os.path.join(_CACHE_DIR, f"{symbol.id}_{interval}_{limit}.json")
@@ -97,10 +141,14 @@ SCALEOUT_R = {1: 0.5, 2: 1.0, 3: 1.75, 4: 3.0}
 EXIT_MODELS = [
     ("all off @TP1               ", (1.0, 0.0, 0.0)),
     ("even thirds  (old model)   ", (1 / 3, 1 / 3, 1 / 3)),
-    ("½ TP1 · ¼ TP2 · ¼ TP3 (live)", (0.5, 0.25, 0.25)),
+    ("½ TP1 · ¼ TP2 · ¼ TP3       ", (0.5, 0.25, 0.25)),
     ("½ TP1 · ½ TP2              ", (0.5, 0.5, 0.0)),
     ("⅔ TP1 · ⅓ TP2              ", (2 / 3, 1 / 3, 0.0)),
 ]
+
+
+# Which EXIT_MODELS row is what users are actually told to do (SIGNAL_EXIT_MODEL).
+LIVE_EXIT_FRACTIONS = {"tp1": (1.0, 0.0, 0.0), "scaleout": (0.5, 0.25, 0.25)}
 
 
 def _exit_expectancy(total, fractions):
@@ -528,6 +576,11 @@ class Command(BaseCommand):
                                  "market runs one way — which is how 225 fades stopped out "
                                  "together on 2026-08-19. Point-in-time: the leader is "
                                  "evaluated on bars closed at or before the signal bar.")
+        parser.add_argument("--gross", action="store_true",
+                            help="Charge NO trading costs. Every result is net of "
+                                 "BACKTEST_COST_PCT (per asset class) by default, so a "
+                                 "gross figure can't be mistaken for a profit; use this "
+                                 "only to see how much of an edge the costs eat.")
         parser.add_argument("--spread-pct", type=float, default=None, metavar="PCT",
                             help="Model the round-trip SPREAD as a %% of price and report "
                                  "expectancy NET of it. Every other figure this command "
@@ -681,6 +734,28 @@ class Command(BaseCommand):
                                  "slides between runs and a sweep compares settings on "
                                  "different data. Pass the SAME dir to every arm of a "
                                  "sweep; delete it for fresh data.")
+        parser.add_argument("--history", action="store_true",
+                            help="Read years of candles from the local Binance archive "
+                                 "(manage.py fetch_history) instead of the live feed's last "
+                                 "--candles bars. Crypto only. Defaults to live parity: "
+                                 "indicators on the last 300 bars and the live expiry clock "
+                                 "(--eval-bars), unless overridden.")
+        parser.add_argument("--history-dir", default=None, metavar="DIR",
+                            help="Archive directory for --history (default HISTORY_DIR).")
+        parser.add_argument("--start", default=None, metavar="YYYY-MM-DD",
+                            help="--history: first day a trade may be ENTERED.")
+        parser.add_argument("--end", default=None, metavar="YYYY-MM-DD",
+                            help="--history: candles before this day only (exclusive).")
+        parser.add_argument("--split-date", default=None, metavar="YYYY-MM-DD",
+                            help="Chronological out-of-sample split by CALENDAR DATE: trades "
+                                 "entered before it are in-sample, on/after it out-of-sample. "
+                                 "Unlike --holdout-frac every series is cut at the same moment, "
+                                 "so the test period is one real stretch of market (newPRD §12). "
+                                 "Choose it BEFORE looking at results, and don't tune on the "
+                                 "test side.")
+        parser.add_argument("--indicator-window", type=int, default=None, metavar="N",
+                            help="Compute each bar's indicators on the last N candles only "
+                                 "(live uses 300). Default: whole prefix; 300 with --history.")
         parser.add_argument("--adx-min", type=float, default=None,
                             help="Apply an ADX floor (proxy for the live regime filter's ADX "
                                  "gate, which the backtest otherwise SKIPS). Only setups with "
@@ -781,6 +856,16 @@ class Command(BaseCommand):
             [t.strip() for t in opts["timeframes"].split(",") if t.strip()]
             if opts["timeframes"] else list(settings.SIGNAL_TIMEFRAMES)
         )
+        self._setup_history(opts)
+        if opts.get("gross"):
+            opts["spread_pct"] = 0.0
+        if opts.get("spread_pct") is not None:
+            cost_note = ("GROSS — no costs charged" if not opts["spread_pct"]
+                         else f"{opts['spread_pct']}% round trip (--spread-pct)")
+        else:
+            cost_note = ", ".join(f"{k} {v}%" for k, v in settings.BACKTEST_COST_PCT.items())
+            cost_note += " round trip (BACKTEST_COST_PCT; --gross to disable)"
+        self.stdout.write(self.style.WARNING(f"Costs: {cost_note}"))
 
         # EFFECTIVE config, not just the overrides. Gates are module-level state that
         # SignalsConfig.ready() seeds from env BEFORE any flag is parsed, so a run
@@ -840,7 +925,21 @@ class Command(BaseCommand):
         sym_qs = Symbol.objects.filter(is_active=True)
         if opts.get("asset_class"):
             sym_qs = sym_qs.filter(asset_class=opts["asset_class"])
-        symbols = list(sym_qs[:opts["max_symbols"]])
+        if _HISTORY is not None:
+            # Only symbols with archive data: the rest would silently contribute nothing
+            # and make the run look broader than it is.
+            have = [s for s in sym_qs if history.pair_for(s)
+                    and _history_candles(s, timeframes[0])]
+            symbols = have[:opts["max_symbols"]]
+            if not symbols:
+                raise CommandError(
+                    "--history: no archive data for any active symbol on "
+                    f"{timeframes[0]}. Run: manage.py fetch_history --intervals "
+                    f"{','.join(sorted(set(timeframes) | {'4h', '1d'}))}")
+            self.stdout.write(self.style.WARNING(
+                "History symbols: " + ", ".join(s.ticker for s in symbols)))
+        else:
+            symbols = list(sym_qs[:opts["max_symbols"]])
         if not symbols:
             self.stderr.write(self.style.ERROR("No active symbols — run sync_symbols."))
             return
@@ -853,6 +952,8 @@ class Command(BaseCommand):
         holdout = opts.get("holdout_frac")
         if holdout is not None and not (0.0 < holdout < 1.0):
             raise CommandError("--holdout-frac must be between 0 and 1 (exclusive), e.g. 0.3")
+        if holdout is not None and _SPLIT_TS is not None:
+            raise CommandError("use --holdout-frac OR --split-date, not both")
 
         rb = {svc.slug: _blank(svc.name) for svc in services}
         # Second, parallel set of buckets for the out-of-sample segment. Split is
@@ -860,7 +961,8 @@ class Command(BaseCommand):
         # bars. Per series rather than one global date so every symbol contributes to
         # both halves — a global cut would hand the test set to whichever symbols
         # happen to have the most recent history.
-        rb_test = {svc.slug: _blank(svc.name) for svc in services} if holdout else None
+        split_on = bool(holdout) or _SPLIT_TS is not None
+        rb_test = {svc.slug: _blank(svc.name) for svc in services} if split_on else None
         # Per-scheme totals for --exit-lab: index-aligned with EXIT_LAB.
         exit_lab = {"on": bool(opts.get("exit_lab")), "n": 0, "r": [0.0] * len(EXIT_LAB)}
         # Optional breakdowns. Each maps bucket -> the same _blank() shape as `rb`, so
@@ -942,11 +1044,17 @@ class Command(BaseCommand):
         if llm_on:
             self._report_compare(rb, llm, budget)
         elif rb_test is not None:
+            if _SPLIT_TS is not None:
+                train_label = f"entered before {opts['split_date']}"
+                test_label = f"entered on/after {opts['split_date']}"
+            else:
+                train_label = f"first {(1 - holdout) * 100:.0f}% of each series"
+                test_label = f"last {holdout * 100:.0f}%"
             self.stdout.write(self.style.MIGRATE_HEADING(
-                f"\n=== IN-SAMPLE (first {(1 - holdout) * 100:.0f}% of each series) ==="))
+                f"\n=== IN-SAMPLE ({train_label}) ==="))
             self._report(rb, series)
             self.stdout.write(self.style.MIGRATE_HEADING(
-                f"\n=== OUT-OF-SAMPLE (last {holdout * 100:.0f}%) — the only half that "
+                f"\n=== OUT-OF-SAMPLE ({test_label}) — the only half that "
                 "is evidence ==="))
             self._report(rb_test, series)
             self._report_holdout_delta(rb, rb_test)
@@ -984,6 +1092,48 @@ class Command(BaseCommand):
             self.stdout.write(
                 "    (path-replayed, so trailing/later-BE schemes are exact rather than\n"
                 "     derived from the winners-by-best-TP aggregate above.)")
+
+    def _setup_history(self, opts):
+        """Resolve --history / --start / --end / --split-date / --indicator-window into
+        the module state get_candles and _run_series read. Reset on every call so one
+        process running the command twice (tests) can't inherit the last run."""
+        global _HISTORY, _START_TS, _SPLIT_TS, _INDICATOR_WINDOW
+        _HISTORY, _START_TS, _SPLIT_TS = None, None, None
+        _INDICATOR_WINDOW = opts.get("indicator_window")
+        _HISTORY_CACHE.clear()
+
+        try:
+            start = history.parse_day(opts["start"]) if opts.get("start") else None
+            end = history.parse_day(opts["end"]) if opts.get("end") else None
+            _SPLIT_TS = (history.parse_day(opts["split_date"])
+                         if opts.get("split_date") else None)
+        except history.HistoryError as exc:
+            raise CommandError(str(exc)) from None
+
+        if not opts.get("history"):
+            if start is not None or end is not None:
+                raise CommandError("--start/--end need --history (the live feed has no range)")
+            return
+        if start is not None and end is not None and start >= end:
+            raise CommandError("--start must be before --end")
+        if _SPLIT_TS is not None and (
+            (start is not None and _SPLIT_TS <= start) or (end is not None and _SPLIT_TS >= end)
+        ):
+            raise CommandError("--split-date must fall inside --start/--end")
+
+        _HISTORY = {"root": history.history_dir(opts.get("history_dir")),
+                    "start": start, "end": end}
+        _START_TS = start
+        if _INDICATOR_WINDOW is None:
+            _INDICATOR_WINDOW = LIVE_INDICATOR_WINDOW
+        if opts.get("eval_bars") is None:
+            # Without the expiry clock, a trade that never resolves is DROPPED, which
+            # flatters results; over years of data that's a lot of dropped trades.
+            opts["eval_bars"] = settings.SIGNAL_EVAL_BARS
+        self.stdout.write(self.style.WARNING(
+            f"History mode: {opts.get('start') or 'archive start'} -> "
+            f"{opts.get('end') or 'archive end'}, indicators on last "
+            f"{_INDICATOR_WINDOW} bars, expiry {opts['eval_bars']} bars"))
 
     def _htf_timeline(self, sym, tf, htf_limit):
         """Sorted [(usable_from_time, structure), …] for the timeframe above `tf`.
@@ -1051,10 +1201,23 @@ class Command(BaseCommand):
                     delay=None, fade_veto=None, gate_stats=None):
         ticker = sym.ticker
         n = len(candles)
+        if spread_pct is None:
+            # Net of costs unless --gross / --spread-pct said otherwise: crypto and
+            # forex cost very different amounts, so the default is per asset class.
+            spread_pct = settings.BACKTEST_COST_PCT.get(asset_class, 0.0)
         # First bar index belonging to the out-of-sample segment. Trades are assigned
         # by ENTRY bar, so a trade opened in train but resolving in test stays a train
         # trade — the alternative leaks the test window's outcomes into the fit.
         split_i = int(n * (1.0 - holdout)) if (rb_test is not None and holdout) else None
+        if rb_test is not None and _SPLIT_TS is not None:
+            split_i = next((k for k, c in enumerate(candles) if c["time"] >= _SPLIT_TS), n)
+        # With an indicator window, the forward path only needs to outlast the longest
+        # thing that reads it (expiry clock, exit replay, delayed/limit fills) — slicing
+        # the whole remainder per bar is quadratic over years of candles.
+        future_cap = None
+        if _INDICATOR_WINDOW:
+            future_cap = (max(REPLAY_BARS, eval_bars or 0) + max(fill_bars or 0, 0)
+                          + (delay or 0) + 1)
         threshold = settings.SIGNAL_MIN_CONFIDENCE
         free_at = {svc.slug: MIN_CANDLES for svc in services}
 
@@ -1074,7 +1237,10 @@ class Command(BaseCommand):
         for i in range(MIN_CANDLES, n - 1):
             if llm is not None and budget["left"] <= 0:
                 return
-            snap = compute_indicators(candles[: i + 1])
+            if _START_TS is not None and candles[i]["time"] < _START_TS:
+                continue  # warmup bar: feeds indicators/HTF state, never a trade
+            lo = max(0, i + 1 - _INDICATOR_WINDOW) if _INDICATOR_WINDOW else 0
+            snap = compute_indicators(candles[lo: i + 1])
             if not snap.get("atr") or not snap.get("close"):
                 continue
             if snap.get("swing_high") is None or snap.get("swing_low") is None:
@@ -1085,7 +1251,7 @@ class Command(BaseCommand):
             # NOTE: applied per-strategy below, not here — the floor is a trend test
             # and mean reversion needs the opposite bound.
             bar_adx = snap.get("adx")
-            future = candles[i + 1:]
+            future = candles[i + 1: i + 1 + future_cap] if future_cap else candles[i + 1:]
 
             htf_bias_now = None  # 'up' | 'down' | None (no data yet → fail open)
             if bias_timeline is not None:
@@ -1467,8 +1633,10 @@ class Command(BaseCommand):
             return
         self.stdout.write(self.style.MIGRATE_HEADING("\n  Exit-model comparison (same trades):"))
         ranked = sorted(EXIT_MODELS, key=lambda m: -_exit_expectancy(total, m[1]))
+        live = LIVE_EXIT_FRACTIONS.get(settings.SIGNAL_EXIT_MODEL)
         for label, fr in ranked:
-            self.stdout.write(f"    {label}  exp={_exit_expectancy(total, fr):+.3f}R")
+            tag = " (live)" if fr == live else ""
+            self.stdout.write(f"    {label}  exp={_exit_expectancy(total, fr):+.3f}R{tag}")
 
     def _report_compare(self, rb, llm, budget):
         rb_t, llm_t = _totals(rb), _totals(llm)
@@ -1513,12 +1681,22 @@ class Command(BaseCommand):
     def _footer(self, llm=False):
         base = (
             "\nReading this honestly:\n"
-            "  • Win % = reached TP1 before the stop. exp(TP1) = exit all at TP1 (caps\n"
-            "    winners at +1R, conservative). exp(scale) = the LIVE model: 50/25/25\n"
-            "    scale-out (½ TP1, ¼ TP2, ¼ TP3), stop to breakeven after TP1 (what to\n"
-            "    actually expect). exp(best) = exit all at the furthest TP (hindsight).\n"
-            "  • Small historical sample, currently-listed coins only (survivorship),\n"
-            "    one market regime. Directional, not proof — don't claim accuracy (§13.7)."
+            "  • Win % = reached TP1 before the stop. exp(TP1) = exit all at TP1.\n"
+            "    exp(scale) = 50/25/25 scale-out (½ TP1, ¼ TP2, ¼ TP3), stop to\n"
+            "    breakeven after TP1. exp(best) = exit all at the furthest TP (hindsight).\n"
+            f"    LIVE exit model (SIGNAL_EXIT_MODEL): "
+            f"{'exp(TP1)' if settings.SIGNAL_EXIT_MODEL == 'tp1' else 'exp(scale)'}"
+            " is what to actually expect.\n"
+            + (
+                "  • Binance spot archive (not Hyperliquid prints), currently-listed coins\n"
+                "    only (survivorship). The live confidence floor, regime filter and\n"
+                "    confluence are NOT applied unless flagged. Exit-model rows are GROSS;\n"
+                "    exp(...) columns are net of the costs printed at the top. Not proof — don't claim\n"
+                "    accuracy (§13.7)."
+                if _HISTORY is not None else
+                "  • Small historical sample, currently-listed coins only (survivorship),\n"
+                "    one market regime. Directional, not proof — don't claim accuracy (§13.7)."
+            )
         )
         if llm:
             base += (

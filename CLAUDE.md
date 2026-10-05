@@ -485,7 +485,14 @@ new signals — so historical rows and the serializer stay valid.)
 
 Where `risk distance = abs(entry_price - stop_loss)`.
 
-**Trade management — 50/25/25 scale-out** (the model behind `avg_r` in stats.py and
+**Trade management is per signal (`Signal.exit_model`).** New signals default to
+`SIGNAL_EXIT_MODEL=tp1`: the whole position closes at TP1 (+1R), the card and Telegram
+show one target, the evaluator walks TP1 only, and auto-trade brackets at TP1. It beat
+the ladder below on 7.7 years of BTC 4h net of costs (+0.10R vs +0.03R out of sample).
+Signals issued before it keep `scaleout` and are still scored that way — R for any
+trade comes from `stats.trade_r(exit_model, best_tp)`, never a local table.
+
+**Legacy: 50/25/25 scale-out** (`exit_model="scaleout"`; the model behind `avg_r` in stats.py and
 `exp(scale)` in the backtest): bank **½ at TP1**, **¼ at TP2**, **¼ at TP3**, and move
 the stop to breakeven once TP1 tags — so any tranche whose target isn't reached closes
 flat, never a post-TP1 loss. Realized R per outcome: TP1 = +0.5R, TP2 = +1.0R,
@@ -835,3 +842,26 @@ FOREX_POLL_INTERVAL=15      # seconds between relay polls of Yahoo
   or move to Polygon if it degrades under real traffic.
 - Paid forex signals carry the SAME regulatory/disclaimer exposure as
   crypto signals (Section 13.7) — not financial advice, etc.
+## 23. Track Record & Research (newPRD.txt)
+
+`newPRD.txt` is the plan to move from "many strategies → signal count → win rate" to
+one validated strategy with a public, cost-adjusted capital curve. Three rules are
+already enforced in code — don't undo them:
+
+- **Delivered signals are never deleted.** `tasks.never_delivered()` is the only
+  definition of "safe to purge" (no in-app delivery, no Telegram delivery, no
+  auto-trade execution). `run_purge`, `purge_signals --all` and `dedup_signals` all
+  go through it. A true wipe is `purge_signals --all --include-delivered`, dev only.
+- **Every signal carries a `StrategyVersion`** (`apps/signals/versioning.py`): a
+  fingerprint of the rule settings, resolved pregate gates, an AST hash of the rule
+  code, the strategy definition and the active roster. New fingerprint → next
+  version, automatically. Adding an engine-tuning setting? Add it to
+  `versioning.ENGINE_SETTINGS` (shared with `signal_config`) or `NOT_RULES`.
+  Pre-versioning signals have `strategy_version = NULL`.
+- **Long-history backtests read Binance's archive, not Hyperliquid.**
+  `manage.py fetch_history` downloads monthly klines (SHA-256 checked) into
+  `HISTORY_DIR`; `backtest --history --start 2019-01-01 --split-date 2024-01-01`
+  replays them with live parity (indicators on the last 300 bars, live expiry
+  clock). `--split-date` is a calendar-date out-of-sample split — pick it before
+  looking at results. Binance's 2025+ spot files use MICROsecond timestamps;
+  `history._open_seconds` handles both. Results are GROSS unless `--spread-pct`.

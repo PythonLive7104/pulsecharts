@@ -33,9 +33,10 @@ from django.utils import timezone
 from apps.market_data.models import Symbol
 from apps.signals.models import Signal, SignalDelivery
 
-# Realized R per outcome under the live 50/25/25 scale-out (§19.2). Mirrors
-# stats.SCALEOUT_R / feed_stats.SCALEOUT_R — change one, change all three.
-SCALEOUT_R = {0: -1.0, 1: 0.5, 2: 1.0, 3: 1.75}
+from apps.signals.stats import trade_r
+
+# Realized R comes from stats.trade_r, scored under each trade's own
+# Signal.exit_model — one definition shared with the accuracy stats.
 
 
 class Command(BaseCommand):
@@ -102,7 +103,7 @@ class Command(BaseCommand):
             b["enabled"] = s.symbol.signals_enabled
             b["asset_class"] = s.symbol.asset_class
             b["n"] += 1
-            b["r"] += SCALEOUT_R.get(s.best_tp, 0.5) if s.best_tp >= 1 else -1.0
+            b["r"] += trade_r(s.exit_model, s.best_tp)
             if s.best_tp >= 1:
                 b["wins"] += 1
 

@@ -31,7 +31,7 @@ const SIGNAL_FEATURES = [
   {
     icon: "🎯",
     title: "A complete trade plan",
-    body: "Every call arrives with the entry price, a stop-loss and three take-profit targets at 1R, 2R and 3R — plus the risk and reward as percentages, so you can size the position before you place it.",
+    body: "Every call arrives with the entry price, a stop-loss and one profit target at 1R — plus the risk and reward as percentages, so you can size the position before you place it. Close it all at the target or the stop: no partials to manage.",
   },
   {
     icon: "🤝",
@@ -51,7 +51,7 @@ const SIGNAL_FEATURES = [
   {
     icon: "🔔",
     title: "Followed to the finish",
-    body: "You're told when a target is tagged, when to move the stop to breakeven, and when a setup is invalidated by a trend flip. The trade is tracked after it's sent, not just announced.",
+    body: "You're told when the target or the stop is hit, and when a setup is invalidated by a trend flip. The trade is tracked after it's sent, not just announced.",
   },
   {
     icon: "📊",
@@ -68,44 +68,40 @@ const HERO_MARKETS = ["Crypto", "Forex"];
 // What the product IS, in three lines. Visitors told us the hero described a
 // benefit ("trade with a plan") without ever naming the thing being sold.
 const HERO_POINTS = [
-  "Buy/sell signals with entry, stop-loss and 3 take-profit targets",
+  "4h buy/sell signals with entry, stop-loss and a profit target",
   "Live charts + 11 indicators for crypto & forex",
   "Delivered in the app and straight to Telegram",
 ];
 
 // Sample cards shown beside the hero copy, cycled so a visitor sees the whole
-// lifecycle — a BUY, a mean-reversion SELL, a trade that banked targets, and one
+// lifecycle — a BUY, a mean-reversion SELL, a trade that hit its target, and one
 // that was invalidated. Deliberately STATIC illustrations with round numbers: the
 // point is the SHAPE of what you get, never an implied live call or track record.
-// Every ladder is internally consistent (TP1/2/3 at 1R/2R/3R off the stop).
+// Each target sits at 1R off the stop, matching the live full-exit plan.
 const HERO_SAMPLES = [
   {
     dir: "BUY", symbol: "BTC-USD", timeframe: "4h", conviction: 84, agree: 4,
     entry: "64,120", stop: "62,515", risk: "2.5",
-    tps: [["TP1", "65,725", "+2.5%", "1R"], ["TP2", "67,330", "+5.0%", "2R"],
-          ["TP3", "68,935", "+7.5%", "3R"]],
+    tps: [["Target", "65,725", "+2.5%", "1R"]],
     why: "EMA9 above EMA21, MACD histogram expanding, RSI 61 — four strategies agree.",
   },
   {
-    dir: "SELL", symbol: "SOL-USD", timeframe: "1h", conviction: 78, agree: 2,
+    dir: "SELL", symbol: "SOL-USD", timeframe: "4h", conviction: 78, agree: 2,
     kind: "mean reversion", entry: "148.20", stop: "150.42", risk: "1.5",
-    tps: [["TP1", "145.98", "+1.5%", "1R"], ["TP2", "143.76", "+3.0%", "2R"],
-          ["TP3", "141.54", "+4.5%", "3R"]],
+    tps: [["Target", "145.98", "+1.5%", "1R"]],
     why: "Price closed above the upper Bollinger band; RSI 74 (overbought); ADX 16 (ranging).",
   },
   {
     dir: "BUY", symbol: "ETH-USD", timeframe: "4h", conviction: 81, agree: 3,
     entry: "3,142.00", stop: "3,072.90", risk: "2.2",
-    tps: [["TP1", "3,211.10", "+2.2%", "1R", true], ["TP2", "3,280.20", "+4.4%", "2R", true],
-          ["TP3", "3,349.30", "+6.6%", "3R"]],
-    status: { tone: "win", text: "✅ TP2 banked · stop moved to entry, runner live" },
-    why: "Half banked at TP1, a quarter at TP2 — the rest can no longer turn into a loss.",
+    tps: [["Target", "3,211.10", "+2.2%", "1R", true]],
+    status: { tone: "win", text: "✅ Target hit · closed in full" },
+    why: "One target, one exit — the whole position closes at 1R. No partials to manage.",
   },
   {
-    dir: "SELL", symbol: "LINK-USD", timeframe: "1h", conviction: 76, agree: 3,
+    dir: "SELL", symbol: "LINK-USD", timeframe: "4h", conviction: 76, agree: 3,
     entry: "17.84", stop: "18.34", risk: "2.8",
-    tps: [["TP1", "17.34", "+2.8%", "1R"], ["TP2", "16.84", "+5.6%", "2R"],
-          ["TP3", "16.34", "+8.4%", "3R"]],
+    tps: [["Target", "17.34", "+2.8%", "1R"]],
     status: { tone: "flat", text: "⚠️ Invalidated — trend flipped, closed flat" },
     why: "You are told when a setup stops being valid, not left holding it.",
   },
@@ -265,8 +261,8 @@ export default function LandingPage() {
             <p className="hero-sub hero-anim">
               An always-on engine scans{" "}
               {markets ? `${markets.crypto} coins and ${markets.forex} FX pairs` : "crypto and forex"}{" "}
-              on the 1h and 4h, and sends you a buy or sell call the moment several
-              strategies agree — with the exact entry, stop-loss, three targets and the
+              on the 4h, and sends you a buy or sell call the moment several
+              strategies agree — with the exact entry, stop-loss, profit target and the
               reason it fired.
             </p>
             <ul className="hero-points hero-anim">
@@ -373,7 +369,7 @@ export default function LandingPage() {
           <div className="step">
             <span className="step-num">5</span>
             <h3>Read your signal feed</h3>
-            <p>Each signal card gives the direction, entry, stop-loss and three take-profit targets (TP1–TP3), a conviction score, and a plain-English reason. Informational only — not financial advice.</p>
+            <p>Each signal card gives the direction, entry, stop-loss and one profit target, a conviction score, and a plain-English reason. Informational only — not financial advice.</p>
           </div>
           <div className="step">
             <span className="step-num">6</span>
@@ -420,9 +416,9 @@ export default function LandingPage() {
           <div className="feature feature-hero">
             <div className="feature-icon">🤖</div>
             <h3>Algorithmic trading signals <span className="feature-tag premium">Premium</span></h3>
-            <p>An always-on engine scans your followed strategies across crypto markets and surfaces setups from completed 4-hour and daily candles.</p>
+            <p>An always-on engine scans your followed strategies across crypto markets and surfaces setups from completed 4-hour candles.</p>
             <ul className="feature-points">
-              <li>Entry, stop-loss and three take-profit targets (TP1–TP3)</li>
+              <li>Entry, stop-loss and one profit target — close it all there</li>
               <li>Risk/reward math, in percent and in dollars per $100 traded</li>
               <li>A plain-English reason the setup was flagged, and what invalidates it</li>
               <li>Pushed to <strong>Telegram</strong>, with an update when a target or stop is hit</li>
