@@ -1,0 +1,1037 @@
+PRD — SYSTEMATIC CRYPTO STRATEGY & SIGNAL PLATFORM
+Working Title: SignalEdge
+Version: 2.0 — Systematic Strategy First
+
+1. PRODUCT VISION
+
+Build a crypto trading strategy platform inspired by the systematic approach of Crypto Wealth.
+
+The product should NOT begin as another website producing hundreds of BUY/SELL signals.
+
+Core model:
+
+ONE SYSTEMATIC BITCOIN STRATEGY
+-> HISTORICAL BACKTEST
+-> WALK-FORWARD VALIDATION
+-> OUT-OF-SAMPLE TESTING
+-> PAPER TRADING
+-> LIVE TRACK RECORD
+-> REAL-TIME SIGNALS
+-> TRANSPARENT PERFORMANCE
+
+The first objective is to determine whether one clearly defined, reproducible strategy can generate positive risk-adjusted returns over long periods after realistic trading costs.
+
+Signals are the delivery mechanism. The strategy and its measurable track record are the product.
+
+Never promise guaranteed profits.
+
+2. PROBLEM TO SOLVE
+
+Many crypto signal websites focus heavily on:
+- Win rate
+- Number of signals
+- Percentage accuracy
+- Multiple take-profit targets
+- High leverage
+- Large individual trade percentages
+
+These can look impressive while the underlying strategy fails to compound capital consistently.
+
+The core PulseCharts problem is:
+"Signal accuracy does not necessarily translate into long-term profitability."
+
+The new product must answer:
+"If a user followed this exact strategy using the documented risk, position-sizing, fee and execution assumptions, how would their capital have behaved over hundreds of trades and multiple market cycles?"
+
+3. CORE PRODUCT PHILOSOPHY
+
+PRINCIPLE 1 — STRATEGY FIRST
+Start with one systematic BTC strategy, not many signal types.
+
+PRINCIPLE 2 — REPRODUCIBILITY
+The same market data + strategy version + parameters must produce the same signals.
+
+PRINCIPLE 3 — PROFITABILITY OVER ACCURACY
+Primary metrics:
+- Net return
+- Profit factor
+- Expectancy
+- Average R
+- Maximum drawdown
+- CAGR/annualized return
+- Risk-adjusted performance
+- Losing streaks
+- Equity curve
+- Monthly/yearly returns
+
+PRINCIPLE 4 — COST-ADJUSTED RESULTS
+Include:
+- Trading fees
+- Spread
+- Slippage
+- Funding where applicable
+- Execution delay assumptions
+
+PRINCIPLE 5 — NO CHERRY-PICKING
+Losing trades and losing periods remain visible. Signals cannot be deleted because they performed badly.
+
+PRINCIPLE 6 — OUT-OF-SAMPLE VALIDATION
+A strategy that only works on historical data is not validated.
+
+PRINCIPLE 7 — CONTROLLED RISK
+Prefer a robust strategy with reasonable returns and controlled drawdown over an extraordinary backtest dependent on extreme leverage or overfitting.
+
+4. FLAGSHIP PRODUCT
+
+FLAGSHIP STRATEGY: BTC SYSTEMATIC STRATEGY V1
+
+Initial scope:
+- Bitcoin
+- BTC/USDT
+- One primary timeframe selected through research
+- Spot or low-leverage implementation
+- Long-only initially if research supports it
+- Explicit entry rules
+- Explicit exit rules
+- Explicit stop-loss rules
+- Explicit position-sizing rules
+- Explicit risk-per-trade rules
+- No discretionary manual intervention
+
+The exact rules must be discovered through research and validation, not created merely to maximize historical performance.
+
+Strategy versions are immutable:
+- BTC Systematic V1.0
+- BTC Systematic V1.1
+- BTC Systematic V2.0
+
+5. CRYPTO WEALTH-STYLE MECHANISM
+
+Adopt the key mechanism of Crypto Wealth: one clearly defined systematic strategy with a long-term capital history.
+
+Public performance page should show:
+- Starting capital
+- Current/hypothetical capital
+- Cumulative return
+- Annualized return
+- Profit factor
+- Win rate
+- Average R
+- Maximum drawdown
+- Total trades
+- Best/worst month
+- Buy-and-hold comparison
+- Equity curve
+
+Every figure must clearly identify whether it is:
+- Backtested
+- Out-of-sample
+- Paper trading
+- Live trading
+
+Never combine these into one misleading number.
+
+6. PERFORMANCE MODEL
+
+Measure actual strategy economics rather than merely counting winning signals.
+
+Metrics:
+1. Net Return
+2. Profit Factor
+3. Expectancy
+4. Average R
+5. Median R
+6. Win Rate
+7. Average Win
+8. Average Loss
+9. Win/Loss Ratio
+10. Maximum Drawdown
+11. Maximum Drawdown Duration
+12. Maximum Winning Streak
+13. Maximum Losing Streak
+14. CAGR / Annualized Return
+15. Sharpe-like metric
+16. Sortino-like metric
+17. Total Trades
+18. Exposure Time
+19. Fees
+20. Slippage
+21. Funding Costs
+
+Expectancy:
+(Win Rate × Average Win) - (Loss Rate × Average Loss)
+
+Profit Factor:
+Gross Profit / Gross Loss
+
+Do not market the strategy based solely on win rate.
+
+7. CAPITAL CURVE ENGINE
+
+Simulate how documented strategy rules would affect capital.
+
+Inputs:
+- Starting capital
+- Risk per trade
+- Position size
+- Fees
+- Slippage
+- Funding
+- Leverage if applicable
+- Compounding ON/OFF
+
+Outputs:
+- Equity curve
+- Drawdown curve
+- Ending capital
+- Total return
+- Annualized return
+- Monthly returns
+- Yearly returns
+- Risk metrics
+
+Support:
+- Fixed-dollar position
+- Fixed percentage risk
+- Compounding
+- Non-compounding
+
+8. SIGNAL ENGINE
+
+Signals are generated directly from the validated strategy.
+
+Each signal contains:
+- Signal ID
+- Strategy
+- Strategy version
+- Coin
+- Exchange
+- Direction
+- Timeframe
+- Entry
+- Stop loss
+- Take-profit levels if used
+- Risk per trade
+- Position-sizing recommendation
+- R:R
+- Strategy score
+- Market regime
+- Creation time
+- Entry activation time
+- Exit time
+- Final result
+
+A signal is not considered successful merely because TP1 was hit. Calculate the complete trade outcome using the predefined strategy exit rules.
+
+9. STRATEGY RESEARCH ENGINE
+
+Research factors may include:
+- EMA
+- SMA
+- RSI
+- MACD
+- ATR
+- ADX
+- Bollinger Bands
+- VWAP
+- Volume
+- Support/resistance
+- Breakout structure
+- Market structure
+- Funding rate
+- Open interest
+- Liquidations
+- Long/short ratio
+- BTC dominance
+- Market breadth
+- Volatility
+
+Potential strategy families:
+- Trend following
+- Trend pullback
+- Breakout
+- Mean reversion
+- Volatility expansion
+- Funding divergence
+- Open-interest divergence
+- Liquidation reversal
+
+Additional strategies do not become production strategies until validated.
+
+10. MARKET REGIME ENGINE
+
+Identify:
+- Strong Bull
+- Weak Bull
+- Range
+- Weak Bear
+- Strong Bear
+- High Volatility
+- Low Volatility
+
+Report strategy performance by regime.
+
+Do not optimize each regime merely because it improves historical results. Regime filters must also pass out-of-sample testing.
+
+11. BACKTESTING ENGINE
+
+Support:
+- Strategy/version
+- Coin
+- Timeframe
+- Date range
+- Starting capital
+- Risk per trade
+- Fees
+- Slippage
+- Funding
+- Leverage
+- Compounding
+- Exit rules
+
+Output:
+- Total trades
+- Wins/losses
+- Win rate
+- Gross profit/loss
+- Net return
+- Profit factor
+- Expectancy
+- Average R
+- Maximum drawdown
+- Losing streak
+- Monthly/yearly performance
+- Equity curve
+- Drawdown curve
+
+Avoid:
+- Look-ahead bias
+- Survivorship bias
+- Future-data leakage
+- Overfitting
+- Cherry-picking
+- Removing losing periods
+
+12. WALK-FORWARD VALIDATION
+
+Use chronological data.
+
+Example:
+Training: 2020–2023
+Validation: 2024
+Out-of-sample: 2025
+Paper trading: 2026
+Live: only after validation
+
+The strategy must be evaluated on data not used to develop or optimize it.
+
+If performance collapses out-of-sample, the strategy is NOT production ready.
+
+13. STRATEGY VALIDATION GATES
+
+A public premium strategy must pass:
+1. Reproducible backtest
+2. Positive expectancy
+3. Positive profit factor
+4. Realistic fees
+5. Realistic slippage
+6. Acceptable maximum drawdown
+7. Sufficient trade count
+8. Multiple market regimes
+9. Walk-forward validation
+10. Positive out-of-sample performance
+11. Paper-trading confirmation
+12. No obvious look-ahead bias
+13. No obvious parameter overfitting
+14. No dependence on one exceptional period
+
+Failure means STATUS = RESEARCH.
+
+14. PAPER TRADING
+
+Run the exact production strategy without real money.
+
+Track:
+- Entries
+- Exits
+- Fees
+- Slippage
+- P&L
+- R
+- Drawdown
+- Win rate
+- Profit factor
+- Expectancy
+
+Recommended paper period: 30–90 days minimum, with enough trades for meaningful evaluation.
+
+15. LIVE PERFORMANCE LEDGER
+
+Every production signal creates an immutable record:
+- Signal created
+- Activated
+- Stop hit
+- TP hit
+- Exit
+- Cancellation
+- Modification
+- Final P&L
+
+Losing signals never disappear.
+
+Corrections are separate audit events.
+
+16. PUBLIC PERFORMANCE PAGE
+
+Overview:
+- Total return
+- Annualized return
+- Profit factor
+- Expectancy
+- Win rate
+- Maximum drawdown
+- Total trades
+- Average R
+
+Equity:
+- Starting capital
+- Ending capital
+- Equity curve
+- Drawdown curve
+
+Periods:
+- Monthly returns
+- Yearly returns
+
+Trade history:
+- Every trade
+- Entry
+- Exit
+- Result
+- R
+- Fees
+- Strategy version
+
+Validation:
+- Backtest period
+- Out-of-sample period
+- Paper period
+- Live period
+
+Assumptions:
+- Fees
+- Slippage
+- Position sizing
+- Risk per trade
+- Compounding
+
+Comparison:
+- Bitcoin buy-and-hold
+- Strategy performance
+
+17. CRYPTO SIGNAL PLATFORM FEATURES
+
+After the flagship strategy works, add:
+- Real-time signals
+- Entry price
+- Stop loss
+- Multiple take profits where appropriate
+- Signal detail pages
+- Coin pages
+- Live performance
+- Historical archive
+- 24/7 monitoring
+- Telegram
+- Email
+- Web push
+- Mobile-friendly dashboard
+
+Improve normal signal platforms with:
+- Complete trade outcome
+- Cost-adjusted P&L
+- R-multiple
+- Drawdown
+- Expectancy
+- Profit factor
+- Strategy version
+- Complete losing history
+
+18. ALTSIGNALS-STYLE EXPANSION
+
+Only after the flagship BTC strategy is validated:
+- Additional systematic strategies
+- Spot strategies
+- Low-leverage futures
+- AI-assisted analysis
+- TradingView indicator
+- Monthly reports
+- Telegram
+- API
+- Strategy categories
+
+Each strategy must have an independent record.
+
+19. AI ROLE
+
+AI is NOT the source of the trading edge in V1.
+
+The quantitative engine determines:
+- Entry
+- Exit
+- Risk
+- Position size
+- Performance
+
+AI explains:
+- Why the strategy entered
+- Why it exited
+- Why a trade lost
+- Historical behavior in similar regimes
+- Monthly drawdown
+
+AI must retrieve statistics from the quantitative database and must not invent trading results.
+
+20. USER DASHBOARD
+
+Dashboard:
+- Strategy status
+- Latest signal
+- Market regime
+- Performance
+- Equity curve
+- Drawdown
+- Recent trades
+- Monthly performance
+- Alerts
+
+Signal detail:
+- Entry
+- Stop
+- Targets
+- Risk
+- R:R
+- Strategy/version
+- Market regime
+- Historical context
+- AI explanation
+
+Performance:
+- Capital curve
+- Profit factor
+- Expectancy
+- Win rate
+- Drawdown
+- Monthly/yearly returns
+- Complete trade history
+
+Research:
+- Backtester
+- Strategy comparison
+- Market scanner
+- Paper trading
+
+21. PRODUCT PAGES
+
+PUBLIC:
+- Landing
+- How it works
+- Flagship strategy
+- Live performance
+- Historical performance
+- Methodology
+- Strategy rules overview
+- Risk disclosure
+- Free signals
+- Pricing
+- Blog
+- FAQ
+
+AUTHENTICATED:
+- Dashboard
+- Live signals
+- Signal history
+- Performance
+- Strategy analytics
+- Market scanner
+- Watchlist
+- Backtester
+- Paper portfolio
+- Alerts
+- Billing
+- Account
+
+ADMIN:
+- Market data
+- Strategies
+- Strategy versions
+- Research
+- Backtests
+- Walk-forward tests
+- Paper trades
+- Live trades
+- Signals
+- Performance
+- Users
+- Subscriptions
+- Payments
+- Notifications
+- Audit logs
+
+22. TECHNICAL ARCHITECTURE
+
+Frontend:
+- React
+- TypeScript
+- Vite
+- Tailwind CSS
+- TanStack Query
+- Lightweight Charts
+- WebSocket
+
+Backend:
+- Django
+- Django REST Framework
+- PostgreSQL
+- Celery
+- Redis
+- WebSockets
+- Docker
+
+Research:
+- Python
+- pandas
+- NumPy
+- Statistical analysis
+- Backtesting
+- Model evaluation
+
+23. DJANGO APPS
+
+accounts
+subscriptions
+payments
+markets
+exchanges
+strategies
+strategy_versions
+signals
+performance
+backtesting
+research
+regimes
+risk
+paper_trading
+alerts
+notifications
+telegram
+ai
+watchlists
+portfolios
+analytics
+audit
+
+24. CORE DATABASE MODELS
+
+User
+Subscription
+Plan
+Payment
+Coin
+Exchange
+MarketSnapshot
+IndicatorSnapshot
+Strategy
+StrategyVersion
+StrategyTest
+WalkForwardTest
+StrategySignal
+SignalEvent
+TradeResult
+PaperTrade
+LiveTrade
+PerformancePeriod
+EquitySnapshot
+DrawdownSnapshot
+MarketRegime
+Backtest
+BacktestTrade
+Watchlist
+Alert
+Notification
+AuditEvent
+
+25. CELERY / REDIS JOBS
+
+- Market data ingestion
+- Indicator calculation
+- Funding updates
+- Open-interest updates
+- Liquidation updates
+- Market regime calculation
+- Strategy scanning
+- Signal generation
+- Signal monitoring
+- Paper trade execution
+- Live outcome monitoring
+- Performance calculation
+- Equity curve updates
+- Daily reports
+- Telegram alerts
+- Email alerts
+- Backtest jobs
+- Research jobs
+
+26. REAL-TIME EVENTS
+
+signal.created
+signal.activated
+signal.updated
+signal.tp_hit
+signal.sl_hit
+trade.closed
+market.regime_changed
+strategy.status_changed
+performance.updated
+
+27. RISK MANAGEMENT
+
+Support:
+- Fixed percentage risk
+- Maximum risk per trade
+- Maximum concurrent trades
+- Maximum daily loss
+- Maximum portfolio exposure
+- Maximum drawdown alert
+- Strategy pause
+- Volatility filters
+
+If live drawdown exceeds a predefined validated threshold:
+
+STATUS = UNDER REVIEW
+
+No new premium signals until reviewed.
+
+28. SUBSCRIPTION MODEL
+
+FREE
+- Delayed signals
+- Basic performance
+- Limited history
+- Basic market data
+- Public strategy results
+
+PRO: suggested experimental $19–$29/month
+- Real-time signals
+- Telegram
+- Email/web alerts
+- Complete history
+- Performance analytics
+- Strategy statistics
+- Advanced data
+- AI explanations
+
+RESEARCH: suggested experimental $49–$79/month
+- Backtesting
+- Strategy research
+- Walk-forward reports
+- Paper trading
+- Advanced scanner
+- Strategy comparison
+
+API/BUSINESS: suggested $99–$499+/month
+- API
+- Webhooks
+- Historical data
+- Commercial use
+- Higher limits
+
+Prices must be validated with actual users.
+
+29. MARKETING POSITIONING
+
+DO NOT SAY:
+"95% accurate crypto signals."
+
+DO NOT SAY:
+"Guaranteed profits."
+
+DO NOT rely primarily on:
+"Thousands of signals."
+
+Positioning:
+"Systematic crypto strategies with transparent performance."
+
+Alternative:
+"See exactly how our Bitcoin strategy performed before you follow its signals."
+
+Alternative:
+"Don't judge crypto signals by win rate. See the complete capital curve."
+
+Alternative:
+"One systematic Bitcoin strategy. Every trade tracked."
+
+The public performance page should be the main marketing asset.
+
+30. SEO
+
+Potential pages:
+- Bitcoin signals
+- Bitcoin trading strategy
+- BTC systematic strategy
+- BTC strategy backtest
+- Bitcoin strategy performance
+- Bitcoin trading signals
+- Crypto strategy backtester
+- Crypto signal performance
+- BTC buy vs hold
+- Bitcoin trend strategy
+- Bitcoin technical strategy
+- Crypto profit factor
+- Crypto trading expectancy
+- Crypto maximum drawdown
+
+31. FREE USER FUNNEL
+
+VISITOR
+-> PUBLIC PERFORMANCE PAGE
+-> SEE COMPLETE TRACK RECORD
+-> FREE SIGNAL / FREE DATA
+-> CREATE ACCOUNT
+-> LIMITED DASHBOARD
+-> SEE REAL-TIME STRATEGY
+-> SUBSCRIBE
+-> RECEIVE ALERTS
+-> USE PRODUCT
+-> RENEW
+
+32. MVP
+
+P0:
+1. BTC market data
+2. Data normalization
+3. Strategy framework
+4. One systematic BTC strategy
+5. Backtesting engine
+6. Cost model
+7. Risk engine
+8. Walk-forward validation
+9. Out-of-sample testing
+10. Paper trading
+11. Immutable signal ledger
+12. Trade-result engine
+13. Performance engine
+14. Equity curve
+15. Drawdown calculation
+16. Public performance page
+17. React dashboard
+18. Django REST API
+19. Telegram alerts
+20. Email/web alerts
+21. Authentication
+22. Subscription billing
+
+P1:
+23. Market scanner
+24. AI explanations
+25. Funding dashboard
+26. Open-interest dashboard
+27. Liquidation dashboard
+28. Watchlists
+29. Daily briefing
+30. Strategy comparison
+31. Additional validated strategies
+
+P2:
+32. TradingView
+33. Commercial API
+34. Webhooks
+35. Automated exchange execution
+36. Portfolio analytics
+37. Mobile application
+38. More coins
+
+33. DEVELOPMENT PHASES
+
+PHASE 1 — RESEARCH
+Determine whether a simple BTC strategy has a genuine edge.
+Deliver:
+- Historical data
+- Candidate rules
+- Backtests
+- Cost model
+- Initial performance report
+
+Do NOT build the full SaaS interface yet.
+
+PHASE 2 — VALIDATION
+- Walk-forward testing
+- Out-of-sample testing
+- Regime analysis
+- Robustness tests
+- Parameter sensitivity
+
+PHASE 3 — PAPER TRADING
+Run the exact production strategy without real money.
+
+PHASE 4 — MVP
+Build:
+- Public performance
+- Dashboard
+- Signals
+- Alerts
+- Billing
+
+PHASE 5 — LIVE TRACK RECORD
+Publish every signal and result.
+
+PHASE 6 — EXPANSION
+Only after the flagship strategy is proven:
+- More strategies
+- More coins
+- TradingView
+- API
+- Automation
+
+34. SUCCESS CRITERIA
+
+TECHNICAL:
+- Reproducible backtests
+- Correct trade accounting
+- No look-ahead bias
+- Immutable signal records
+- Correct cost calculations
+- Reliable alerts
+
+STRATEGY:
+- Positive out-of-sample expectancy
+- Positive profit factor
+- Controlled drawdown
+- Sufficient trade count
+- Multiple market regimes
+- Positive results after costs
+- Stable live monitoring
+
+BUSINESS:
+- Signup conversion
+- Paid conversion
+- MRR
+- Churn
+- Renewal rate
+- CAC
+- LTV
+- Alert engagement
+- DAU/WAU
+
+35. MOST IMPORTANT PRODUCT RULE
+
+IF THE FLAGSHIP STRATEGY DOES NOT DEMONSTRATE A ROBUST POSITIVE EDGE AFTER FEES, SLIPPAGE AND REALISTIC EXECUTION ASSUMPTIONS:
+
+DO NOT MARKET IT AS A PROFITABLE SIGNAL STRATEGY.
+
+Instead:
+- Keep it in research
+- Modify it
+- Test another strategy
+- Or abandon it
+
+The product must be willing to reject its own strategies.
+
+36. DIFFERENCE FROM PULSECHARTS
+
+PULSECHARTS MODEL:
+
+Indicators
+-> Signal
+-> Accuracy %
+
+NEW MODEL:
+
+Market Data
+-> Systematic Strategy
+-> Backtest
+-> Walk-forward validation
+-> Out-of-sample validation
+-> Paper trading
+-> Live strategy
+-> Signal
+-> Trade outcome
+-> Cost-adjusted performance
+-> Capital curve
+
+Compete on:
+- Strategy quality
+- Evidence
+- Transparency
+- Risk management
+- Reproducibility
+- Long-term performance measurement
+
+Not primarily on:
+- Number of indicators
+- Number of signals
+- Highest win rate
+- Highest leverage
+- Biggest individual trade percentage
+
+37. LONG-TERM MOAT
+
+The strongest moat is the accumulated strategy-performance database.
+
+Over time store:
+- Historical trades
+- Strategy versions
+- Market regimes
+- Cost-adjusted results
+- Out-of-sample results
+- Paper results
+- Live results
+- Drawdown histories
+- Strategy degradation data
+
+This lets the platform answer:
+- When does the strategy fail?
+- How does it behave during bear markets?
+- How long do drawdowns normally last?
+- Does the strategy still work after market conditions change?
+- Has the edge degraded?
+
+38. FINAL PRODUCT DEFINITION
+
+A systematic crypto strategy platform that begins with one rigorously tested Bitcoin strategy and turns that strategy into transparent, real-time trading signals.
+
+Flagship flow:
+
+Research
+-> Backtest
+-> Walk-forward
+-> Out-of-sample
+-> Paper trade
+-> Live track record
+-> Capital curve
+-> Signals
+-> Alerts
+
+Core philosophy:
+
+ONE ROBUST STRATEGY FIRST.
+MORE STRATEGIES ONLY AFTER VALIDATION.
+SIGNALS ARE THE DELIVERY LAYER.
+PERFORMANCE EVIDENCE IS THE PRODUCT.
+
+39. DISCLAIMER
+
+This is a software and research platform.
+
+Historical and backtested performance does not guarantee future results.
+
+Crypto markets are highly volatile and strategies can lose money.
+
+Every performance page must clearly distinguish:
+- Backtested results
+- Out-of-sample results
+- Paper-trading results
+- Live results
+
+No performance metric should be presented as a guarantee of future profitability.
+
+END OF PRD

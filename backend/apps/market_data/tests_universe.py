@@ -1,5 +1,6 @@
 """Signal universe — signals only on the most liquid coins, re-ranked by volume."""
 
+import time
 from datetime import timedelta
 from io import StringIO
 from unittest import mock
@@ -108,7 +109,7 @@ class HistoryRequirementTests(TestCase):
 
     def test_new_coin_gives_its_slot_to_the_next_established_one(self):
         young = {"C01", "C03"}
-        age = lambda coin, need: 30 if coin in young else 2000  # noqa: E731
+        age = lambda coin, need: coin not in young  # noqa: E731
         result = universe.apply_signal_universe(ranking=COINS, age_fn=age)
         self.assertEqual(result["universe"], ["C00", "C02", "C04", "C05", "C06"])
         self.assertEqual(result["too_new"], ["C01", "C03"])
@@ -123,12 +124,33 @@ class HistoryRequirementTests(TestCase):
             universe.apply_signal_universe(ranking=COINS, age_fn=boom)
         self.assertEqual(Symbol.objects.filter(signals_enabled=False).count(), 0)
 
-    def test_age_is_cached_once_old_enough(self):
+    def test_age_probe_is_one_small_window_a_year_back(self):
         from django.core.cache import cache
 
-        cache.delete("universe:history_days:C00")
-        with mock.patch("apps.market_data.client.fetch_candles",
-                        return_value=[{}] * 370) as fetch:
-            self.assertEqual(universe.history_days("C00", 365), 370)
-            self.assertEqual(universe.history_days("C00", 365), 370)
+        cache.delete("universe:old_enough:C00:365")
+        with mock.patch("apps.market_data.client.fetch_candle_window",
+                        return_value=[{"t": 1}]) as fetch:
+            self.assertTrue(universe.old_enough("C00", 365, sleep=lambda s: None))
+            # Second call is served from cache: no request at all.
+            self.assertTrue(universe.old_enough("C00", 365, sleep=lambda s: None))
         self.assertEqual(fetch.call_count, 1)
+        _coin, _iv, start_ms, end_ms = fetch.call_args.args
+        days_back = (time.time() * 1000 - end_ms) / 86_400_000
+        self.assertAlmostEqual(days_back, 365, delta=0.01)
+        self.assertEqual((end_ms - start_ms) / 86_400_000, 7)
+
+    def test_no_candles_a_year_back_is_too_new(self):
+        from django.core.cache import cache
+
+        cache.delete("universe:old_enough:C01:365")
+        with mock.patch("apps.market_data.client.fetch_candle_window", return_value=[]):
+            self.assertFalse(universe.old_enough("C01", 365, sleep=lambda s: None))
+
+    def test_lookups_are_paced(self):
+        from django.core.cache import cache
+
+        cache.delete("universe:old_enough:C02:365")
+        slept = []
+        with mock.patch("apps.market_data.client.fetch_candle_window", return_value=[{}]):
+            universe.old_enough("C02", 365, sleep=slept.append)
+        self.assertEqual(slept, [universe.AGE_LOOKUP_PAUSE])

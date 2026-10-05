@@ -23,6 +23,7 @@ off and leaves signals_enabled to manual control.
 from __future__ import annotations
 
 import logging
+import time
 from datetime import timedelta
 
 from django.conf import settings
@@ -47,26 +48,40 @@ HYSTERESIS = 1.5
 MIN_RANKED = 10
 # Listing age only ever grows, so a coin that has qualified is re-checked rarely;
 # one that hasn't is re-checked daily so it joins soon after its first year.
-_AGE_KEY = "universe:history_days:%s"
+_AGE_KEY = "universe:old_enough:%s:%s"
 _AGE_TTL_OLD = 30 * 86400
 _AGE_TTL_YOUNG = 86400
+# The age check shares Hyperliquid's per-IP request budget with the live relay and
+# the signal scan; firing ~25 lookups back to back got the refresh 429'd in
+# production. Each uncached lookup waits this long first.
+AGE_LOOKUP_PAUSE = 1.0
+# Width of the window probed around "min_days ago". Wide enough to step over a
+# day or two of exchange downtime, narrow enough to be the cheapest request.
+_AGE_PROBE_DAYS = 7
 
 
-def history_days(coin: str, min_days: int) -> int:
-    """Days of daily candles Hyperliquid has for ``coin`` (capped near min_days).
+def old_enough(coin: str, min_days: int, *, sleep=time.sleep) -> bool:
+    """Did ``coin`` already trade on Hyperliquid ``min_days`` ago?
+
+    One small question rather than a year of candles: fetch the daily candles in a
+    short window ending ``min_days`` ago — any candle there means the coin is at
+    least that old. That is the lightest request Hyperliquid's limiter weighs.
 
     Raises on a failed request: the caller treats that as "can't rank today" and
     leaves the universe unchanged, rather than guessing a coin's age either way.
     """
-    key = _AGE_KEY % coin
+    key = _AGE_KEY % (coin, min_days)
     cached = cache.get(key)
-    if cached is not None and cached >= min_days:
+    if cached is not None:
         return cached
-    from .client import fetch_candles
+    from .client import fetch_candle_window
 
-    days = len(fetch_candles(coin, coin, "1d", limit=min_days + 5))
-    cache.set(key, days, _AGE_TTL_OLD if days >= min_days else _AGE_TTL_YOUNG)
-    return days
+    sleep(AGE_LOOKUP_PAUSE)
+    end_ms = int((time.time() - min_days * 86400) * 1000)
+    start_ms = end_ms - _AGE_PROBE_DAYS * 86400 * 1000
+    result = bool(fetch_candle_window(coin, "1d", start_ms, end_ms))
+    cache.set(key, result, _AGE_TTL_OLD if result else _AGE_TTL_YOUNG)
+    return result
 
 
 def _ranked_by_history(now) -> list[str]:
@@ -142,14 +157,14 @@ def apply_signal_universe(top_n: int | None = None, *, dry_run: bool = False,
     # new launch in the raw top 20 hands its slot to the next established coin.
     min_days = (settings.SIGNAL_UNIVERSE_MIN_HISTORY_DAYS
                 if min_history_days is None else min_history_days)
-    age_fn = age_fn or history_days
+    age_fn = age_fn or old_enough
     ranked, too_new = [], []
     for coin in ranking:
         if len(ranked) >= keep_within:
             break
         if coin not in by_coin:
             continue  # untracked: can't take a slot
-        if min_days > 0 and age_fn(coin, min_days) < min_days:
+        if min_days > 0 and not age_fn(coin, min_days):
             too_new.append(coin)
             continue
         ranked.append(coin)

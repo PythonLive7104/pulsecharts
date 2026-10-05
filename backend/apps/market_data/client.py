@@ -121,6 +121,24 @@ def fetch_candles(
     return [normalize_candle(c, ticker) for c in raw_candles][-limit:]
 
 
+def fetch_candle_window(coin: str, interval: str, start_ms: int, end_ms: int,
+                        *, timeout: float = 10.0) -> list[dict]:
+    """Raw candles for ``coin`` between two instants — empty if it wasn't trading.
+
+    For cheap existence probes (e.g. "was this coin listed a year ago?"): a short
+    window returns a handful of rows, the lightest request Hyperliquid weighs.
+    """
+    resp = _post_info(
+        {
+            "type": "candleSnapshot",
+            "req": {"coin": coin, "interval": interval,
+                    "startTime": start_ms, "endTime": end_ms},
+        },
+        timeout=timeout,
+    )
+    return resp.json() or []
+
+
 def _interval_ms(interval: str) -> int:
     unit = interval[-1]
     qty = int(interval[:-1])
