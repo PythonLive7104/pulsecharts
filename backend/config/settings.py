@@ -958,10 +958,12 @@ SIGNAL_DAILY_QUOTA = {
     "premium": env.int("SIGNAL_QUOTA_PREMIUM", default=50),
 }
 
-# Swing/position timeframes: 4h for multi-day setups, 1d for longer-term setups.
-# With a broad symbol universe, prefer waiting for confirmed setups on these slower
-# frames over increasing frequency with noisier 1h entries.
-SIGNAL_TIMEFRAMES = env.list("SIGNAL_TIMEFRAMES", default=["4h", "1d"])
+# Signal timeframes: 1h for intraday setups, 4h for multi-day swings — what the
+# landing page promises. 1d is NOT a signal timeframe, but it is still read as the
+# higher-timeframe filter for 4h calls (_HTF_MAP) and for the daily-200-EMA line on
+# the card, so it stays in the candle fetches. Note 1h stops are tighter, so a fixed
+# fee/spread costs more R there — check `backtest --history --spread-pct` per frame.
+SIGNAL_TIMEFRAMES = env.list("SIGNAL_TIMEFRAMES", default=["1h", "4h"])
 
 # Skip crypto signal generation during the weekend window (Fri 21:00 → Sun 21:00
 # UTC, same window used to close forex). Weekend crypto is thin and choppy and
