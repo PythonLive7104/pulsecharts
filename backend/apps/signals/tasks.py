@@ -283,6 +283,7 @@ def run_scan(symbol_limit: int | None = None, use_pregate: bool | None = None) -
     if not system_services and not custom_services:
         return {"created": 0, "note": "no active services"}
 
+
     # Which symbols each custom strategy runs on: its owner's watchlist.
     from collections import defaultdict
     custom_by_symbol: dict[int, list] = defaultdict(list)
@@ -770,12 +771,41 @@ def evaluate_pending_signals():
 FLAT_OUTCOMES = (Signal.Outcome.INVALIDATED, Signal.Outcome.EXPIRED)
 
 
+def never_delivered(qs):
+    """Narrow a Signal queryset to rows NO user ever received or traded.
+
+    A delivered signal is the track record: a user was handed that card (in-app or
+    Telegram) or an order was placed on it, so its outcome — win, loss or flat —
+    must stay checkable for as long as the product exists. Deleting it after a
+    retention window is how a record quietly loses its bad months (newPRD §5, §15,
+    §37: losing signals never disappear). Undelivered rows are the scan's working
+    output — every strategy's call on every watched coin — and are what actually
+    fills the table, so they remain fair game for housekeeping.
+
+    Every path that deletes Signal rows goes through this, so "delivered" has one
+    definition. Exists() rather than a reverse-FK isnull join, so a signal with
+    thousands of deliveries is still one cheap probe per row.
+    """
+    from django.db.models import Exists, OuterRef
+
+    # Local import: apps.execution imports this app, not the other way round.
+    from apps.execution.models import TradeExecution
+
+    return qs.filter(
+        ~Exists(SignalDelivery.objects.filter(signal=OuterRef("pk"))),
+        ~Exists(TelegramDelivery.objects.filter(signal=OuterRef("pk"))),
+        ~Exists(TradeExecution.objects.filter(signal=OuterRef("pk"))),
+    )
+
+
 def run_purge(days: int | None = None, flat_days: int | None = None) -> dict:
     """Delete data past the retention window to free database space.
 
-    Removes RESOLVED signals (and, by cascade, their deliveries) older than the
-    cutoff, plus already-seen triggered price alerts. Open (PENDING) signals are
-    never deleted — an active call must survive until it hits its SL/TP.
+    Removes RESOLVED, NEVER-DELIVERED signals older than the cutoff, plus
+    already-seen triggered price alerts. Two kinds of signal are never deleted:
+    open (PENDING) calls, which must survive until they hit SL/TP, and anything a
+    user was delivered or traded (``never_delivered``), which is the permanent
+    track record.
 
     Invalidated/expired calls get their own, optionally shorter window
     (SIGNAL_RETENTION_DAYS_FLAT): they're the bulk of the rows and the least worth
@@ -798,16 +828,14 @@ def run_purge(days: int | None = None, flat_days: int | None = None) -> dict:
     flat_cutoff = now - timedelta(days=flat_days)
 
     # Flat outcomes first, on their own clock.
-    flat_deleted, _ = (
+    flat_deleted, _ = never_delivered(
         Signal.objects.filter(generated_at__lt=flat_cutoff, outcome__in=FLAT_OUTCOMES)
-        .delete()
-    )
+    ).delete()
     # Everything else resolved (TP1-4 / SL) on the full window. PENDING is never touched.
-    sig_deleted, _ = (
+    sig_deleted, _ = never_delivered(
         Signal.objects.filter(generated_at__lt=cutoff)
         .exclude(outcome=Signal.Outcome.PENDING)
-        .delete()
-    )
+    ).delete()
     alerts_deleted, _ = PriceAlert.objects.filter(
         is_active=False, seen=True, triggered_at__lt=cutoff
     ).delete()

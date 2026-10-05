@@ -1060,11 +1060,11 @@ SIGNAL_EVAL_BARS_BY_ASSET = {
 # user feed (run for weeks, validate realized accuracy before any claims, 13.7).
 SIGNAL_SHADOW_MODE = env.bool("SIGNAL_SHADOW_MODE", default=False)
 
-# Daily housekeeping: how long to keep RESOLVED signals (and their deliveries) and
+# Daily housekeeping: how long to keep RESOLVED, NEVER-DELIVERED signals and
 # already-seen triggered price alerts before purging them, to keep the database
-# small. Open (PENDING) calls are never purged regardless of age. NOTE: realized
-# accuracy stats and the "Recent results" history only span this window — raise it
-# (e.g. 30) if you want a longer accuracy track record, lower it to free more DB.
+# small. Two kinds of signal are never purged regardless of age: open (PENDING)
+# calls, and anything a user was delivered or traded (tasks.never_delivered) — that
+# is the permanent track record (newPRD §5/§37), so this window no longer limits it.
 SIGNAL_RETENTION_DAYS = env.int("SIGNAL_RETENTION_DAYS", default=30)
 
 # SHORTER retention for calls that closed FLAT — invalidated (trend flipped) and
