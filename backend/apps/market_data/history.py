@@ -18,6 +18,7 @@ from __future__ import annotations
 import csv
 import hashlib
 import io
+import time
 import zipfile
 from datetime import date, datetime, timezone
 from pathlib import Path
@@ -62,6 +63,31 @@ def _month_path(root: Path, pair: str, interval: str, y: int, m: int) -> Path:
     return root / pair / interval / f"{pair}-{interval}-{y:04d}-{m:02d}.zip"
 
 
+RETRY_DELAYS = (2, 5, 15)  # seconds between attempts; len + 1 attempts in total
+
+
+def _get_with_retry(http, url: str, timeout: int, sleep=time.sleep):
+    """GET that rides out the transient failures a bulk download WILL hit.
+
+    The archive's CDN resets connections and rate-limits (429) under sustained
+    load; one dropped connection used to abort a whole multi-pair fetch. Connection
+    errors, timeouts, 429 and 5xx are retried with backoff. A 404 (month not
+    archived) or other 4xx is an answer, not a failure, and returns immediately.
+    """
+    for delay in (*RETRY_DELAYS, None):
+        try:
+            resp = http.get(url, timeout=timeout)
+        except (requests.ConnectionError, requests.Timeout):
+            if delay is None:
+                raise
+        else:
+            if resp.status_code != 429 and resp.status_code < 500:
+                return resp
+            if delay is None:
+                return resp  # caller's raise_for_status reports it
+        sleep(delay)
+
+
 def download_month(pair: str, interval: str, y: int, m: int, root: Path,
                    session: requests.Session | None = None) -> str:
     """Fetch one monthly archive. Returns 'cached' | 'downloaded' | 'missing'.
@@ -76,12 +102,12 @@ def download_month(pair: str, interval: str, y: int, m: int, root: Path,
         return "cached"
     http = session or requests
     url = f"{BASE_URL}/{pair}/{interval}/{path.name}"
-    resp = http.get(url, timeout=60)
+    resp = _get_with_retry(http, url, timeout=60)
     if resp.status_code == 404:
         return "missing"
     resp.raise_for_status()
 
-    check = http.get(f"{url}.CHECKSUM", timeout=30)
+    check = _get_with_retry(http, f"{url}.CHECKSUM", timeout=30)
     check.raise_for_status()
     expected = check.text.split()[0].strip().lower()
     actual = hashlib.sha256(resp.content).hexdigest()

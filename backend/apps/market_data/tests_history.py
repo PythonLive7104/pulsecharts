@@ -100,6 +100,34 @@ class ParseTests(SimpleTestCase):
         self.assertEqual(history.download_month("BTCUSDT", "1h", 2024, 1, self.root, session),
                          "cached")
 
+    def test_connection_reset_is_retried(self):
+        import requests
+
+        ok = mock.Mock(status_code=200)
+        http = mock.Mock(get=mock.Mock(side_effect=[requests.ConnectionError("reset"), ok]))
+        sleeps = []
+        self.assertIs(history._get_with_retry(http, "u", 10, sleep=sleeps.append), ok)
+        self.assertEqual(sleeps, [history.RETRY_DELAYS[0]])
+
+    def test_rate_limit_is_retried(self):
+        limited, ok = mock.Mock(status_code=429), mock.Mock(status_code=200)
+        http = mock.Mock(get=mock.Mock(side_effect=[limited, ok]))
+        self.assertIs(history._get_with_retry(http, "u", 10, sleep=lambda s: None), ok)
+
+    def test_404_is_not_retried(self):
+        missing = mock.Mock(status_code=404)
+        http = mock.Mock(get=mock.Mock(return_value=missing))
+        self.assertIs(history._get_with_retry(http, "u", 10, sleep=lambda s: None), missing)
+        self.assertEqual(http.get.call_count, 1)
+
+    def test_retries_run_out_and_raise(self):
+        import requests
+
+        http = mock.Mock(get=mock.Mock(side_effect=requests.ConnectionError("down")))
+        with self.assertRaises(requests.ConnectionError):
+            history._get_with_retry(http, "u", 10, sleep=lambda s: None)
+        self.assertEqual(http.get.call_count, len(history.RETRY_DELAYS) + 1)
+
     def test_404_is_missing_not_an_error(self):
         session = mock.Mock(get=lambda url, timeout: mock.Mock(status_code=404))
         self.assertEqual(history.download_month("BTCUSDT", "1h", 2030, 1, self.root, session),

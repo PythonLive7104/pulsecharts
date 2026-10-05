@@ -27,6 +27,19 @@ def _f(value):
         return None
 
 
+@shared_task(name="apps.market_data.tasks.refresh_signal_universe")
+def refresh_signal_universe() -> dict:
+    """Daily: signals only on the top SIGNAL_UNIVERSE_TOP_N coins by volume."""
+    from .universe import apply_signal_universe
+
+    try:
+        return apply_signal_universe()
+    except (requests.RequestException, ValueError) as exc:
+        # Live fallback failed; leave the universe exactly as it was.
+        logger.warning("signal universe refresh failed: %s", exc)
+        return {"skipped": str(exc)}
+
+
 @shared_task(name="apps.market_data.tasks.record_market_context")
 def record_market_context() -> dict:
     """Snapshot open interest + funding for every active crypto symbol.

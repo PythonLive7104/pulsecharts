@@ -864,4 +864,11 @@ already enforced in code — don't undo them:
   replays them with live parity (indicators on the last 300 bars, live expiry
   clock). `--split-date` is a calendar-date out-of-sample split — pick it before
   looking at results. Binance's 2025+ spot files use MICROsecond timestamps;
-  `history._open_seconds` handles both. Results are GROSS unless `--spread-pct`.
+  `history._open_seconds` handles both. Backtests charge `BACKTEST_COST_PCT` by
+  default (crypto 0.1% round trip); `--gross` turns that off.
+- **Signals run on a volume-ranked universe** (`apps/market_data/universe.py`):
+  the top `SIGNAL_UNIVERSE_TOP_N` (20) crypto coins by 7-day Hyperliquid volume,
+  refreshed daily (`refresh_signal_universe`, `manage.py set_signal_universe
+  --dry-run`). It owns crypto `Symbol.signals_enabled`, so `prune_signal_symbols`
+  changes to crypto last only until the next refresh. Don't hand-pick coins from
+  per-coin backtests: ~285 trades per coin is ±0.06R of noise.
