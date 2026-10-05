@@ -189,6 +189,12 @@ FOREX_ENABLED = env.bool("FOREX_ENABLED", default=True)
 # keeps request volume low against the public endpoint.
 FOREX_POLL_INTERVAL = env.float("FOREX_POLL_INTERVAL", default=15.0)
 
+# --- Long-history research data (apps.market_data.history) ----------------
+# Where `manage.py fetch_history` keeps Binance's monthly kline archives and where
+# `backtest --history` reads them. Research only — nothing on a request path reads
+# it — so it lives on the machine running backtests, not in the deployed image.
+HISTORY_DIR = env("HISTORY_DIR", default=str(BASE_DIR / "history"))
+
 # --- Marketing email campaigns ---------------------------------------------
 # Hard ceiling on MARKETING emails per calendar day, across every campaign. This is a
 # deliverability guard, not a preference: a young sending domain that suddenly emits

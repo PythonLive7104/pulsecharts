@@ -835,3 +835,26 @@ FOREX_POLL_INTERVAL=15      # seconds between relay polls of Yahoo
   or move to Polygon if it degrades under real traffic.
 - Paid forex signals carry the SAME regulatory/disclaimer exposure as
   crypto signals (Section 13.7) — not financial advice, etc.
+## 23. Track Record & Research (newPRD.txt)
+
+`newPRD.txt` is the plan to move from "many strategies → signal count → win rate" to
+one validated strategy with a public, cost-adjusted capital curve. Three rules are
+already enforced in code — don't undo them:
+
+- **Delivered signals are never deleted.** `tasks.never_delivered()` is the only
+  definition of "safe to purge" (no in-app delivery, no Telegram delivery, no
+  auto-trade execution). `run_purge`, `purge_signals --all` and `dedup_signals` all
+  go through it. A true wipe is `purge_signals --all --include-delivered`, dev only.
+- **Every signal carries a `StrategyVersion`** (`apps/signals/versioning.py`): a
+  fingerprint of the rule settings, resolved pregate gates, an AST hash of the rule
+  code, the strategy definition and the active roster. New fingerprint → next
+  version, automatically. Adding an engine-tuning setting? Add it to
+  `versioning.ENGINE_SETTINGS` (shared with `signal_config`) or `NOT_RULES`.
+  Pre-versioning signals have `strategy_version = NULL`.
+- **Long-history backtests read Binance's archive, not Hyperliquid.**
+  `manage.py fetch_history` downloads monthly klines (SHA-256 checked) into
+  `HISTORY_DIR`; `backtest --history --start 2019-01-01 --split-date 2024-01-01`
+  replays them with live parity (indicators on the last 300 bars, live expiry
+  clock). `--split-date` is a calendar-date out-of-sample split — pick it before
+  looking at results. Binance's 2025+ spot files use MICROsecond timestamps;
+  `history._open_seconds` handles both. Results are GROSS unless `--spread-pct`.

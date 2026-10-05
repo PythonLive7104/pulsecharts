@@ -8,6 +8,8 @@ venv/
 # Django
 backend/db.sqlite3
 backend/staticfiles/
+# Binance kline archives for backtest --history (re-downloadable, large)
+backend/history/
 .env
 *.log
 
