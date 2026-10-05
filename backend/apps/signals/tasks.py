@@ -32,6 +32,7 @@ from .models import (Signal, SignalDelivery, SignalService, TelegramDelivery,
                      UserSignalSubscription)
 from .pregate import EMA_STACK_EXEMPT, candidate_direction_for_service
 from .quota import SIGNAL_QUOTA_WINDOW, signal_quota_for
+from .versioning import engine_snapshot, version_for
 
 logger = logging.getLogger("signals.tasks")
 
@@ -283,6 +284,17 @@ def run_scan(symbol_limit: int | None = None, use_pregate: bool | None = None) -
     if not system_services and not custom_services:
         return {"created": 0, "note": "no active services"}
 
+    # Every signal is stamped with the exact rules it was made under. The shared part
+    # of the snapshot (settings, gates, roster) is fixed for the whole scan, so it is
+    # built once; each strategy's version is resolved lazily, once, on its first signal.
+    version_engine = engine_snapshot()
+    version_roster = sorted(s.slug for s in system_services)
+    versions: dict[int, object] = {}
+
+    def _version(svc):
+        if svc.id not in versions:
+            versions[svc.id] = version_for(svc, engine=version_engine, roster=version_roster)
+        return versions[svc.id]
 
     # Which symbols each custom strategy runs on: its owner's watchlist.
     from collections import defaultdict
@@ -554,6 +566,7 @@ def run_scan(symbol_limit: int | None = None, use_pregate: bool | None = None) -
                     signal_at = timezone.now()
                     Signal.objects.create(
                         symbol=sym, service=svc, timeframe=tf,
+                        strategy_version=_version(svc),
                         generated_at=signal_at,
                         daily_ema200_aligned=daily_aligned, **sig,
                     )

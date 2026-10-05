@@ -65,7 +65,9 @@ class SignalSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Signal
-        exclude = ("service", "created_at")
+        # strategy_version is recorded for the performance record, not the card; left
+        # out until it's served as a label rather than a raw id.
+        exclude = ("service", "created_at", "strategy_version")
 
     def get_confluence_count(self, obj):
         return getattr(obj, "confluence_count", 1)

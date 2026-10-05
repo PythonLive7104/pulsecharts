@@ -52,6 +52,36 @@ class SignalService(models.Model):
         return self.owner_id is not None
 
 
+class StrategyVersion(models.Model):
+    """An immutable rule set a strategy has run under (newPRD §3 P2, §4).
+
+    Minted automatically by ``versioning.version_for`` whenever the fingerprint of
+    the strategy's rules — settings, resolved gates, rule code, its own definition,
+    and the active roster — differs from every version it has had. Never edited:
+    a change of rules is a new row, so every Signal stays attributable to exactly
+    the rules that produced it.
+    """
+
+    service = models.ForeignKey(
+        SignalService, on_delete=models.CASCADE, related_name="versions"
+    )
+    number = models.PositiveIntegerField()
+    fingerprint = models.CharField(max_length=64)
+    code_hash = models.CharField(max_length=64)
+    snapshot = models.JSONField()
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["service", "-number"]
+        constraints = [
+            models.UniqueConstraint(fields=["service", "number"], name="uniq_service_version_number"),
+            models.UniqueConstraint(fields=["service", "fingerprint"], name="uniq_service_version_fingerprint"),
+        ]
+
+    def __str__(self):
+        return f"{self.service.name} v{self.number}"
+
+
 class StrategyCreationLog(models.Model):
     """Append-only record of each custom-strategy creation, used to enforce the
     rolling-30-day creation cap. Deliberately NOT deleted when the strategy is
@@ -80,6 +110,13 @@ class Signal(models.Model):
 
     symbol = models.ForeignKey(Symbol, on_delete=models.CASCADE, related_name="signals")
     service = models.ForeignKey(SignalService, on_delete=models.CASCADE, related_name="signals")
+    # The exact rules this call was made under. RESTRICT: a version can't be deleted
+    # while signals point at it, except when its service is being deleted too (a user
+    # removing their own custom strategy). Null = generated before versioning existed.
+    strategy_version = models.ForeignKey(
+        StrategyVersion, on_delete=models.RESTRICT, null=True, blank=True,
+        related_name="signals",
+    )
     direction = models.CharField(max_length=8, choices=Direction.choices)
     confidence_pct = models.PositiveSmallIntegerField()
     timeframe = models.CharField(max_length=8)

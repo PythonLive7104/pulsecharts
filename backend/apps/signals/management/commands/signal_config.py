@@ -18,58 +18,13 @@ from __future__ import annotations
 from django.conf import settings
 from django.core.management.base import BaseCommand
 
-# (env var name, settings attribute). Deliberately ONLY the signal-engine tuning
+from apps.signals.versioning import ENGINE_SETTINGS
+
+# The engine-tuning block lives in apps.signals.versioning so this report and a
+# StrategyVersion snapshot read one list. Deliberately ONLY the signal-engine tuning
 # block: infrastructure and secrets differ between machines by design and must never
 # be copied from production to a dev checkout.
-SETTINGS = [
-    ("SIGNAL_ENGINE_ENABLED", "SIGNAL_ENGINE_ENABLED"),
-    ("SIGNAL_SHADOW_MODE", "SIGNAL_SHADOW_MODE"),
-    ("SIGNAL_ENGINE_MODE", "SIGNAL_ENGINE_MODE"),
-    ("SIGNAL_PREGATE_ENABLED", "SIGNAL_PREGATE_ENABLED"),
-    ("SIGNAL_MIN_CONFIDENCE", "SIGNAL_MIN_CONFIDENCE"),
-    ("SIGNAL_MIN_CONFIDENCE_REVERSION", "SIGNAL_MIN_CONFIDENCE_REVERSION"),
-    ("SIGNAL_MIN_CONFIDENCE_BY_STRATEGY", "SIGNAL_MIN_CONFIDENCE_BY_STRATEGY"),
-    ("SIGNAL_FOREX_STRATEGIES", "SIGNAL_FOREX_STRATEGIES"),
-    ("SIGNAL_MAX_PER_CURRENCY", "SIGNAL_MAX_PER_CURRENCY"),
-    ("SIGNAL_MAX_CRYPTO_PER_DIRECTION", "SIGNAL_MAX_CRYPTO_PER_DIRECTION"),
-    # Was missing from this list, so `signal_config` reported nothing for the single
-    # highest-impact gate measured on crypto (fades opposing BTC's trend, +2.6 points
-    # on Bollinger Fade) — the exact "is it actually on in production?" question this
-    # command exists to answer.
-    ("SIGNAL_LEADER_GATE", "SIGNAL_LEADER_GATE"),
-    ("SIGNAL_LOSS_BREAKER", "SIGNAL_LOSS_BREAKER"),
-    ("SIGNAL_SUPPRESS_PROGRESSED", "SIGNAL_SUPPRESS_PROGRESSED"),
-    ("SIGNAL_MAX_DELIVERY_AGE_BARS", "SIGNAL_MAX_DELIVERY_AGE_BARS"),
-    ("SIGNAL_MAX_DELIVERY_AGE_BARS_FEED", "SIGNAL_MAX_DELIVERY_AGE_BARS_FEED"),
-    ("SIGNAL_MAX_ENTRY_DRIFT", "SIGNAL_MAX_ENTRY_DRIFT"),
-    ("SIGNAL_SHADOW_ASSET_CLASSES", "SIGNAL_SHADOW_ASSET_CLASSES"),
-    ("SIGNAL_EVAL_BARS_BY_ASSET", "SIGNAL_EVAL_BARS_BY_ASSET"),
-    ("SIGNAL_FOREX_SKIP_HOURS_UTC", "SIGNAL_FOREX_SKIP_HOURS_UTC"),
-    ("SIGNAL_TIMEFRAMES", "SIGNAL_TIMEFRAMES"),
-    ("SIGNAL_CONFLUENCE_MIN", "SIGNAL_CONFLUENCE_MIN"),
-    ("SIGNAL_CONFLUENCE_MIN_REVERSION", "SIGNAL_CONFLUENCE_MIN_REVERSION"),
-    ("SIGNAL_REGIME_FILTER_ENABLED", "SIGNAL_REGIME_FILTER_ENABLED"),
-    ("SIGNAL_ADX_MIN", "SIGNAL_ADX_MIN"),
-    ("SIGNAL_ADX_MAX_REVERSION", "SIGNAL_ADX_MAX_REVERSION"),
-    ("SIGNAL_EMA_SEP_MIN_ATR", "SIGNAL_EMA_SEP_MIN_ATR"),
-    ("SIGNAL_EMA_GATE", "SIGNAL_EMA_GATE"),
-    ("SIGNAL_EMA200_TREND_FILTER", "SIGNAL_EMA200_TREND_FILTER"),
-    ("SIGNAL_STRUCTURE_TREND_FILTER", "SIGNAL_STRUCTURE_TREND_FILTER"),
-    ("SIGNAL_HTF_REGIME_ENABLED", "SIGNAL_HTF_REGIME_ENABLED"),
-    ("SIGNAL_RSI_OVERBOUGHT", "SIGNAL_RSI_OVERBOUGHT"),
-    ("SIGNAL_RSI_OVERSOLD", "SIGNAL_RSI_OVERSOLD"),
-    ("SIGNAL_OVEREXT_ATR_MULT", "SIGNAL_OVEREXT_ATR_MULT"),
-    ("SIGNAL_REENTRY_COOLDOWN_BARS", "SIGNAL_REENTRY_COOLDOWN_BARS"),
-    ("SIGNAL_EXIT_ON_TREND_BREAK", "SIGNAL_EXIT_ON_TREND_BREAK"),
-    ("SIGNAL_HTF_STRUCTURE_ENABLED", "SIGNAL_HTF_STRUCTURE_ENABLED"),
-    ("SIGNAL_EVAL_BARS", "SIGNAL_EVAL_BARS"),
-    ("SIGNAL_FIB_PULLBACK_MIN", "SIGNAL_FIB_PULLBACK_MIN"),
-    ("SIGNAL_FIB_PULLBACK_MAX", "SIGNAL_FIB_PULLBACK_MAX"),
-    ("SIGNAL_SKIP_CRYPTO_WEEKEND", "SIGNAL_SKIP_CRYPTO_WEEKEND"),
-    ("SIGNAL_SCAN_SYMBOL_LIMIT", "SIGNAL_SCAN_SYMBOL_LIMIT"),
-    ("SIGNAL_FREE_TRIAL_DAYS", "SIGNAL_FREE_TRIAL_DAYS"),
-    ("SIGNAL_UPGRADE_NUDGE_DAYS", "SIGNAL_UPGRADE_NUDGE_DAYS"),
-]
+SETTINGS = ENGINE_SETTINGS
 
 
 # Read straight into CELERY_BEAT_SCHEDULE rather than a settings attribute, so it has
@@ -152,3 +107,19 @@ class Command(BaseCommand):
         for slug in active:
             self.stdout.write(f"  {slug:34s} {pregate.kind_of(slug)}")
         self.stdout.write(f"  ({len(active)} active)")
+
+        # What the NEXT signal from each strategy will be stamped with. Read-only:
+        # computes the fingerprint and looks it up, never writes a version row.
+        from apps.signals.models import StrategyVersion
+        from apps.signals.versioning import (
+            active_roster, code_hash, engine_snapshot, fingerprint, snapshot_for,
+        )
+
+        engine, roster = engine_snapshot(), active_roster()
+        self.stdout.write(self.style.MIGRATE_HEADING("\nStrategy versions in force"))
+        self.stdout.write(f"  {'rule code hash':34s} {code_hash()[:12]}")
+        for svc in SignalService.objects.filter(is_active=True, owner__isnull=True):
+            fp = fingerprint(snapshot_for(svc, engine=engine, roster=roster))
+            known = StrategyVersion.objects.filter(service=svc, fingerprint=fp).first()
+            label = f"v{known.number}" if known else "NEW — minted on its next signal"
+            self.stdout.write(f"  {svc.slug:34s} {label} ({fp[:12]})")
