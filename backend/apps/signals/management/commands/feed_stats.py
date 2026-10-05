@@ -30,24 +30,22 @@ from django.utils import timezone
 
 from apps.signals.models import Signal, SignalDelivery
 
-# Realized R per outcome under the live 50/25/25 scale-out with the stop moved to
-# breakeven once TP1 tags (§19.2). Mirrors stats.SCALEOUT_R and backtest.SCALEOUT_R —
-# change one, change all three.
-SCALEOUT_R = {0: -1.0, 1: 0.5, 2: 1.0, 3: 1.75}
+from apps.signals.stats import trade_r
+
+# Realized R comes from stats.trade_r, scored under each trade's own
+# Signal.exit_model — one definition shared with the accuracy stats.
 
 
 def _blank(label):
     return {"label": label, "n": 0, "wins": 0, "r": 0.0, "tp": defaultdict(int)}
 
 
-def _record(b, best_tp, won):
+def _record(b, best_tp, won, exit_model="scaleout"):
     b["n"] += 1
     if won:
         b["wins"] += 1
         b["tp"][best_tp] += 1
-        b["r"] += SCALEOUT_R.get(best_tp, 0.5)
-    else:
-        b["r"] -= 1.0
+    b["r"] += trade_r(exit_model, best_tp)
 
 
 def _line(b):
@@ -150,30 +148,30 @@ class Command(BaseCommand):
                 (by_tf.setdefault(s.timeframe, _blank(s.timeframe)), None),
                 (by_dir.setdefault(s.direction, _blank(s.direction)), None),
             ):
-                _record(bucket, s.best_tp, won)
+                _record(bucket, s.best_tp, won, s.exit_model)
             if opts["by_symbol"]:
                 _record(by_symbol.setdefault(s.symbol.ticker, _blank(s.symbol.ticker)),
-                        s.best_tp, won)
+                        s.best_tp, won, s.exit_model)
             if opts["by_strategy_timeframe"]:
                 key = (s.service.name, s.timeframe)
                 _record(by_strat_tf.setdefault(key, _blank(f"{s.service.name} · {s.timeframe}")),
-                        s.best_tp, won)
+                        s.best_tp, won, s.exit_model)
             if opts["by_strategy_direction"]:
                 key = (s.service.name, s.direction)
                 _record(by_strat_dir.setdefault(key, _blank(f"{s.service.name} · {s.direction}")),
-                        s.best_tp, won)
+                        s.best_tp, won, s.exit_model)
             if opts["by_day"]:
                 # Bucketed by GENERATION day, not delivery: a config change alters what
                 # the scan produces, so generation time is what lines up with the date
                 # it went live.
                 day = s.generated_at.strftime("%Y-%m-%d")
                 _record(by_day.setdefault((day, s.direction),
-                                          _blank(f"{day} {s.direction}")), s.best_tp, won)
+                                          _blank(f"{day} {s.direction}")), s.best_tp, won, s.exit_model)
             if opts["by_confluence"]:
                 # Null = delivered before the count was stored. Bucketed separately
                 # rather than assumed to be 1, which would fabricate the comparison.
                 key = f"{s.confluence_count} agreed" if s.confluence_count else "unknown"
-                _record(by_conf.setdefault(key, _blank(key)), s.best_tp, won)
+                _record(by_conf.setdefault(key, _blank(key)), s.best_tp, won, s.exit_model)
 
         w = self.stdout.write
         w(self.style.MIGRATE_HEADING(

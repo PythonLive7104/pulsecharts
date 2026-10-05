@@ -958,12 +958,13 @@ SIGNAL_DAILY_QUOTA = {
     "premium": env.int("SIGNAL_QUOTA_PREMIUM", default=50),
 }
 
-# Signal timeframes: 1h for intraday setups, 4h for multi-day swings — what the
-# landing page promises. 1d is NOT a signal timeframe, but it is still read as the
+# Signal timeframes: 4h only. Measured on 7.7 years of BTC (backtest --history,
+# 0.1% round trip, split 2024-01-01): 4h is net positive in AND out of sample, 1h
+# loses -0.05R per trade in both — its tighter stops make the same fee cost about
+# twice the R. 1d is NOT a signal timeframe, but it is still read as the
 # higher-timeframe filter for 4h calls (_HTF_MAP) and for the daily-200-EMA line on
-# the card, so it stays in the candle fetches. Note 1h stops are tighter, so a fixed
-# fee/spread costs more R there — check `backtest --history --spread-pct` per frame.
-SIGNAL_TIMEFRAMES = env.list("SIGNAL_TIMEFRAMES", default=["1h", "4h"])
+# the card. Re-add a frame only when a long-history backtest shows it net positive.
+SIGNAL_TIMEFRAMES = env.list("SIGNAL_TIMEFRAMES", default=["4h"])
 
 # Skip crypto signal generation during the weekend window (Fri 21:00 → Sun 21:00
 # UTC, same window used to close forex). Weekend crypto is thin and choppy and
@@ -1047,6 +1048,19 @@ SIGNAL_SCAN_SYMBOL_LIMIT = env.int("SIGNAL_SCAN_SYMBOL_LIMIT", default=0)
 # 2 days without touching its stop or a target is dead regardless of where price sits.
 # A call that already banked TP1/TP2 closes at that banked level, not as EXPIRED.
 SIGNAL_EVAL_BARS = env.int("SIGNAL_EVAL_BARS", default=48)
+
+# How a trade is managed once delivered — and therefore how its result is scored.
+#   "tp1"      — close the WHOLE position at TP1 (1R). Default.
+#   "scaleout" — the old 50/25/25 ladder: half at TP1, a quarter at TP2 and TP3,
+#                stop to breakeven after TP1.
+# Measured on 7.7 years of BTC 4h, net of a 0.1% round trip: full exit at TP1 made
+# +0.05R in-sample and +0.10R out-of-sample per trade, vs +0.02R / +0.03R for the
+# ladder — the runner rarely pays for the half it gives up at TP1. Each Signal stores
+# the model it was issued under (Signal.exit_model), so switching this never
+# rescores past trades. It is also a rule setting, so a switch mints new versions.
+SIGNAL_EXIT_MODEL = env("SIGNAL_EXIT_MODEL", default="tp1")
+if SIGNAL_EXIT_MODEL not in ("tp1", "scaleout"):
+    raise ValueError(f"SIGNAL_EXIT_MODEL must be 'tp1' or 'scaleout', got {SIGNAL_EXIT_MODEL!r}")
 
 # Per-asset-class override of the expiry clock. Forex needs far longer: measured over
 # 22 pairs / 100 days / 1h with a 1-pip spread charged, Bollinger Fade on a 3.0-4.0xATR

@@ -100,8 +100,19 @@ class StrategyCreationLog(models.Model):
         return f"{self.user_id} created a strategy @ {self.created_at:%Y-%m-%d}"
 
 
+def current_exit_model() -> str:
+    """The exit model a signal issued right now is managed under (SIGNAL_EXIT_MODEL)."""
+    return settings.SIGNAL_EXIT_MODEL
+
+
 class Signal(models.Model):
     """A generated trading signal (full card spec, Section 19.1)."""
+
+    class ExitModel(models.TextChoices):
+        # Whole position closed at TP1 (1R). The trade resolves the moment TP1 tags.
+        TP1 = "tp1", "Full exit at TP1"
+        # 50/25/25 ladder to TP3, stop to breakeven after TP1 (§19.2).
+        SCALEOUT = "scaleout", "50/25/25 scale-out"
 
     class Direction(models.TextChoices):
         BUY = "BUY", "Buy"
@@ -148,6 +159,13 @@ class Signal(models.Model):
 
     reasoning = models.TextField(blank=True, default="")
     invalidation = models.TextField(blank=True, default="")
+
+    # How this trade is managed — and so how it resolves and what it earned. Frozen at
+    # issue: changing SIGNAL_EXIT_MODEL must never rescore a trade users already took
+    # under the other plan. Rows from before this existed were all scale-out.
+    exit_model = models.CharField(
+        max_length=12, choices=ExitModel.choices, default=current_exit_model,
+    )
 
     # Does the DAILY 200 EMA support this signal's direction? True when price is on
     # the trend-supporting side of the daily 200 EMA at generation time (above it for

@@ -26,6 +26,11 @@ export default function SignalCard({ s }) {
   const buy = s.direction === "BUY";
   let [outLabel, outClass] = OUTCOME[s.outcome] || OUTCOME.PENDING;
   const fmt = (n) => formatPrice(n, s.asset_class, s.symbol);
+  // How this trade is managed (exit_model, frozen per signal). "tp1" = close the
+  // whole position at the single target; older signals ran the 50/25/25 ladder and
+  // keep rendering that way, so history reads exactly as it was traded.
+  const fullExit = s.exit_model === "tp1";
+  if (fullExit && outClass === "win") outLabel = "✓ Target";
   // Targets already tagged. An open trade keeps running after TP1/TP2 (§19.2 —
   // it resolves only at TP3 or the breakeven stop), so "Active" alone hides the
   // fact that the user's partial is due and their stop should be at entry.
@@ -97,7 +102,14 @@ export default function SignalCard({ s }) {
           <span>Stop</span>
           <b>{running ? `${fmt(s.entry_price)} (BE)` : fmt(s.stop_loss)}</b>
         </div>
-        {[s.tp1, s.tp2, s.tp3, s.tp4].map((tp, i) => tp == null ? null : (
+        {fullExit ? (
+          // One target. TP2/TP3 are still computed but not shown: the plan — and the
+          // track record — closes everything here, and extra levels invite holding.
+          <div className={`level tp${reached >= 1 ? " hit" : ""}`}>
+            <span>Target{reached >= 1 ? " ✓" : ""}</span>
+            <b>{fmt(s.tp1)}</b>
+          </div>
+        ) : [s.tp1, s.tp2, s.tp3, s.tp4].map((tp, i) => tp == null ? null : (
           <div key={i} className={`level tp${reached >= i + 1 ? " hit" : ""}`}>
             <span>TP{i + 1}{reached >= i + 1 ? " ✓" : ""}</span>
             <b>{fmt(tp)}</b>
@@ -105,7 +117,12 @@ export default function SignalCard({ s }) {
         ))}
       </div>
 
-      {running ? (
+      {fullExit ? (
+        <p className="scaleout-note">
+          💡 Plan: close the whole position at the target, or take the loss at the
+          stop. No partials, no runner — that's how every result here is measured.
+        </p>
+      ) : running ? (
         <p className="scaleout-note running">
           🎯 TP{reached} tagged — partial{reached > 1 ? "s" : ""} banked, stop moved to entry
           (break-even). Trade still open; runner targets TP3 {fmt(s.tp3)}.
@@ -119,7 +136,15 @@ export default function SignalCard({ s }) {
 
       <div className="rr-line">
         Risk <b className="risk">{dollars(s.risk_pct)}</b> → make{" "}
-        <b className="reward">{dollars(s.reward_tp2_pct)}</b> at TP2 (1:{Number(s.risk_reward_tp2).toFixed(1)})
+        {fullExit ? (
+          <>
+            <b className="reward">{dollars(s.reward_tp1_pct)}</b> at the target (1:{Number(s.risk_reward_tp1).toFixed(1)})
+          </>
+        ) : (
+          <>
+            <b className="reward">{dollars(s.reward_tp2_pct)}</b> at TP2 (1:{Number(s.risk_reward_tp2).toFixed(1)})
+          </>
+        )}
         <span className="rr-note"> · per ${TRADE_SIZE} traded (illustrative)</span>
       </div>
 

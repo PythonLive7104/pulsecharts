@@ -26,9 +26,10 @@ from django.utils import timezone
 
 from apps.signals.models import Signal, SignalDelivery
 
-# Mirrors feed_stats.SCALEOUT_R / stats.SCALEOUT_R — realized R per best-TP reached
-# under the live 50/25/25 ladder with breakeven after TP1.
-SCALEOUT_R = {0: -1.0, 1: 0.5, 2: 1.0, 3: 1.75}
+from apps.signals.stats import trade_r
+
+# Realized R comes from stats.trade_r, scored under each trade's own
+# Signal.exit_model — one definition shared with the accuracy stats.
 
 
 def _parse(raw: str):
@@ -70,7 +71,7 @@ class Command(BaseCommand):
             .exclude(outcome=Signal.Outcome.PENDING)
             .select_related("symbol")
             .order_by("generated_at")
-            .values("generated_at", "resolved_at", "outcome", "best_tp")
+            .values("generated_at", "resolved_at", "outcome", "best_tp", "exit_model")
         )
         # A trend-flip invalidation closes flat at 0R. Excluded from win/loss here for
         # the same reason feed_stats excludes it: it is neither a hit nor a stop.
@@ -91,15 +92,14 @@ class Command(BaseCommand):
             f"{len(rows)} resolved trades"))
         base_w = sum(1 for r in rows if r["best_tp"] >= 1)
         base_l = len(rows) - base_w
-        base_r = sum(SCALEOUT_R.get(r["best_tp"], 0.5) if r["best_tp"] >= 1 else -1.0
-                     for r in rows)
+        base_r = sum(trade_r(r["exit_model"], r["best_tp"]) for r in rows)
         self.stdout.write(
             f"  {'NO BREAKER':14s} {base_w / len(rows) * 100:5.1f}%  "
             f"{base_w:3d}W/{base_l:3d}L  n={len(rows):<4d} exp={base_r / len(rows):+.2f}R")
 
         for cfg in configs:
             need, win_h, cool_h = _parse(cfg)
-            kept, supp_w, supp_l = [], 0, 0
+            kept, supp_w, supp_l, supp_win_r = [], 0, 0, 0.0
             for r in rows:
                 t = r["generated_at"]
                 # Only losses ALREADY RESOLVED at delivery time are knowable.
@@ -123,6 +123,7 @@ class Command(BaseCommand):
                 if halted:
                     if r["best_tp"] >= 1:
                         supp_w += 1
+                        supp_win_r += trade_r(r["exit_model"], r["best_tp"])
                     else:
                         supp_l += 1
                 else:
@@ -134,13 +135,12 @@ class Command(BaseCommand):
                 continue
             w = sum(1 for r in kept if r["best_tp"] >= 1)
             l = len(kept) - w
-            rr = sum(SCALEOUT_R.get(r["best_tp"], 0.5) if r["best_tp"] >= 1 else -1.0
-                     for r in kept)
+            rr = sum(trade_r(r["exit_model"], r["best_tp"]) for r in kept)
             self.stdout.write(
                 f"  {cfg:14s} {w / len(kept) * 100:5.1f}%  {w:3d}W/{l:3d}L  "
                 f"n={len(kept):<4d} exp={rr / len(kept):+.2f}R   "
                 f"suppressed {supp_w + supp_l:3d} ({supp_l}L / {supp_w}W)  "
-                f"R saved {(supp_l * 1.0) - sum(SCALEOUT_R.get(1, 0.5) for _ in range(supp_w)):+.1f}")
+                f"R saved {(supp_l * 1.0) - supp_win_r:+.1f}")
 
         self.stdout.write(self.style.WARNING(
             "\n  Suppressing wins as well as losses is expected and healthy — the test is\n"

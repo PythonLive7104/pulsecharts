@@ -151,12 +151,13 @@ KNOWLEDGE = [
         "keywords": ["signal", "signals", "buy sell", "trade signal", "strategy", "strategies", "confidence", "take profit", "stop loss", "tp1", "tp2", "tp3"],
         "answer": (
             "A roster of built-in strategies — trend-following and mean-reversion — "
-            "scans tracked crypto AND forex pairs on the 1h "
-            "and 4h timeframes, and surface buy/sell setups with an entry, a "
-            "stop-loss, three take-profit targets (TP1/TP2/TP3) and a conviction "
+            "scans tracked crypto AND forex pairs on the 4h "
+            "timeframe, and surfaces buy/sell setups with an entry, a "
+            "stop-loss, one take-profit target (1x the risk) and a conviction "
             "score. A setup only surfaces when several "
-            "strategies agree on it. The idea is to bank a partial at each target and "
-            "move your stop to break-even after TP1; you also get an update if a "
+            "strategies agree on it. The plan is simple: close the whole position at "
+            "the target, or take the loss at the stop — we measured years of history "
+            "and that beat scaling out to further targets. You also get an update if a "
             "trade's trend flips and the setup is invalidated. New accounts get "
             "signals free for 30 days (up to 20/week); after that Starter gets up "
             "to 400/week and Pro unlimited, both with Telegram alerts. They're "

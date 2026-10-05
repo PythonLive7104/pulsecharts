@@ -711,9 +711,16 @@ def run_evaluation(limit: int | None = None) -> dict:
             still += 1
             continue  # too soon — no candle has closed since generation
 
+        # The targets the trade is actually managed to. Under a full exit at TP1 the
+        # whole position closes there, so TP1 is the LAST target: walk() marks it
+        # terminal on the bar it tags and the call resolves as a TP1 win. Under the
+        # scale-out the runner keeps going to TP3 (see below).
+        if sig.exit_model == Signal.ExitModel.TP1:
+            targets = [sig.tp1]
+        else:
+            targets = [t for t in (sig.tp1, sig.tp2, sig.tp3, sig.tp4) if t is not None]
         res = walk(
-            sig.direction, sig.entry_price, sig.stop_loss,
-            [t for t in (sig.tp1, sig.tp2, sig.tp3, sig.tp4) if t is not None], eval_candles,
+            sig.direction, sig.entry_price, sig.stop_loss, targets, eval_candles,
             breakeven_after_tp1=True,
         )
         # "Let winners run" (§19.2): don't lock a winner in the moment it tags TP1 —
@@ -953,14 +960,21 @@ def format_signal_for_telegram(s: Signal) -> str:
     # Levels, with the distance and R multiple that make them sizeable. R comes from
     # the stored risk_reward_* so legacy rows (which had a 4.5R TP4) stay truthful.
     rows = [("Entry", s.entry_price, None, None), ("Stop", s.stop_loss, s.risk_pct, None)]
-    for i, (tp, reward, rr) in enumerate(
-        ((s.tp1, s.reward_tp1_pct, s.risk_reward_tp1),
-         (s.tp2, s.reward_tp2_pct, s.risk_reward_tp2),
-         (s.tp3, s.reward_tp3_pct, s.risk_reward_tp3),
-         (s.tp4, s.reward_tp4_pct, s.risk_reward_tp4)), start=1
-    ):
-        if tp is not None:
-            rows.append((f"TP{i}", tp, reward, rr))
+    full_exit = s.exit_model == Signal.ExitModel.TP1
+    if full_exit:
+        # One target: the whole position closes at TP1. TP2/TP3 are still stored but
+        # not shown — printing levels that aren't part of the plan invites holding
+        # past the exit the results are measured on.
+        rows.append(("Target", s.tp1, s.reward_tp1_pct, s.risk_reward_tp1))
+    else:
+        for i, (tp, reward, rr) in enumerate(
+            ((s.tp1, s.reward_tp1_pct, s.risk_reward_tp1),
+             (s.tp2, s.reward_tp2_pct, s.risk_reward_tp2),
+             (s.tp3, s.reward_tp3_pct, s.risk_reward_tp3),
+             (s.tp4, s.reward_tp4_pct, s.risk_reward_tp4)), start=1
+        ):
+            if tp is not None:
+                rows.append((f"TP{i}", tp, reward, rr))
 
     block = []
     for label, price, pct, rr in rows:
@@ -983,11 +997,16 @@ def format_signal_for_telegram(s: Signal) -> str:
         lines += ["", html.escape(s.reasoning)]
     lines += [
         "",
-        "💡 Bank ½ at TP1 → stop to entry → let the rest run.",
+        ("💡 Close the whole position at the target. No partials, no runner."
+         if full_exit else "💡 Bank ½ at TP1 → stop to entry → let the rest run."),
         "<i>Not financial advice.</i>",
     ]
     return "\n".join(lines)
 
+
+TP_OUTCOME_VALUES = {
+    Signal.Outcome.TP1, Signal.Outcome.TP2, Signal.Outcome.TP3, Signal.Outcome.TP4,
+}
 
 _CLOSURE_STATUS = {
     Signal.Outcome.TP1: "✅ hit TP1",
@@ -1006,6 +1025,8 @@ def format_closure_for_telegram(s: Signal) -> str:
 
     side = "BUY" if s.direction == Signal.Direction.BUY else "SELL"
     status = _CLOSURE_STATUS.get(s.outcome, str(s.outcome))
+    if s.exit_model == Signal.ExitModel.TP1 and s.outcome in TP_OUTCOME_VALUES:
+        status = "✅ hit the target"
     p = _fmt_price
 
     lines = [
@@ -1022,7 +1043,11 @@ def format_closure_for_telegram(s: Signal) -> str:
         Signal.Outcome.TP3: ("TP3", s.tp3),
         Signal.Outcome.TP4: ("TP4", s.tp4),
     }
-    if s.outcome in tp_hit:
+    if s.outcome in tp_hit and s.exit_model == Signal.ExitModel.TP1:
+        # Full exit: the target IS the close. Say what it earned, plainly.
+        lines.append(f"Target hit: <b>{p(s.tp1)}</b>")
+        lines.append(f"<i>Trade closed in full at the target (+{s.risk_reward_tp1:g}R).</i>")
+    elif s.outcome in tp_hit:
         label, price = tp_hit[s.outcome]
         lines.append(f"{label} hit: <b>{p(price)}</b>")
         # Scale-out model (§19.2): a partial is banked at each target and the stop

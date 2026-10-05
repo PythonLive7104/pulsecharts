@@ -485,7 +485,14 @@ new signals — so historical rows and the serializer stay valid.)
 
 Where `risk distance = abs(entry_price - stop_loss)`.
 
-**Trade management — 50/25/25 scale-out** (the model behind `avg_r` in stats.py and
+**Trade management is per signal (`Signal.exit_model`).** New signals default to
+`SIGNAL_EXIT_MODEL=tp1`: the whole position closes at TP1 (+1R), the card and Telegram
+show one target, the evaluator walks TP1 only, and auto-trade brackets at TP1. It beat
+the ladder below on 7.7 years of BTC 4h net of costs (+0.10R vs +0.03R out of sample).
+Signals issued before it keep `scaleout` and are still scored that way — R for any
+trade comes from `stats.trade_r(exit_model, best_tp)`, never a local table.
+
+**Legacy: 50/25/25 scale-out** (`exit_model="scaleout"`; the model behind `avg_r` in stats.py and
 `exp(scale)` in the backtest): bank **½ at TP1**, **¼ at TP2**, **¼ at TP3**, and move
 the stop to breakeven once TP1 tags — so any tranche whose target isn't reached closes
 flat, never a post-TP1 loss. Realized R per outcome: TP1 = +0.5R, TP2 = +1.0R,

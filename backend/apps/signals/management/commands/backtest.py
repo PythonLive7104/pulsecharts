@@ -141,10 +141,14 @@ SCALEOUT_R = {1: 0.5, 2: 1.0, 3: 1.75, 4: 3.0}
 EXIT_MODELS = [
     ("all off @TP1               ", (1.0, 0.0, 0.0)),
     ("even thirds  (old model)   ", (1 / 3, 1 / 3, 1 / 3)),
-    ("½ TP1 · ¼ TP2 · ¼ TP3 (live)", (0.5, 0.25, 0.25)),
+    ("½ TP1 · ¼ TP2 · ¼ TP3       ", (0.5, 0.25, 0.25)),
     ("½ TP1 · ½ TP2              ", (0.5, 0.5, 0.0)),
     ("⅔ TP1 · ⅓ TP2              ", (2 / 3, 1 / 3, 0.0)),
 ]
+
+
+# Which EXIT_MODELS row is what users are actually told to do (SIGNAL_EXIT_MODEL).
+LIVE_EXIT_FRACTIONS = {"tp1": (1.0, 0.0, 0.0), "scaleout": (0.5, 0.25, 0.25)}
 
 
 def _exit_expectancy(total, fractions):
@@ -1613,8 +1617,10 @@ class Command(BaseCommand):
             return
         self.stdout.write(self.style.MIGRATE_HEADING("\n  Exit-model comparison (same trades):"))
         ranked = sorted(EXIT_MODELS, key=lambda m: -_exit_expectancy(total, m[1]))
+        live = LIVE_EXIT_FRACTIONS.get(settings.SIGNAL_EXIT_MODEL)
         for label, fr in ranked:
-            self.stdout.write(f"    {label}  exp={_exit_expectancy(total, fr):+.3f}R")
+            tag = " (live)" if fr == live else ""
+            self.stdout.write(f"    {label}  exp={_exit_expectancy(total, fr):+.3f}R{tag}")
 
     def _report_compare(self, rb, llm, budget):
         rb_t, llm_t = _totals(rb), _totals(llm)
@@ -1659,10 +1665,12 @@ class Command(BaseCommand):
     def _footer(self, llm=False):
         base = (
             "\nReading this honestly:\n"
-            "  • Win % = reached TP1 before the stop. exp(TP1) = exit all at TP1 (caps\n"
-            "    winners at +1R, conservative). exp(scale) = the LIVE model: 50/25/25\n"
-            "    scale-out (½ TP1, ¼ TP2, ¼ TP3), stop to breakeven after TP1 (what to\n"
-            "    actually expect). exp(best) = exit all at the furthest TP (hindsight).\n"
+            "  • Win % = reached TP1 before the stop. exp(TP1) = exit all at TP1.\n"
+            "    exp(scale) = 50/25/25 scale-out (½ TP1, ¼ TP2, ¼ TP3), stop to\n"
+            "    breakeven after TP1. exp(best) = exit all at the furthest TP (hindsight).\n"
+            f"    LIVE exit model (SIGNAL_EXIT_MODEL): "
+            f"{'exp(TP1)' if settings.SIGNAL_EXIT_MODEL == 'tp1' else 'exp(scale)'}"
+            " is what to actually expect.\n"
             + (
                 "  • Binance spot archive (not Hyperliquid prints), currently-listed coins\n"
                 "    only (survivorship). The live confidence floor, regime filter and\n"
