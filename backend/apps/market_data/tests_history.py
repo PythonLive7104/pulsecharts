@@ -135,6 +135,14 @@ class BacktestHistoryTests(TestCase):
         self.assertIn("IN-SAMPLE (entered before 2024-03-01)", out)
         self.assertIn("OUT-OF-SAMPLE (entered on/after 2024-03-01)", out)
 
+    def test_results_are_net_of_costs_by_default(self):
+        out = self._run("--start", "2024-01-20")
+        self.assertIn("Costs: crypto 0.1%", out)
+
+    def test_gross_is_explicit(self):
+        out = self._run("--start", "2024-01-20", "--gross")
+        self.assertIn("Costs: GROSS", out)
+
     def test_split_outside_range_is_refused(self):
         with self.assertRaises(CommandError):
             self._run("--start", "2024-02-01", "--split-date", "2024-01-15")

@@ -195,6 +195,15 @@ FOREX_POLL_INTERVAL = env.float("FOREX_POLL_INTERVAL", default=15.0)
 # it — so it lives on the machine running backtests, not in the deployed image.
 HISTORY_DIR = env("HISTORY_DIR", default=str(BASE_DIR / "history"))
 
+# Round-trip trading cost every backtest charges by default, as % of price, per asset
+# class (newPRD §4: results are cost-adjusted or they are not results). Crypto 0.1% ≈
+# Hyperliquid taker fees both ways plus a little slippage; forex ≈ 1 pip on EUR/USD.
+# `backtest --gross` disables it, `--spread-pct` overrides it.
+BACKTEST_COST_PCT = {
+    "crypto": env.float("BACKTEST_COST_PCT_CRYPTO", default=0.1),
+    "forex": env.float("BACKTEST_COST_PCT_FOREX", default=0.0087),
+}
+
 # --- Marketing email campaigns ---------------------------------------------
 # Hard ceiling on MARKETING emails per calendar day, across every campaign. This is a
 # deliverability guard, not a preference: a young sending domain that suddenly emits

@@ -576,6 +576,11 @@ class Command(BaseCommand):
                                  "market runs one way — which is how 225 fades stopped out "
                                  "together on 2026-08-19. Point-in-time: the leader is "
                                  "evaluated on bars closed at or before the signal bar.")
+        parser.add_argument("--gross", action="store_true",
+                            help="Charge NO trading costs. Every result is net of "
+                                 "BACKTEST_COST_PCT (per asset class) by default, so a "
+                                 "gross figure can't be mistaken for a profit; use this "
+                                 "only to see how much of an edge the costs eat.")
         parser.add_argument("--spread-pct", type=float, default=None, metavar="PCT",
                             help="Model the round-trip SPREAD as a %% of price and report "
                                  "expectancy NET of it. Every other figure this command "
@@ -852,6 +857,15 @@ class Command(BaseCommand):
             if opts["timeframes"] else list(settings.SIGNAL_TIMEFRAMES)
         )
         self._setup_history(opts)
+        if opts.get("gross"):
+            opts["spread_pct"] = 0.0
+        if opts.get("spread_pct") is not None:
+            cost_note = ("GROSS — no costs charged" if not opts["spread_pct"]
+                         else f"{opts['spread_pct']}% round trip (--spread-pct)")
+        else:
+            cost_note = ", ".join(f"{k} {v}%" for k, v in settings.BACKTEST_COST_PCT.items())
+            cost_note += " round trip (BACKTEST_COST_PCT; --gross to disable)"
+        self.stdout.write(self.style.WARNING(f"Costs: {cost_note}"))
 
         # EFFECTIVE config, not just the overrides. Gates are module-level state that
         # SignalsConfig.ready() seeds from env BEFORE any flag is parsed, so a run
@@ -1119,9 +1133,7 @@ class Command(BaseCommand):
         self.stdout.write(self.style.WARNING(
             f"History mode: {opts.get('start') or 'archive start'} -> "
             f"{opts.get('end') or 'archive end'}, indicators on last "
-            f"{_INDICATOR_WINDOW} bars, expiry {opts['eval_bars']} bars"
-            + ("" if opts.get("spread_pct") is not None
-               else ". GROSS of costs: pass --spread-pct to charge fees/spread")))
+            f"{_INDICATOR_WINDOW} bars, expiry {opts['eval_bars']} bars"))
 
     def _htf_timeline(self, sym, tf, htf_limit):
         """Sorted [(usable_from_time, structure), …] for the timeframe above `tf`.
@@ -1189,6 +1201,10 @@ class Command(BaseCommand):
                     delay=None, fade_veto=None, gate_stats=None):
         ticker = sym.ticker
         n = len(candles)
+        if spread_pct is None:
+            # Net of costs unless --gross / --spread-pct said otherwise: crypto and
+            # forex cost very different amounts, so the default is per asset class.
+            spread_pct = settings.BACKTEST_COST_PCT.get(asset_class, 0.0)
         # First bar index belonging to the out-of-sample segment. Trades are assigned
         # by ENTRY bar, so a trade opened in train but resolving in test stays a train
         # trade — the alternative leaks the test window's outcomes into the fit.
@@ -1675,7 +1691,7 @@ class Command(BaseCommand):
                 "  • Binance spot archive (not Hyperliquid prints), currently-listed coins\n"
                 "    only (survivorship). The live confidence floor, regime filter and\n"
                 "    confluence are NOT applied unless flagged. Exit-model rows are GROSS;\n"
-                "    exp(...) columns are net of --spread-pct. Not proof — don't claim\n"
+                "    exp(...) columns are net of the costs printed at the top. Not proof — don't claim\n"
                 "    accuracy (§13.7)."
                 if _HISTORY is not None else
                 "  • Small historical sample, currently-listed coins only (survivorship),\n"
