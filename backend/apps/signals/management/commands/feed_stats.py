@@ -14,6 +14,13 @@ track through a live window.
 
     manage.py feed_stats --days 14
     manage.py feed_stats --days 30 --by-symbol
+    manage.py feed_stats --days 365 --monthly     # the capital curve, month by month
+
+Win rate and expectancy are not the product claim; the capital curve is (newPRD §2,
+§6). So the delivered feed is also replayed as MONEY — equity, drawdown, profit
+factor, CAGR — through apps.signals.performance, the same engine and the same
+renderer `backtest` uses for historical and out-of-sample windows. This block is the
+LIVE segment of the track record and must never be pooled with the backtested one.
 
 Counts each TRADE once, not each delivery: several users receiving the same signal is
 one trade, and the same setup called by several strategies collapses to the trade
@@ -25,14 +32,17 @@ from __future__ import annotations
 from collections import defaultdict
 from datetime import timedelta
 
+from django.conf import settings
 from django.core.management.base import BaseCommand
 from django.utils import timezone
 
+from apps.signals import performance
 from apps.signals.models import Signal, SignalDelivery
 
-from apps.signals.stats import trade_r
+from apps.signals.stats import outcome_r, trade_r
 
-# Realized R comes from stats.trade_r, scored under each trade's own
+# Realized R comes from stats.trade_r (win/loss tables) and stats.outcome_r (the
+# capital curve, which also values flat closes), both scored under each trade's own
 # Signal.exit_model — one definition shared with the accuracy stats.
 
 
@@ -91,8 +101,73 @@ class Command(BaseCommand):
                                  "the date it went live.")
         parser.add_argument("--by-symbol", action="store_true",
                             help="Also break down per symbol — finds which coins carry the losses.")
+        parser.add_argument("--capital", type=float, default=10000.0, metavar="USD",
+                            help="Starting capital for the capital curve (default 10000).")
+        parser.add_argument("--risk-pct", type=float, default=1.0, metavar="PCT",
+                            help="Risk per trade as %% of equity for the curve (default "
+                                 "1.0). Per TRADE: concurrent trades multiply it, and the "
+                                 "curve reports the peak.")
+        parser.add_argument("--no-compound", action="store_true",
+                            help="Size off the STARTING capital rather than current "
+                                 "equity, isolating edge from compounding.")
+        parser.add_argument("--gross", action="store_true",
+                            help="Do NOT charge trading costs. The curve is net of "
+                                 "BACKTEST_COST_PCT by default (per asset class, charged "
+                                 "as a fraction of each trade's own stored risk_pct), so "
+                                 "a gross figure can't be mistaken for a realized one.")
+        parser.add_argument("--monthly", action="store_true",
+                            help="Add month-by-month returns to the capital curve.")
+        parser.add_argument("--no-curve", action="store_true",
+                            help="Skip the capital curve (R-space tables only).")
         parser.add_argument("--include-open", action="store_true",
                             help="Also list still-open trades (excluded from the stats).")
+
+    def _trades(self, resolved, gross: bool):
+        """Resolved delivered signals as chronological positions for the curve.
+
+        Scored with ``stats.outcome_r`` under each row's own ``exit_model``, so a
+        trade is always valued under the plan it was issued with — the same function
+        the user-facing accuracy figure uses. Unlike the win-rate tables above, flat
+        closes are KEPT: a trend-flip scratch is 0R, not a missing trade, and dropping
+        it would understate both exposure and the trade count the curve rests on.
+
+        Costs are charged per trade as BACKTEST_COST_PCT / this trade's stored
+        risk_pct, so a wide-stop trade correctly pays proportionally less of its R.
+        Without this the live curve would be gross while the backtest curve is net,
+        and the two would not be comparable — which is the only reason to compute
+        them the same way.
+        """
+        trades = []
+        for s in resolved:
+            r = outcome_r(s.exit_model, s.outcome)
+            if not gross and s.risk_pct:
+                r -= settings.BACKTEST_COST_PCT.get(s.symbol.asset_class, 0.0) / s.risk_pct
+            opened = int(s.generated_at.timestamp())
+            closed = int((s.resolved_at or s.generated_at).timestamp())
+            trades.append(performance.Trade(
+                opened=opened, closed=max(closed, opened), r=r,
+                symbol=s.symbol.ticker, strategy=s.service.slug))
+        return trades
+
+    def _report_capital(self, resolved, opts):
+        """The LIVE segment of the track record, in money (newPRD §15, §16)."""
+        trades = self._trades(resolved, opts["gross"])
+        if not trades:
+            return
+        lines, summary = performance.report_lines(
+            trades, opts["capital"], opts["risk_pct"], not opts["no_compound"],
+            monthly=bool(opts["monthly"]), indent="  ")
+        self.stdout.write(self.style.MIGRATE_HEADING(
+            "\n  Capital curve — LIVE delivered feed"
+            + ("  (GROSS — no costs)" if opts["gross"] else "  (net of costs)")))
+        for line in lines:
+            self.stdout.write(line)
+        pf = summary["trade_metrics"]["profit_factor"]
+        if pf is not None and pf < 1.0:
+            self.stdout.write(self.style.ERROR("  " + performance.REJECT_NOTE))
+        self.stdout.write(self.style.WARNING(
+            "  This is the LIVE segment only. Never pool it with a backtested or "
+            "out-of-sample curve (newPRD §5, §39)."))
 
     def handle(self, *args, **opts):
         since = timezone.now() - timedelta(days=opts["days"])
@@ -230,6 +305,9 @@ class Command(BaseCommand):
             for s in pending:
                 w(f"  {s.symbol.ticker:12s} {s.direction:4s} {s.timeframe:3s} "
                   f"best_tp={s.best_tp}  {s.generated_at:%Y-%m-%d %H:%M}")
+
+        if not opts["no_curve"]:
+            self._report_capital(resolved, opts)
 
         n = overall["n"]
         if n:

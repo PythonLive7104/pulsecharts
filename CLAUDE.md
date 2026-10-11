@@ -866,6 +866,29 @@ already enforced in code — don't undo them:
   looking at results. Binance's 2025+ spot files use MICROsecond timestamps;
   `history._open_seconds` handles both. Backtests charge `BACKTEST_COST_PCT` by
   default (crypto 0.1% round trip); `--gross` turns that off.
+- **Money, not win rate, is the measurement.** `apps/signals/performance.py` is the
+  one capital-curve engine: `Trade(opened, closed, r)` in, equity curve + drawdown +
+  profit factor + expectancy + CAGR + yearly/monthly returns out, with a BTC
+  buy-and-hold comparison. It is deliberately ORM-free and renders its own text
+  block (`report_lines`), so BOTH callers print an identically-computed figure —
+  `backtest` (historical / in-sample / out-of-sample) and `feed_stats` (the LIVE
+  delivered feed). Never add a second implementation of these metrics, and never
+  pool segments into one curve: each is reported per segment and labelled, because
+  blending backtested with live is the exact number newPRD §5/§39 forbids.
+  - Sizing is fixed-fractional on REALIZED equity (open positions' unrealized P&L
+    never sizes a later entry). `risk_pct` is PER TRADE, so the block always prints
+    `max_concurrent` and `peak_risk_pct` — a "1% risk" curve built from 6 overlapping
+    positions really ran 6%.
+  - "Profitable" here means made money net of costs, which is NOT `stats.py`'s "win"
+    (reached TP1). Both are honest; they are named differently so they can't be
+    swapped. Costs are charged on both sides by default (`BACKTEST_COST_PCT` as a
+    fraction of each trade's own risk_pct); `--gross` turns that off.
+  - Profit factor below 1.0 prints `performance.REJECT_NOTE` in the error style.
+    That is newPRD §35 in code: the product has to be willing to reject its own
+    strategy, which only works if the rejection is as loud as the return.
+  - The backtest curve is the STRATEGY's population (every candidate, deduped to one
+    position per setup); the delivered feed is narrower (confidence floor +
+    confluence). `feed_stats` is the one that reflects what users actually got.
 - **Signals run on a volume-ranked universe** (`apps/market_data/universe.py`):
   the top `SIGNAL_UNIVERSE_TOP_N` (20) crypto coins by 7-day Hyperliquid volume,
   refreshed daily (`refresh_signal_universe`, `manage.py set_signal_universe
