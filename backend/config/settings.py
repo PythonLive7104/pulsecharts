@@ -1177,7 +1177,31 @@ SIGNAL_SCAN_SYMBOL_LIMIT = env.int("SIGNAL_SCAN_SYMBOL_LIMIT", default=0)
 # chartable but are skipped by the scan (Symbol.signals_enabled). Measured on 36
 # coins, 2019-2026: the edge is ~+0.09R/trade on the most liquid coins vs ~+0.03R on
 # the rest, before the extra real-world costs of thin markets. 0 = off (manual).
-SIGNAL_UNIVERSE_TOP_N = env.int("SIGNAL_UNIVERSE_TOP_N", default=20)
+#
+# 50 since 2026-10-20, raised from 20 — and this one is a PRODUCT decision that the
+# measurement above does not endorse, so it is labelled as such rather than dressed up.
+# Paid users were receiving signals on 20 coins while the app charts ~199, which reads
+# as a thin feed; more coverage is worth some per-trade edge to them. What it is NOT is
+# free, and the two costs are the reason this is 50 rather than "all":
+#
+#   * Edge. The gradient above is real: the thinner the coin, the smaller the edge,
+#     and the 0.1% round trip BACKTEST_COST_PCT charges is a BTC-grade fee. A thin alt
+#     realistically costs 0.3-0.5% round trip once spread and slippage are counted,
+#     which at the ~8% stops SIGNAL_ATR_BAND_BY_TIMEFRAME produces on volatile coins is
+#     ~0.04R a trade — roughly the entire measured +0.05R edge. Past some rank the
+#     signals are still generated and simply do not make money.
+#   * Request budget. Each symbol costs ~4-5 Hyperliquid candle fetches per scan (one
+#     per signal timeframe, plus the HTF and daily reads). At 50 that is ~225 a scan;
+#     at 199 it would be ~900 every 5 minutes, sharing one IP budget with the live
+#     relay and the evaluator. universe.py already records being 429'd by ~25 age
+#     lookups fired back to back, and a throttled scan degrades the top-20 coins too —
+#     the ones that actually pay.
+#
+# Where exactly the edge stops covering costs is NOT yet measured per rank; that work
+# is outstanding. Until it lands, treat 50 as a deliberate trade, re-check
+# `feed_stats` by symbol, and prefer raising strategy count over coin count for feed
+# volume — strategies multiply signals without diluting the edge per trade.
+SIGNAL_UNIVERSE_TOP_N = env.int("SIGNAL_UNIVERSE_TOP_N", default=50)
 # ...counting only coins with this many days of daily history on Hyperliquid, so a
 # brand-new launch topping the volume chart waits for a track record. 0 = no check.
 SIGNAL_UNIVERSE_MIN_HISTORY_DAYS = env.int("SIGNAL_UNIVERSE_MIN_HISTORY_DAYS", default=365)
