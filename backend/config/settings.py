@@ -940,9 +940,29 @@ def _parse_atr_bands(raw: str) -> dict:
 # what made 1h unshippable. The two frames win at the same rate (53.6% vs 53.9%); 1h
 # just paid 0.046R a trade in costs against 4h's 0.022R.
 #
-# Measured on 7.7 years of BTC 1h (backtest --history, Binance archive, 0.1% round
-# trip, out-of-sample from 2024-01-01). Out-of-sample half only, 1% risk compounding,
-# every cell differing ONLY in the band and the expiry clock:
+# THE EVIDENCE, in the order it should be weighed. All of it is `backtest --history`
+# on the Binance archive, 2019-2026, 0.1% round trip charged, out-of-sample from
+# 2024-01-01, 1% risk compounding, and only the OUT-OF-SAMPLE half is quoted.
+#
+# 1. Five coins (BTC, ETH, SOL, BNB, XRP) on 1h — the number that justifies this,
+#    because it includes the coins the band was NOT chosen on:
+#
+#     band/clock         win     exp(TP1)   capital    CAGR    maxDD   PF     n
+#     3.0-4.5  /  48    53.5%     +0.02R     -20.8%   -8.2%    58.2%  1.02  8894
+#     4.5-6.75 / 120    54.4%     +0.05R    +190.1%  +47.3%    54.9%  1.10  4328
+#
+#    Every coin improved, none regressed: BTC -0.02 -> +0.02, ETH +0.01 -> +0.03,
+#    XRP +0.02 -> +0.06, BNB +0.02 -> +0.08, SOL +0.05 -> +0.08 (whole-sample, per
+#    symbol). In-sample and out-of-sample agree at +0.05R on n=7134/4328.
+#
+#    For scale, 4h over the identical window and coins earns the SAME +0.05R a trade
+#    on 1900 positions, +87.1% capital, 1.12 PF and a -37.0% drawdown. So this does
+#    not make 1h better per trade than 4h — it makes it EQUAL per trade, and the extra
+#    return is frequency bought with a deeper drawdown and more concurrency. Read
+#    `max_concurrent` on any of these curves before quoting the CAGR: 15 overlapping
+#    positions at 1% each is a 15% risk curve, not a 1% one.
+#
+# 2. The band x clock grid that FOUND these values was swept on BNB alone (1h):
 #
 #     band        clock   win     exp(TP1)   capital   CAGR     maxDD   PF     n
 #     3.0-4.5      48    53.6%     +0.01R     -9.3%    -3.5%    35.1%   1.00  1502
@@ -953,6 +973,13 @@ def _parse_atr_bands(raw: str) -> dict:
 #     6.0-9.0      48    55.7%     +0.03R    +28.5%    +9.6%    15.2%   1.10  1308
 #     6.0-9.0     120    54.4%     +0.04R    +30.0%   +10.0%    13.4%   1.12   686
 #     8.0-12.0    168    59.2%     +0.10R    +48.6%   +15.6%    20.3%   1.33   465
+#
+#    Treat that grid as the SEARCH, not the proof, and discount its magnitudes: BNB
+#    is joint-best for this band (+0.08R) while BTC is worst (+0.02R), so +0.07R was
+#    a favourable coin's number, not the roster's. The roster's is +0.05R, in row 1.
+#    (The sweep was run with --max-symbols 1, which silently means "first by
+#    sort_order then ticker that has archive data" — alphabetically BNB. Name coins
+#    with --symbols instead; it exists now so this cannot recur.)
 #
 # Four things that comment should not let you forget:
 #
@@ -969,18 +996,19 @@ def _parse_atr_bands(raw: str) -> dict:
 #     tighter 3.0-4.5 and the wider 6.0-9.0 at the same clock — so it is not the edge
 #     of a swept range. Per-trade R keeps climbing out to 8.0-12.0, but on half the
 #     trades and twice the drawdown, which is a worse curve for the same edge.
-#   * It held up out of sample: +0.08R in-sample vs +0.07R out, 56.1% win rate in
-#     both halves. That stability is the reason to trust it, not the headline CAGR.
+#   * It held up out of sample: +0.05R in BOTH halves on the five-coin roster, and
+#     every coin moved the same way. That agreement is the reason to trust it, not
+#     the headline CAGR, which is mostly concurrency.
 #   * It is a SHARP peak on both axes, and that is a standing reason for suspicion,
 #     not a selling point. 120 bars is an interior optimum like the band is (48 and
-#     192 both fall back to +0.01R), so the chosen cell is not the edge of either
-#     sweep — but a best-of-grid cell found by searching a grid is exactly how a
-#     parameter gets fitted to one coin's rhythm. What keeps it: the in/out-of-sample
-#     agreement above, a mechanism that was predicted from the fee arithmetic BEFORE
-#     the sweep rather than invented to explain it, and that it survived on coins it
-#     was not chosen on (see the multi-coin run in CLAUDE.md §24). Re-run that check
-#     before widening this to another frame, and treat a cell that only works on BTC
-#     as a BTC artifact (newPRD §13, §35).
+#     192 both fall back to +0.01R on the swept coin), so the chosen cell is not the
+#     edge of either sweep — but a best-of-grid cell found by searching a grid is
+#     exactly how a parameter gets fitted to one coin's rhythm, and here the swept
+#     coin really was the flattering one. What keeps it anyway: the five-coin
+#     before/after in row 1, where every coin improved, and a mechanism predicted
+#     from the fee arithmetic BEFORE the sweep rather than invented to explain it.
+#     Re-run the multi-coin check before widening this to another frame, and treat a
+#     cell that only works on one coin as that coin's artifact (newPRD §13, §35).
 #
 # 4h is deliberately NOT listed: it is already at the band it was measured on, and an
 # entry here would just restate the asset-class default while hiding where the number
@@ -1149,7 +1177,31 @@ SIGNAL_SCAN_SYMBOL_LIMIT = env.int("SIGNAL_SCAN_SYMBOL_LIMIT", default=0)
 # chartable but are skipped by the scan (Symbol.signals_enabled). Measured on 36
 # coins, 2019-2026: the edge is ~+0.09R/trade on the most liquid coins vs ~+0.03R on
 # the rest, before the extra real-world costs of thin markets. 0 = off (manual).
-SIGNAL_UNIVERSE_TOP_N = env.int("SIGNAL_UNIVERSE_TOP_N", default=20)
+#
+# 50 since 2026-10-20, raised from 20 — and this one is a PRODUCT decision that the
+# measurement above does not endorse, so it is labelled as such rather than dressed up.
+# Paid users were receiving signals on 20 coins while the app charts ~199, which reads
+# as a thin feed; more coverage is worth some per-trade edge to them. What it is NOT is
+# free, and the two costs are the reason this is 50 rather than "all":
+#
+#   * Edge. The gradient above is real: the thinner the coin, the smaller the edge,
+#     and the 0.1% round trip BACKTEST_COST_PCT charges is a BTC-grade fee. A thin alt
+#     realistically costs 0.3-0.5% round trip once spread and slippage are counted,
+#     which at the ~8% stops SIGNAL_ATR_BAND_BY_TIMEFRAME produces on volatile coins is
+#     ~0.04R a trade — roughly the entire measured +0.05R edge. Past some rank the
+#     signals are still generated and simply do not make money.
+#   * Request budget. Each symbol costs ~4-5 Hyperliquid candle fetches per scan (one
+#     per signal timeframe, plus the HTF and daily reads). At 50 that is ~225 a scan;
+#     at 199 it would be ~900 every 5 minutes, sharing one IP budget with the live
+#     relay and the evaluator. universe.py already records being 429'd by ~25 age
+#     lookups fired back to back, and a throttled scan degrades the top-20 coins too —
+#     the ones that actually pay.
+#
+# Where exactly the edge stops covering costs is NOT yet measured per rank; that work
+# is outstanding. Until it lands, treat 50 as a deliberate trade, re-check
+# `feed_stats` by symbol, and prefer raising strategy count over coin count for feed
+# volume — strategies multiply signals without diluting the edge per trade.
+SIGNAL_UNIVERSE_TOP_N = env.int("SIGNAL_UNIVERSE_TOP_N", default=50)
 # ...counting only coins with this many days of daily history on Hyperliquid, so a
 # brand-new launch topping the volume chart waits for a track record. 0 = no check.
 SIGNAL_UNIVERSE_MIN_HISTORY_DAYS = env.int("SIGNAL_UNIVERSE_MIN_HISTORY_DAYS", default=365)

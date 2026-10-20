@@ -563,6 +563,16 @@ class Command(BaseCommand):
                                  "list is whatever order the DB returns, which in practice "
                                  "is all crypto — so every parameter tuned on a plain run "
                                  "is crypto-derived even though it also governs forex.")
+        parser.add_argument("--symbols", default=None, metavar="TICKER,...",
+                            help="Scan exactly these tickers (e.g. BTC-USD,ETH-USD), in "
+                                 "this order, instead of the first --max-symbols rows. "
+                                 "Use it for any result you intend to quote: "
+                                 "--max-symbols means 'the first N by sort_order then "
+                                 "ticker that have archive data', which is alphabetical "
+                                 "in practice — a sweep meant for BTC was run end to end "
+                                 "on BNB because BNB sorts first, and the only clue was "
+                                 "one line of output nobody re-read. Unknown or "
+                                 "archive-less tickers are an error, not a silent skip.")
         parser.add_argument("--max-symbols", type=int, default=20,
                             help="How many active symbols to test (default 20).")
         parser.add_argument("--candles", type=int, default=500,
@@ -993,12 +1003,32 @@ class Command(BaseCommand):
         sym_qs = Symbol.objects.filter(is_active=True)
         if opts.get("asset_class"):
             sym_qs = sym_qs.filter(asset_class=opts["asset_class"])
+        wanted = [t.strip() for t in (opts.get("symbols") or "").split(",") if t.strip()]
+        if wanted:
+            # Named explicitly: honour the order given and refuse anything missing,
+            # rather than quietly scanning a shorter list than the operator asked for.
+            by_ticker = {s.ticker: s for s in sym_qs}
+            missing = [t for t in wanted if t not in by_ticker]
+            if missing:
+                raise CommandError(
+                    f"--symbols: no active symbol(s) {missing}. "
+                    f"Known: {', '.join(sorted(by_ticker)) or '(none)'}")
+            sym_qs = [by_ticker[t] for t in wanted]
         if _HISTORY is not None:
             # Only symbols with archive data: the rest would silently contribute nothing
             # and make the run look broader than it is.
             have = [s for s in sym_qs if history.pair_for(s)
                     and _history_candles(s, timeframes[0])]
-            symbols = have[:opts["max_symbols"]]
+            if wanted:
+                # An explicitly named coin with no archive is a broken run, not a
+                # narrower one — the whole point of naming it was to scan it.
+                gap = [s.ticker for s in sym_qs if s not in have]
+                if gap:
+                    raise CommandError(
+                        f"--symbols: no {timeframes[0]} archive for {gap}. Run: "
+                        f"manage.py fetch_history --intervals "
+                        f"{','.join(sorted(set(timeframes) | {'4h', '1d'}))}")
+            symbols = have if wanted else have[:opts["max_symbols"]]
             if not symbols:
                 raise CommandError(
                     "--history: no archive data for any active symbol on "
@@ -1007,7 +1037,9 @@ class Command(BaseCommand):
             self.stdout.write(self.style.WARNING(
                 "History symbols: " + ", ".join(s.ticker for s in symbols)))
         else:
-            symbols = list(sym_qs[:opts["max_symbols"]])
+            symbols = list(sym_qs) if wanted else list(sym_qs[:opts["max_symbols"]])
+            self.stdout.write(self.style.WARNING(
+                "Symbols: " + ", ".join(s.ticker for s in symbols)))
         if not symbols:
             self.stderr.write(self.style.ERROR("No active symbols — run sync_symbols."))
             return
