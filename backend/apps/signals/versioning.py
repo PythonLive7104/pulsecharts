@@ -108,6 +108,11 @@ EXTRA_RULE_SETTINGS = (
     "SIGNAL_REVERSION_HTF_GUARD",
     "SIGNAL_ATR_STOP_FLOOR",
     "SIGNAL_ATR_STOP_CAP",
+    # Overrides the two above per timeframe, so it decides the stop — and therefore
+    # every TP — on any frame it lists. Must version: it is the whole difference
+    # between the 1h feed that lost money and the one that didn't.
+    "SIGNAL_ATR_BAND_BY_TIMEFRAME",
+    "SIGNAL_EVAL_BARS_BY_TIMEFRAME",
     "SIGNAL_ATR_FLOOR_REVERSION",
     "SIGNAL_ATR_CAP_REVERSION",
 )

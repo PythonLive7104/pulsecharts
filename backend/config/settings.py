@@ -896,6 +896,104 @@ SIGNAL_ATR_STOP_CAP = {
     "forex": env.float("SIGNAL_ATR_CAP_FOREX", default=3.0),
 }
 
+
+def _parse_atr_bands(raw: str) -> dict:
+    """"1h:4.5:6.75,4h:3:4.5" -> {"1h": (4.5, 6.75), "4h": (3.0, 4.5)}.
+
+    Raises on a malformed entry rather than skipping it, for the same reason
+    _parse_strategy_floors does: a typo'd timeframe would silently leave that frame on
+    the asset-class band while the operator believes it was overridden, and a stop
+    geometry that quietly isn't applied is worse than a deploy that fails loudly.
+    """
+    from django.core.exceptions import ImproperlyConfigured
+
+    bands = {}
+    for part in (raw or "").split(","):
+        part = part.strip()
+        if not part:
+            continue
+        bits = part.split(":")
+        if len(bits) != 3 or not bits[0].strip():
+            raise ImproperlyConfigured(
+                f"SIGNAL_ATR_BAND_BY_TIMEFRAME: expected 'tf:floor:cap', got {part!r}"
+            )
+        tf = bits[0].strip()
+        try:
+            floor, cap = float(bits[1]), float(bits[2])
+        except ValueError:
+            raise ImproperlyConfigured(
+                f"SIGNAL_ATR_BAND_BY_TIMEFRAME: floor/cap must be numbers (in {part!r})"
+            ) from None
+        if floor <= 0 or cap < floor:
+            raise ImproperlyConfigured(
+                f"SIGNAL_ATR_BAND_BY_TIMEFRAME: need 0 < floor <= cap (in {part!r})"
+            )
+        bands[tf] = (floor, cap)
+    return bands
+
+
+# PER-TIMEFRAME override of the trend stop band above, which is otherwise one ATR
+# multiple shared by every frame. That sharing is a bug in disguise, because the band
+# is denominated in ATR and ATR scales with the bar: at 3.0-4.5xATR a 1h BTC stop is
+# ~2.2% wide where the 4h stop is ~4.5%. Risk is the denominator of R, so the SAME fee
+# costs about twice as much R on the faster frame — and that, not signal quality, is
+# what made 1h unshippable. The two frames win at the same rate (53.6% vs 53.9%); 1h
+# just paid 0.046R a trade in costs against 4h's 0.022R.
+#
+# Measured on 7.7 years of BTC 1h (backtest --history, Binance archive, 0.1% round
+# trip, out-of-sample from 2024-01-01). Out-of-sample half only, 1% risk compounding,
+# every cell differing ONLY in the band and the expiry clock:
+#
+#     band        clock   win     exp(TP1)   capital   CAGR     maxDD   PF     n
+#     3.0-4.5      48    53.6%     +0.01R     -9.3%    -3.5%    35.1%   1.00  1502
+#     3.0-4.5     120    53.0%     +0.01R     +2.8%    +1.0%    20.0%   1.02   924
+#     4.5-6.75     48    53.7%     +0.01R     +4.1%    +1.5%    34.5%   1.02  1373
+#     4.5-6.75    120    56.1%     +0.07R    +64.4%   +19.8%    11.0%   1.19   745
+#     4.5-6.75    192    52.2%     +0.01R     -2.7%    -1.0%    25.6%   1.00   581
+#     6.0-9.0      48    55.7%     +0.03R    +28.5%    +9.6%    15.2%   1.10  1308
+#     6.0-9.0     120    54.4%     +0.04R    +30.0%   +10.0%    13.4%   1.12   686
+#     8.0-12.0    168    59.2%     +0.10R    +48.6%   +15.6%    20.3%   1.33   465
+#
+# Four things that comment should not let you forget:
+#
+#   * The two levers are an INTERACTION, not two independent gains, so pair them or
+#     change neither — the same lesson SIGNAL_EVAL_BARS_BY_ASSET records for forex.
+#     Read the grid, not the rows: at the old 3.0-4.5 band the longer clock buys
+#     +0.00R, and at the old 48-bar clock this band buys +0.00R. Together they are
+#     worth +0.06R. The mechanism is in the arithmetic above — the wider band is what
+#     stops the fee dominating R, and the longer clock is what lets a target one full
+#     (now larger) risk distance away actually be reached inside the call's life. A
+#     wide stop on a short clock just scratches at 0R having paid the fee, which is
+#     the 4.5-6.75/48 row: more trades than any other cell and a 34% drawdown.
+#   * 4.5-6.75 is an INTERIOR peak on capital and drawdown — better than both the
+#     tighter 3.0-4.5 and the wider 6.0-9.0 at the same clock — so it is not the edge
+#     of a swept range. Per-trade R keeps climbing out to 8.0-12.0, but on half the
+#     trades and twice the drawdown, which is a worse curve for the same edge.
+#   * It held up out of sample: +0.08R in-sample vs +0.07R out, 56.1% win rate in
+#     both halves. That stability is the reason to trust it, not the headline CAGR.
+#   * It is a SHARP peak on both axes, and that is a standing reason for suspicion,
+#     not a selling point. 120 bars is an interior optimum like the band is (48 and
+#     192 both fall back to +0.01R), so the chosen cell is not the edge of either
+#     sweep — but a best-of-grid cell found by searching a grid is exactly how a
+#     parameter gets fitted to one coin's rhythm. What keeps it: the in/out-of-sample
+#     agreement above, a mechanism that was predicted from the fee arithmetic BEFORE
+#     the sweep rather than invented to explain it, and that it survived on coins it
+#     was not chosen on (see the multi-coin run in CLAUDE.md §24). Re-run that check
+#     before widening this to another frame, and treat a cell that only works on BTC
+#     as a BTC artifact (newPRD §13, §35).
+#
+# 4h is deliberately NOT listed: it is already at the band it was measured on, and an
+# entry here would just restate the asset-class default while hiding where the number
+# comes from. Unlisted frames fall through to SIGNAL_ATR_STOP_FLOOR/CAP.
+#
+# Mean reversion ignores this entirely — fades have their own band
+# (SIGNAL_ATR_*_REVERSION) and their edge depends on the tight stop keeping TP2/TP3
+# reachable. This is a rule setting (versioning.ENGINE_SETTINGS), so changing it mints
+# a new StrategyVersion and the switch is visible in the track record.
+SIGNAL_ATR_BAND_BY_TIMEFRAME = _parse_atr_bands(
+    env("SIGNAL_ATR_BAND_BY_TIMEFRAME", default="1h:4.5:6.75")
+)
+
 # MEAN-REVERSION geometry. A fade targets the mean, typically 1-2 ATR away, so the
 # trend band above (3.0-4.5xATR on crypto) puts TP1 — one full risk distance — beyond
 # where the trade was ever going. These tighter multiples are what make the same
@@ -1096,6 +1194,53 @@ SIGNAL_EVAL_BARS_BY_ASSET = {
     "crypto": env.int("SIGNAL_EVAL_BARS_CRYPTO", default=0),
     "forex": env.int("SIGNAL_EVAL_BARS_FOREX", default=0),
 }
+
+
+def _parse_eval_bars_by_tf(raw: str) -> dict:
+    """"1h:120,4h:48" -> {"1h": 120, "4h": 48}. Raises on a malformed entry for the
+    same reason the other per-key parsers here do — a gate or clock that silently
+    isn't applied is worse than a deploy that fails loudly."""
+    from django.core.exceptions import ImproperlyConfigured
+
+    out = {}
+    for part in (raw or "").split(","):
+        part = part.strip()
+        if not part:
+            continue
+        tf, sep, value = part.partition(":")
+        if not sep or not tf.strip():
+            raise ImproperlyConfigured(
+                f"SIGNAL_EVAL_BARS_BY_TIMEFRAME: expected 'tf:bars', got {part!r}"
+            )
+        try:
+            bars = int(value)
+        except ValueError:
+            raise ImproperlyConfigured(
+                f"SIGNAL_EVAL_BARS_BY_TIMEFRAME: {value!r} is not an integer (in {part!r})"
+            ) from None
+        if bars <= 0:
+            raise ImproperlyConfigured(
+                f"SIGNAL_EVAL_BARS_BY_TIMEFRAME: bars must be positive (in {part!r})"
+            )
+        out[tf.strip()] = bars
+    return out
+
+
+# PER-TIMEFRAME override of the expiry clock, resolved BEFORE the asset-class override
+# above. It exists for the same reason SIGNAL_ATR_BAND_BY_TIMEFRAME does: 48 bars is
+# 8 days on 4h and 2 days on 1h, so one number is two different trades.
+#
+# This is the junior partner of the two. Measured on 7.7 years of BTC 1h, widening the
+# clock from 48 to 120 bars at the SHIPPED stop band moved out-of-sample expectancy by
+# +0.01R and nothing else (-9.3% -> +2.8% capital, profit factor 1.00 -> 1.02) — the
+# edge was never dying of impatience, it was dying of fees. It earns its place only
+# alongside the wider band, where a target one full risk distance away is a bigger %
+# move and genuinely needs more bars to get there.
+#
+# Unset for a frame = fall through to SIGNAL_EVAL_BARS_BY_ASSET, then SIGNAL_EVAL_BARS.
+SIGNAL_EVAL_BARS_BY_TIMEFRAME = _parse_eval_bars_by_tf(
+    env("SIGNAL_EVAL_BARS_BY_TIMEFRAME", default="1h:120")
+)
 
 # Shadow mode: keep generating + evaluating signals but DON'T surface them in the
 # user feed (run for weeks, validate realized accuracy before any claims, 13.7).
