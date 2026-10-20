@@ -655,13 +655,19 @@ def _invalidate_trend_breaks(sym, tf, ind, now) -> int:
     return n
 
 
-def _eval_bars_for(asset_class: str) -> int:
-    """Expiry clock in bars for this asset class (SIGNAL_EVAL_BARS_BY_ASSET).
+def _eval_bars_for(asset_class: str, timeframe: str | None = None) -> int:
+    """Expiry clock in bars for this call: timeframe -> asset class -> global.
 
-    Forex trades on a wider stop need materially longer to resolve than crypto ones —
-    see the settings comment. 0/unset falls back to the shared SIGNAL_EVAL_BARS, so
-    this is inert until configured.
+    The TIMEFRAME is checked first (SIGNAL_EVAL_BARS_BY_TIMEFRAME) because a count of
+    bars is not a count of hours — 48 bars is 2 days on 1h and 8 days on 4h — and the
+    1h band is wide enough that its targets need more bars to be reached at all.
+    Asset class comes next (SIGNAL_EVAL_BARS_BY_ASSET): forex trades on a wider stop
+    need materially longer to resolve than crypto ones. Both are unset-by-default per
+    key and fall through to the shared SIGNAL_EVAL_BARS.
     """
+    by_tf = getattr(settings, "SIGNAL_EVAL_BARS_BY_TIMEFRAME", None) or {}
+    if timeframe and by_tf.get(timeframe):
+        return int(by_tf[timeframe])
     per = getattr(settings, "SIGNAL_EVAL_BARS_BY_ASSET", None) or {}
     return int(per.get(asset_class) or settings.SIGNAL_EVAL_BARS)
 
@@ -747,7 +753,7 @@ def run_evaluation(limit: int | None = None) -> dict:
                 mfe_pct=res["mfe_pct"], mae_pct=res["mae_pct"], **tagged,
             )
             resolved += updated  # 0 if it was already closed elsewhere
-        elif len(eval_candles) >= _eval_bars_for(sig.symbol.asset_class):
+        elif len(eval_candles) >= _eval_bars_for(sig.symbol.asset_class, sig.timeframe):
             # Out of time. Close it at whatever it actually banked: a call that tagged
             # TP1/TP2 books that (the partial is real money), one that never reached a
             # target expires flat. Either way the slot is freed so the strategy can

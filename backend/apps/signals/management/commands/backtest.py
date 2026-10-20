@@ -36,6 +36,7 @@ from apps.signals.evaluate import walk
 from apps.signals.indicators import compute_indicators, _ema, _market_structure
 from apps.signals.levels import TP_MULTIPLES, compute_levels
 from apps.signals.models import SignalService
+from apps.signals import performance
 from apps.signals import pregate
 from apps.signals.pregate import (
     EMA_STACK_EXEMPT,
@@ -43,7 +44,7 @@ from apps.signals.pregate import (
     confidence_score,
     passes_pregate,
 )
-from apps.signals.tasks import _HTF_MAP, _closed_candles
+from apps.signals.tasks import _HTF_MAP, INTERVAL_SECONDS, _closed_candles
 
 # --- frozen candle snapshot (--cache-dir) -----------------------------------
 # Every run of this command refetches live candles, so the N-bar window slides
@@ -217,6 +218,26 @@ def _record(bucket, res):
     bucket["mae"] += res["mae_pct"]
 
 
+def _live_r(res) -> float:
+    """Net R of one resolved trade under the LIVE exit model (SIGNAL_EXIT_MODEL).
+
+    The buckets above carry every exit model at once so they can be compared; a
+    capital curve needs the single number a user would actually have realized, so
+    this collapses `res` to that one. It mirrors `_record`'s arithmetic branch for
+    branch — test_performance asserts the two agree, because a silent divergence
+    here would show up as a wrong equity curve and nowhere else.
+    """
+    cost = res.get("cost_r", 0.0)
+    if res.get("expired"):
+        return -cost                      # scratch: 0R gross, the spread still paid
+    best_tp = res["best_tp"]
+    if best_tp < 1:
+        return -1.0 - cost
+    if settings.SIGNAL_EXIT_MODEL == "tp1":
+        return TP_MULTIPLES[1] - cost
+    return SCALEOUT_R[best_tp] - cost
+
+
 # --- breakdowns -----------------------------------------------------------
 # UTC session buckets. Forex liquidity and behaviour are session-driven in a way
 # crypto is not: the Asian range is quiet and mean-reverting, London open is the
@@ -257,19 +278,28 @@ EXIT_LAB = [
     ("33/33/34, BE@TP1          ", (1 / 3, 1 / 3, 1 / 3), 1, None),
 ]
 
-# Bars of forward path replayed per trade. The base walk stops at its own resolution;
-# schemes that hold a runner can outlive it, so they need their own horizon — capped
-# so a never-resolving trade can't walk the whole series.
+# Hard ceiling on the forward path replayed per trade, for a run with no expiry clock
+# at all. The clock (--eval-bars) is the real horizon whenever there is one — see
+# `horizon` on _replay_exits.
 REPLAY_BARS = 300
 
 
-def _replay_exits(direction, entry, stop0, tps, future, atr):
+def _replay_exits(direction, entry, stop0, tps, future, atr, horizon=None):
     """Realized R per scheme in EXIT_LAB, from one pass over the forward candles.
 
     Intrabar ambiguity is resolved the same way evaluate.walk does: when a bar touches
     both a stop and a target, whichever is nearer the open is assumed first, and with
     no open available the stop wins (worst case). Returns None if the trade is
     degenerate (no risk distance).
+
+    `horizon` is the expiry clock in bars (the live SIGNAL_EVAL_BARS, as --eval-bars
+    passes it to _outcome). It MUST be passed whenever the run has one, because the
+    whole question this lab answers — is a runner worth holding? — is decided by how
+    long the runner is allowed to live. Replaying 300 bars while the live evaluator
+    closes the call at 48 silently compared schemes nobody can trade: on 4h that is 50
+    days of road against the 8 days live gives, which is exactly the window a trailing
+    or late-breakeven scheme needs to come good. It ranked the ladders above a full
+    TP1 exit on the same trades where the clock-aware aggregate ranked them below.
     """
     buy = direction == "BUY"
     risk = abs(entry - stop0)
@@ -283,7 +313,7 @@ def _replay_exits(direction, entry, stop0, tps, future, atr):
     state = [{"r": 0.0, "left": 1.0, "stop": stop0, "hit": 0} for _ in EXIT_LAB]
     peak = entry  # running extreme, for the trailing schemes
 
-    for c in future[:REPLAY_BARS]:
+    for c in future[:min(horizon, REPLAY_BARS) if horizon else REPLAY_BARS]:
         hi, lo, opn = c["high"], c["low"], c.get("open")
         peak = max(peak, hi) if buy else min(peak, lo)
         bar_tp = 0
@@ -328,11 +358,23 @@ def _replay_exits(direction, entry, stop0, tps, future, atr):
                     st["r"] += st["left"] * to_r(tps[-1])
                     st["left"] = 0.0
 
-    # Anything still open at the horizon closes at its scheme's stop — conservative,
-    # and identical across schemes so the comparison stays fair.
+    # Anything still open when the clock runs out is credited with what is LOCKED IN
+    # and nothing more: the scheme's own stop if it has been carried into profit,
+    # otherwise flat.
+    #
+    # Both halves of that matter. It used to close the remainder at the scheme's stop
+    # unconditionally, which charged a full -1R to every trade that expired without
+    # reaching TP1 — a loss the live evaluator never books (tasks.run_evaluation
+    # expires an untriggered call flat) and one `_record` scores as a 0R scratch, so
+    # the lab's R could not be compared with any other figure in this command. Flooring
+    # at flat alone would then have robbed the two TRAILING schemes of profit a stop
+    # above entry had already secured — the market cannot take that back, so crediting
+    # it is the floor, not optimism. Schemes whose stop sits at breakeven after TP1
+    # (every ladder here) and the full TP1 exit are unaffected either way, which is why
+    # the live row still reconciles with `_record`.
     for st in state:
         if st["left"] > 1e-9:
-            st["r"] += st["left"] * to_r(st["stop"])
+            st["r"] += st["left"] * max(to_r(st["stop"]), 0.0)
             st["left"] = 0.0
     return [st["r"] for st in state]
 
@@ -391,7 +433,7 @@ def _atr_of(candles):
 
 def _outcome(direction, snap, future, asset_class="crypto", strategy_slug=None,
              atr_floor=None, atr_cap=None, rev_floor=None, rev_cap=None, eval_bars=None,
-             pullback=None, fill_bars=3, delay=None):
+             pullback=None, fill_bars=3, delay=None, timeframe=None):
     """Deterministic levels + walk for a setup; None if degenerate or unresolved.
 
     Mean-reversion setups get their own (much tighter) ATR stop band — with the trend
@@ -421,9 +463,18 @@ def _outcome(direction, snap, future, asset_class="crypto", strategy_slug=None,
     else:
         # --atr-floor/--atr-cap sweep the TREND band only; reversion keeps its own
         # (a fade with a trend-width stop can't reach TP1 by construction).
+        #
+        # Resolution order mirrors engine._stop_mults exactly, flag first: the frame's
+        # own band (SIGNAL_ATR_BAND_BY_TIMEFRAME) beats the asset-class default, so a
+        # plain `backtest --timeframes 1h` measures the geometry live would use rather
+        # than the one 1h was retired on.
+        per_tf = (getattr(settings, "SIGNAL_ATR_BAND_BY_TIMEFRAME", None) or {}).get(timeframe)
+        tf_floor, tf_cap = per_tf if per_tf else (None, None)
         floor = atr_floor if atr_floor is not None else (
+            tf_floor if tf_floor is not None else
             settings.SIGNAL_ATR_STOP_FLOOR.get(asset_class) or settings.SIGNAL_ATR_STOP_FLOOR["crypto"])
         cap = atr_cap if atr_cap is not None else (
+            tf_cap if tf_cap is not None else
             settings.SIGNAL_ATR_STOP_CAP.get(asset_class) or settings.SIGNAL_ATR_STOP_CAP["crypto"])
     entry = float(snap["close"])
     atr_v = float(snap["atr"])
@@ -590,6 +641,23 @@ class Command(BaseCommand):
                                  "TRADE as spread_pct / risk_pct, so a wide-stop trade "
                                  "correctly pays proportionally less. ~0.0087 = 1 pip on "
                                  "EUR-USD; ~0.05 = a 0.05%% crypto round trip.")
+        parser.add_argument("--capital", type=float, default=10000.0, metavar="USD",
+                            help="Starting capital for the capital-curve section "
+                                 "(default 10000). The curve answers the question a win "
+                                 "rate cannot: what the strategy did to MONEY.")
+        parser.add_argument("--risk-pct", type=float, default=1.0, metavar="PCT",
+                            help="Risk per trade as %% of equity for the capital curve "
+                                 "(default 1.0). Note this is per TRADE: concurrent "
+                                 "trades multiply it, and the curve reports the peak.")
+        parser.add_argument("--no-compound", action="store_true",
+                            help="Size every trade off the STARTING capital instead of "
+                                 "current equity, which isolates the strategy's edge from "
+                                 "the compounding math.")
+        parser.add_argument("--no-curve", action="store_true",
+                            help="Skip the capital-curve section (R-space results only).")
+        parser.add_argument("--monthly", action="store_true",
+                            help="Print month-by-month returns as well as yearly "
+                                 "(long --history runs only; verbose).")
         parser.add_argument("--tp-multiples", default=None, metavar="R1,R2,R3",
                             help="Override the TP ladder in R multiples (live: 1,2,3 — "
                                  "levels.TP_MULTIPLES). Moving TP1 BELOW 1R is the only "
@@ -964,7 +1032,18 @@ class Command(BaseCommand):
         split_on = bool(holdout) or _SPLIT_TS is not None
         rb_test = {svc.slug: _blank(svc.name) for svc in services} if split_on else None
         # Per-scheme totals for --exit-lab: index-aligned with EXIT_LAB.
-        exit_lab = {"on": bool(opts.get("exit_lab")), "n": 0, "r": [0.0] * len(EXIT_LAB)}
+        exit_lab = {"on": bool(opts.get("exit_lab")), "n": 0, "r": [0.0] * len(EXIT_LAB),
+                    # Which expiry clock(s) the replay actually ran under. Reported
+                    # rather than assumed: the clock IS the variable that decides
+                    # whether holding a runner can pay, so a scheme ranking printed
+                    # without it is unreadable.
+                    "clocks": set()}
+        # Chronological positions for the capital curve (newPRD §7). Skipped under
+        # --llm, where trades are a budget-capped sample of the setups rather than
+        # everything the strategy would have taken — an equity curve from a sample is
+        # not a curve of anything. `seen` dedupes agreeing strategies to one position.
+        trade_log = None if (llm_on or opts.get("no_curve")) else {
+            "seen": set(), "train": [], "test": [], "collapsed": 0}
         # Optional breakdowns. Each maps bucket -> the same _blank() shape as `rb`, so
         # _record() fills them with no special-casing.
         by_session = {} if opts.get("by_session") else None
@@ -1034,7 +1113,7 @@ class Command(BaseCommand):
                                  overlap_sets, rb_test, holdout, conf_sim,
                                  opts.get("entry_pullback"), opts.get("fill_bars", 3),
                                  opts.get("entry_delay"), opts.get("fade_momentum_veto"),
-                                 gate_stats)
+                                 gate_stats, trade_log)
                 series += 1
                 self.stdout.write(f"  · {sym.ticker} {tf}", ending="\r")
             if llm_on and budget["left"] <= 0:
@@ -1060,6 +1139,19 @@ class Command(BaseCommand):
             self._report_holdout_delta(rb, rb_test)
         else:
             self._report(rb, series)
+        if trade_log is not None:
+            bench = self._benchmark_candles(symbols)
+            if trade_log["test"]:
+                self._report_capital(trade_log["train"], opts, "IN-SAMPLE", bench)
+                self._report_capital(trade_log["test"], opts,
+                                     "OUT-OF-SAMPLE (the only half that is evidence)",
+                                     bench)
+            else:
+                self._report_capital(trade_log["train"], opts, "whole sample", bench)
+            if trade_log["collapsed"]:
+                self.stdout.write(
+                    f"\n  ({trade_log['collapsed']} extra strategy rows collapsed into "
+                    "positions already counted — agreeing strategies are one trade.)")
         if gate_stats:
             self._report_gates(gate_stats)
         if conf_sim:
@@ -1084,14 +1176,19 @@ class Command(BaseCommand):
                 )
 
         if exit_lab["on"] and exit_lab["n"]:
+            clocks = "/".join(str(c) for c in sorted(x for x in exit_lab["clocks"] if x))
             self.stdout.write(self.style.MIGRATE_HEADING(
-                f"\n  Exit lab — replayed per trade (n={exit_lab['n']}), same trades:"))
+                f"\n  Exit lab — replayed per trade (n={exit_lab['n']}), same trades, "
+                f"{clocks or 'no'}-bar clock:"))
             ranked = sorted(zip(EXIT_LAB, exit_lab["r"]), key=lambda x: -x[1])
             for (label, banks, be_at, trail), total in ranked:
                 self.stdout.write(f"    {label} exp={total / exit_lab['n']:+.3f}R")
             self.stdout.write(
                 "    (path-replayed, so trailing/later-BE schemes are exact rather than\n"
-                "     derived from the winners-by-best-TP aggregate above.)")
+                "     derived from the winners-by-best-TP aggregate above. GROSS of costs,\n"
+                "     which are the same per trade for every scheme. Held only as long as\n"
+                "     the live expiry clock allows, then closed flat — a runner cannot be\n"
+                "     credited with road the evaluator would not have given it.)")
 
     def _setup_history(self, opts):
         """Resolve --history / --start / --end / --split-date / --indicator-window into
@@ -1101,6 +1198,9 @@ class Command(BaseCommand):
         _HISTORY, _START_TS, _SPLIT_TS = None, None, None
         _INDICATOR_WINDOW = opts.get("indicator_window")
         _HISTORY_CACHE.clear()
+        # Remembered before the default is filled in below, so _run_series can tell
+        # "the operator is sweeping this axis" from "nobody said, use the live clock".
+        self._eval_bars_explicit = opts.get("eval_bars") is not None
 
         try:
             start = history.parse_day(opts["start"]) if opts.get("start") else None
@@ -1129,11 +1229,16 @@ class Command(BaseCommand):
         if opts.get("eval_bars") is None:
             # Without the expiry clock, a trade that never resolves is DROPPED, which
             # flatters results; over years of data that's a lot of dropped trades.
+            # This is only the FLOOR of the resolution — _run_series then applies the
+            # per-timeframe / per-asset-class clock, exactly as live does.
             opts["eval_bars"] = settings.SIGNAL_EVAL_BARS
+        expiry = (f"{opts['eval_bars']} bars" if self._eval_bars_explicit
+                  else f"{opts['eval_bars']} bars by default, per timeframe where set "
+                       f"({settings.SIGNAL_EVAL_BARS_BY_TIMEFRAME or 'none'})")
         self.stdout.write(self.style.WARNING(
             f"History mode: {opts.get('start') or 'archive start'} -> "
             f"{opts.get('end') or 'archive end'}, indicators on last "
-            f"{_INDICATOR_WINDOW} bars, expiry {opts['eval_bars']} bars"))
+            f"{_INDICATOR_WINDOW} bars, expiry {expiry}"))
 
     def _htf_timeline(self, sym, tf, htf_limit):
         """Sorted [(usable_from_time, structure), …] for the timeframe above `tf`.
@@ -1198,13 +1303,25 @@ class Command(BaseCommand):
                     eval_bars=None, spread_pct=None, leader_tl=None,
                     leader_all=False, overlap_sets=None, rb_test=None,
                     holdout=None, conf_sim=None, pullback=None, fill_bars=3,
-                    delay=None, fade_veto=None, gate_stats=None):
+                    delay=None, fade_veto=None, gate_stats=None, trade_log=None):
         ticker = sym.ticker
         n = len(candles)
         if spread_pct is None:
             # Net of costs unless --gross / --spread-pct said otherwise: crypto and
             # forex cost very different amounts, so the default is per asset class.
             spread_pct = settings.BACKTEST_COST_PCT.get(asset_class, 0.0)
+        # The frame's own expiry clock, same precedence as live (tasks._eval_bars_for):
+        # timeframe, then asset class, then the global default. Two guards:
+        #   * an explicit --eval-bars wins over all of it, since sweeping this axis is
+        #     the whole point of the flag;
+        #   * only when a clock is already in play. Without --history and without the
+        #     flag there is deliberately NO clock (`eval_bars is None` drops trades
+        #     that never resolve), and quietly introducing one here would change what
+        #     that mode measures.
+        if eval_bars is not None and not getattr(self, "_eval_bars_explicit", False):
+            by_tf = getattr(settings, "SIGNAL_EVAL_BARS_BY_TIMEFRAME", None) or {}
+            by_class = getattr(settings, "SIGNAL_EVAL_BARS_BY_ASSET", None) or {}
+            eval_bars = by_tf.get(tf) or by_class.get(asset_class) or eval_bars
         # First bar index belonging to the out-of-sample segment. Trades are assigned
         # by ENTRY bar, so a trade opened in train but resolving in test stays a train
         # trade — the alternative leaks the test window's outcomes into the fit.
@@ -1358,7 +1475,7 @@ class Command(BaseCommand):
 
                 res = _outcome(direction, snap, future, asset_class, svc.slug,
                                atr_floor, atr_cap, rev_floor, rev_cap, eval_bars,
-                               pullback, fill_bars, delay)
+                               pullback, fill_bars, delay, tf)
                 if res is None:
                     free_at[svc.slug] = i + 1
                     continue
@@ -1401,12 +1518,45 @@ class Command(BaseCommand):
 
                 if exit_lab and exit_lab["on"]:
                     stop0, tps = res["_levels"]
+                    # Under the same expiry clock the trade itself was walked with, so a
+                    # scheme is only credited with road the live evaluator would have
+                    # given it. (Entry is still the trigger close, so the lab does not
+                    # model --entry-pullback / --entry-delay fills.)
                     rs = _replay_exits(direction, float(snap["close"]), stop0, tps,
-                                       future, snap.get("atr"))
+                                       future, snap.get("atr"), horizon=eval_bars)
                     if rs:
+                        exit_lab["clocks"].add(eval_bars)
                         exit_lab["n"] += 1
                         for k, r in enumerate(rs):
                             exit_lab["r"][k] += r
+
+                if trade_log is not None:
+                    # One POSITION per setup, not one per strategy that called it. The
+                    # scan writes a row per strategy and the feed collapses agreeing
+                    # rows into a single card, so compounding capital once per row
+                    # would put six positions on a trade the user took once — the same
+                    # double-count stats.py dedupes for the win rate. `kind` is part of
+                    # the key because trend and reversion setups get different stop
+                    # bands (_outcome), so the same bar and direction really is a
+                    # different trade with a different R.
+                    key = (ticker, tf, candles[i]["time"], direction,
+                           pregate.kind_of(svc.slug))
+                    if key in trade_log["seen"]:
+                        trade_log["collapsed"] += 1
+                    else:
+                        trade_log["seen"].add(key)
+                        bar_s = INTERVAL_SECONDS.get(tf, 3600)
+                        # The fill is the trigger bar's CLOSE, which is one bar after
+                        # that bar's open time. With --entry-pullback/--entry-delay the
+                        # bars spent waiting for the fill are inside res["bars"], so the
+                        # holding period is stamped from the trigger — exposure is
+                        # slightly overstated there, never understated.
+                        opened = candles[i]["time"] + bar_s
+                        seg = "test" if (split_i is not None and i >= split_i) else "train"
+                        trade_log[seg].append(performance.Trade(
+                            opened=opened,
+                            closed=opened + res.get("bars", 0) * bar_s,
+                            r=_live_r(res), symbol=ticker, strategy=svc.slug))
 
                 # Rule-based-only mode: record every candidate, move on.
                 if llm is None:
@@ -1610,6 +1760,51 @@ class Command(BaseCommand):
                     f"    {a} <-> {b}   containment {worst*100:.0f}%  jaccard {jac*100:.0f}%")
         else:
             self.stdout.write("\n  No pair exceeds 90% containment.")
+
+    def _benchmark_candles(self, symbols):
+        """Daily BTC closes for the buy-and-hold comparison (newPRD §16), or None.
+
+        A strategy return is unjudgeable on its own: +120% across a cycle in which
+        holding returned +400% is a worse outcome for the user, so the comparison is
+        printed beside the curve rather than left for them to look up. BTC is the
+        benchmark even on an altcoin run — it is what a crypto holder would have held.
+        """
+        btc = next((x for x in symbols if x.hl_coin == "BTC"), None)
+        if btc is None:
+            return None
+        try:
+            return get_candles(btc, "1d", limit=2000) or None
+        except Exception:
+            return None  # a missing benchmark must never fail the run
+
+    def _report_capital(self, trades, opts, label, bench=None):
+        """The capital curve for ONE segment of history (newPRD §6, §7, §16).
+
+        Called once per segment and labelled, never pooled: blending in-sample and
+        out-of-sample into a single equity curve is precisely the number the PRD
+        forbids. The block itself is rendered by apps.signals.performance, which also
+        renders the live delivered feed in feed_stats — one formatter, so the public
+        figure and the researched figure cannot drift apart.
+        """
+        if not trades:
+            return
+        lines, summary = performance.report_lines(
+            trades, opts["capital"], opts["risk_pct"], not opts["no_compound"],
+            benchmark=bench, monthly=bool(opts.get("monthly")))
+        self.stdout.write(self.style.MIGRATE_HEADING(f"\n  Capital curve — {label}"))
+        for line in lines:
+            self.stdout.write(line)
+        # Which population this curve is of. The live feed is NARROWER than the
+        # candidate pool (confidence floor + confluence), so this is the strategy's
+        # curve, not the delivered feed's — feed_stats prints that one, through the
+        # same engine, and the two are not interchangeable.
+        self.stdout.write(
+            "\n    (Every candidate these strategies emit, deduped to one position per\n"
+            "     setup and taken in parallel. The DELIVERED feed is narrower: see\n"
+            "     `manage.py feed_stats` for the live curve.)")
+        pf = summary["trade_metrics"]["profit_factor"]
+        if pf is not None and pf < 1.0:
+            self.stdout.write(self.style.ERROR("    " + performance.REJECT_NOTE))
 
     def _report(self, stats, series):
         rows = list(stats.values())

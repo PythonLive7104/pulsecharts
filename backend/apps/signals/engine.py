@@ -122,15 +122,22 @@ def generate_annotation(symbol, timeframe, strategy_name, strategy_focus, direct
     return _parse_llm_json(resp, "annotation"), getattr(resp, "usage", None)
 
 
-def _stop_mults(asset_class, strategy_slug=None):
+def _stop_mults(asset_class, strategy_slug=None, timeframe=None):
     """ATR (floor, cap) stop multipliers for this setup.
 
     Trend/breakout setups use the asset-class band (crypto wider than forex —
-    settings.SIGNAL_ATR_STOP_FLOOR/CAP), falling back to crypto for an unknown class.
+    settings.SIGNAL_ATR_STOP_FLOOR/CAP), falling back to crypto for an unknown class,
+    unless the TIMEFRAME has its own band (settings.SIGNAL_ATR_BAND_BY_TIMEFRAME),
+    which wins. A band measured in ATR is not frame-neutral — ATR scales with the bar,
+    so one multiple makes the faster frame's stop narrower in percent and the same fee
+    cost twice the R. See the settings comment for the 7.7-year measurement.
+
     MEAN-REVERSION setups use their own, much tighter band: they target the mean a
     couple of ATR away, so a 3-4.5xATR stop would make TP1 unreachable by
     construction (see settings.SIGNAL_ATR_FLOOR_REVERSION). That band is ALSO
-    per-asset-class: forex fades need a wider stop than crypto ones.
+    per-asset-class: forex fades need a wider stop than crypto ones. It is NOT
+    per-timeframe — the fade band is tight by design and the measurement above was
+    trend/breakout only.
     """
     from . import pregate
 
@@ -145,6 +152,9 @@ def _stop_mults(asset_class, strategy_slug=None):
             settings.SIGNAL_ATR_CAP_REVERSION.get(asset_class)
             or settings.SIGNAL_ATR_CAP_REVERSION["crypto"],
         )
+    per_tf = getattr(settings, "SIGNAL_ATR_BAND_BY_TIMEFRAME", None) or {}
+    if timeframe and timeframe in per_tf:
+        return per_tf[timeframe]
     floor = settings.SIGNAL_ATR_STOP_FLOOR.get(asset_class) or settings.SIGNAL_ATR_STOP_FLOOR["crypto"]
     cap = settings.SIGNAL_ATR_STOP_CAP.get(asset_class) or settings.SIGNAL_ATR_STOP_CAP["crypto"]
     return floor, cap
@@ -178,7 +188,7 @@ def generate_signal(
     if rule_config:
         return _custom_signal(
             strategy_name, strategy_slug, rule_config, indicators,
-            _stop_mults(asset_class, strategy_slug),
+            _stop_mults(asset_class, strategy_slug, timeframe),
         )
 
     # Cheap rule-based pre-gate — skips the paid LLM call on obvious non-setups.
@@ -187,7 +197,7 @@ def generate_signal(
         bump("gated")
         return None
 
-    stop_mults = _stop_mults(asset_class, strategy_slug)
+    stop_mults = _stop_mults(asset_class, strategy_slug, timeframe)
 
     # Rules mode: fully deterministic, no LLM call at all. The rule picks the
     # direction + confidence and the reasoning is templated. Zero per-signal cost,

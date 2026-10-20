@@ -95,6 +95,21 @@ class Command(BaseCommand):
                           f"{settings.SIGNAL_ATR_CAP_REVERSION['crypto']} crypto / "
                           f"{settings.SIGNAL_ATR_FLOOR_REVERSION['forex']}-"
                           f"{settings.SIGNAL_ATR_CAP_REVERSION['forex']} forex")
+        # Per-timeframe overrides OVERRULE the asset-class rows above, so printing those
+        # alone would state the wrong stop (and the wrong clock) for any frame listed
+        # here — on 1h, the difference between a band that loses money and one that
+        # doesn't. Trailing "(trend/breakout only)" because fades keep the reversion
+        # band whatever the frame.
+        by_tf = getattr(settings, "SIGNAL_ATR_BAND_BY_TIMEFRAME", None) or {}
+        if by_tf:
+            bands = ", ".join(f"{tf} {lo}-{hi}" for tf, (lo, hi) in sorted(by_tf.items()))
+            self.stdout.write(f"  {'ATR stop per timeframe':34s} {bands}"
+                              "   (trend/breakout only; overrides the rows above)")
+        clocks = getattr(settings, "SIGNAL_EVAL_BARS_BY_TIMEFRAME", None) or {}
+        if clocks:
+            spec = ", ".join(f"{tf} {bars}" for tf, bars in sorted(clocks.items()))
+            self.stdout.write(f"  {'expiry bars per timeframe':34s} {spec}"
+                              f"   (else {settings.SIGNAL_EVAL_BARS})")
         by_day = getattr(settings, "SIGNAL_ADX_MIN_BY_WEEKDAY", {})
         if any(by_day.values()):
             self.stdout.write(f"  {'ADX per-weekday overrides':34s} {by_day}")
