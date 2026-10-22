@@ -47,6 +47,11 @@ logger = logging.getLogger("signals.breaker")
 # not add a COUNT query per request, but it also has to react inside one scan cycle.
 _CACHE_TTL = 60
 _CACHE_KEY = "signals:breaker:%s"
+# Distinct TRADES worth of history to consider, and how many ROWS to read to find
+# them. The row budget has to exceed the trade budget by roughly the number of active
+# strategies, since each agreeing strategy contributes a row to the same trade.
+_TRADE_LIMIT = 200
+_ROW_SCAN_LIMIT = 1000
 
 
 def _config() -> tuple[int, float, float] | None:
@@ -96,15 +101,34 @@ def breaker_state(asset_class: str, now) -> dict:
     # keeps stopping trades out keeps the pause alive rather than reopening on a timer
     # while the same conditions persist.
     since = now - timedelta(hours=window_h + cooldown_h)
-    recent = list(
+    rows = (
         Signal.objects.filter(
             outcome=Signal.Outcome.SL,
             resolved_at__gte=since,
             symbol__asset_class=asset_class,
         )
         .order_by("-resolved_at")
-        .values_list("resolved_at", flat=True)[:200]
+        .values("resolved_at", "symbol_id", "timeframe", "direction", "entry_price")
+        [:_ROW_SCAN_LIMIT]
     )
+    # Count TRADES, not Signal rows. The scan writes one row per strategy, so a setup
+    # several strategies agreed on stops out as several rows at the same instant — and
+    # the user was delivered ONE card. Counting rows let a single bad trade spend three
+    # of a six-loss budget, so the breaker fired on roughly a third of the evidence it
+    # was tuned for, and SIGNAL_CONFLUENCE_MIN=1 made that worse by delivering more
+    # rows per setup. This is the same double-count stats.py dedupes for the win rate
+    # ("Counting rows made one stopped-out trade read as six losses"), on the identical
+    # key, so the breaker and the published record now agree on what a loss is.
+    seen: set[tuple] = set()
+    recent: list = []
+    for row in rows:
+        key = (row["symbol_id"], row["timeframe"], row["direction"], row["entry_price"])
+        if key in seen:
+            continue
+        seen.add(key)
+        recent.append(row["resolved_at"])
+        if len(recent) >= _TRADE_LIMIT:
+            break
 
     halted, count, last_loss = False, 0, None
     if recent:
