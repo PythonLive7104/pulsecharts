@@ -173,6 +173,10 @@ def _exit_expectancy(total, fractions):
 def _blank(name):
     return {
         "name": name, "trades": 0, "wins": 0, "losses": 0, "expired": 0, "cost": 0.0,
+        # Counted apart from `expired` because they are different failures with
+        # different fixes: an expiry means the clock was too short, an invalidation
+        # means the exit rule cut the thesis. Pooling them hides which one is biting.
+        "invalid": 0,
         "r_tp1": 0.0, "r_scale": 0.0, "r_best": 0.0, "mfe": 0.0, "mae": 0.0,
         "tp_dist": {1: 0, 2: 0, 3: 0, 4: 0},
     }
@@ -185,13 +189,16 @@ def _record(bucket, res):
     # run_evaluation closes this flat: 0R, and NEITHER a win nor a loss. Counting it as
     # a loss would be wrong twice over — it never lost money, and it would drag the win
     # rate with trades that simply hadn't finished.
-    if res.get("expired"):
-        bucket["expired"] += 1
-        # A scratch still paid to get in and out — 0R gross, -cost net.
+    if res.get("expired") or res.get("invalidated"):
+        bucket["expired" if res.get("expired") else "invalid"] += 1
+        # An expiry is a 0R scratch that still paid to get in and out. An invalidation
+        # is scored at the price it actually closed at (`invalid_r`, usually slightly
+        # negative) rather than the flat 0R stats.outcome_r assumes — see _outcome.
         c = res.get("cost_r", 0.0)
-        bucket["r_tp1"] -= c
-        bucket["r_scale"] -= c
-        bucket["r_best"] -= c
+        gross = res.get("invalid_r", 0.0)
+        bucket["r_tp1"] += gross - c
+        bucket["r_scale"] += gross - c
+        bucket["r_best"] += gross - c
         bucket["cost"] += c
         bucket["mfe"] += res["mfe_pct"]
         bucket["mae"] += res["mae_pct"]
@@ -228,8 +235,9 @@ def _live_r(res) -> float:
     here would show up as a wrong equity curve and nowhere else.
     """
     cost = res.get("cost_r", 0.0)
-    if res.get("expired"):
-        return -cost                      # scratch: 0R gross, the spread still paid
+    if res.get("expired") or res.get("invalidated"):
+        # Expiry is flat; an invalidation closes at the break bar (invalid_r).
+        return res.get("invalid_r", 0.0) - cost
     best_tp = res["best_tp"]
     if best_tp < 1:
         return -1.0 - cost
@@ -431,9 +439,51 @@ def _atr_of(candles):
     return _atr(candles)
 
 
+def _stack_break_offset(candles, entry_i, direction, horizon, window=None):
+    """Forward bars until the EMA stack that justified this trade breaks, or None.
+
+    Models the live thesis-invalidation exit (settings.SIGNAL_EXIT_ON_TREND_BREAK,
+    tasks._invalidate_trend_breaks): a trend call is closed FLAT the moment its entry
+    ordering stops holding — BUY needs 9 > 21 > 200, SELL the inverse. Returns the
+    offset into the forward path of the first bar where that fails (0 = the very next
+    bar), or None if it holds for the whole horizon.
+
+    This existed only in production until now, which made every backtest in this file
+    a measurement of a DIFFERENT system from the one users trade: it modelled stop,
+    target and expiry, so every trade ran to one of those three, while live was cutting
+    a large share of them to 0R first. A 1h feed that measured +0.05R a trade was
+    delivering mostly invalidations.
+
+    The EMAs are recomputed on the same trailing window live uses (300 closed candles,
+    LIVE_INDICATOR_WINDOW) rather than from a whole-series EMA, because the 200 EMA is
+    seeded from an SMA and still carries ~37% of that seed 100 bars later — a
+    whole-series value would disagree with the one the ENTRY gate used on the same bar,
+    and a trade could be invalidated on a stack its own entry never saw. Short-circuits
+    on the first break, which is cheap precisely because breaks tend to come early.
+    """
+    from apps.signals.indicators import _ema
+
+    window = window or LIVE_INDICATOR_WINDOW
+    buy = direction == "BUY"
+    for k in range(horizon):
+        idx = entry_i + 1 + k
+        if idx >= len(candles):
+            return None
+        lo = max(0, idx + 1 - window)
+        closes = [c["close"] for c in candles[lo: idx + 1]]
+        e9, e21, e200 = _ema(closes, 9)[-1], _ema(closes, 21)[-1], _ema(closes, 200)[-1]
+        if e9 is None or e21 is None or e200 is None:
+            continue  # not enough history to judge — live treats this as intact
+        ok = (e9 > e21 > e200) if buy else (e9 < e21 < e200)
+        if not ok:
+            return k
+    return None
+
+
 def _outcome(direction, snap, future, asset_class="crypto", strategy_slug=None,
              atr_floor=None, atr_cap=None, rev_floor=None, rev_cap=None, eval_bars=None,
-             pullback=None, fill_bars=3, delay=None, timeframe=None):
+             pullback=None, fill_bars=3, delay=None, timeframe=None,
+             invalidate_at=None):
     """Deterministic levels + walk for a setup; None if degenerate or unresolved.
 
     Mean-reversion setups get their own (much tighter) ATR stop band — with the trend
@@ -520,8 +570,42 @@ def _outcome(direction, snap, future, asset_class="crypto", strategy_slug=None,
     # setup, not for the fill.
     budget = max(0, eval_bars - waited) if eval_bars else None
     horizon = forward[:budget] if budget is not None else forward
+    # Thesis invalidation cuts the horizon SHORT of the clock: live closes the call on
+    # the bar its EMA stack breaks, so bars after that are road the trade never got.
+    # `invalidate_at` counts from the signal bar, so a limit/delayed fill that is still
+    # waiting when the stack breaks means the order is cancelled before it ever fills —
+    # correctly no trade at all, which is what live's dedup does too.
+    invalidated = False
+    if invalidate_at is not None:
+        if invalidate_at < waited:
+            return None  # stack broke before the entry filled
+        cut = invalidate_at - waited
+        if budget is None or cut < len(horizon):
+            horizon = horizon[:cut]
+            invalidated = True
     res = walk(direction, entry, levels["stop_loss"], tps, horizon)
-    if not (res["terminal"] or res["best_tp"] >= 1):
+    if invalidated and not (res["terminal"] or res["best_tp"] >= 1):
+        # The stack broke with the trade still open and no target banked — exactly the
+        # case tasks._invalidate_trend_breaks closes flat. A call that already banked a
+        # target is NOT invalidated live (its stop is at breakeven and the partial is
+        # real money), which the best_tp test preserves.
+        #
+        # P&L is taken at the BREAK BAR'S CLOSE, not at 0R. stats.outcome_r scores an
+        # INVALIDATED row as exactly 0.0R, and that is an accounting convention rather
+        # than a fill: the EMA stack breaking on a BUY means price has usually come
+        # DOWN off the entry, so the real exit is a small loss. The convention is
+        # therefore OPTIMISTIC, not conservative, and at the volumes this exit produces
+        # the difference decides the result outright — a -0.1R average real exit across
+        # ~3400 invalidations is -340R, more than the entire net profit of the run.
+        res["invalidated"] = True
+        res["best_tp"] = 0
+        if cut < len(forward):
+            exit_px = float(forward[cut]["close"])
+            risk = abs(entry - levels["stop_loss"])
+            if risk:
+                res["invalid_r"] = ((exit_px - entry) if direction == "BUY"
+                                    else (entry - exit_px)) / risk
+    elif not (res["terminal"] or res["best_tp"] >= 1):
         # Ran out of road. With the live clock modelled this is an EXPIRED trade and
         # counts as a 0R scratch (run_evaluation closes it flat); without it, the trade
         # simply hasn't finished inside the sample and is dropped as unknowable.
@@ -539,7 +623,8 @@ def _outcome(direction, snap, future, asset_class="crypto", strategy_slug=None,
 def _totals(stats):
     t = _blank("ALL")
     for b in stats.values():
-        for k in ("trades", "wins", "losses", "r_tp1", "r_scale", "r_best", "mfe", "mae"):
+        for k in ("trades", "wins", "losses", "expired", "invalid",
+                  "r_tp1", "r_scale", "r_best", "mfe", "mae"):
             t[k] += b[k]
         for n in (1, 2, 3, 4):
             t["tp_dist"][n] += b["tp_dist"][n]
@@ -563,6 +648,17 @@ class Command(BaseCommand):
                                  "list is whatever order the DB returns, which in practice "
                                  "is all crypto — so every parameter tuned on a plain run "
                                  "is crypto-derived even though it also governs forex.")
+        parser.add_argument("--trend-break", dest="trend_break", action="store_true",
+                            default=None,
+                            help="Model the live thesis-invalidation exit: close a trend "
+                                 "call flat the bar its EMA stack breaks "
+                                 "(SIGNAL_EXIT_ON_TREND_BREAK). Defaults to whatever that "
+                                 "setting says, so a plain run measures the system users "
+                                 "actually trade.")
+        parser.add_argument("--no-trend-break", dest="trend_break", action="store_false",
+                            help="Let trend calls run to target, stop or expiry, ignoring "
+                                 "the invalidation exit. Every result in this file "
+                                 "predating 2026-10-22 was implicitly this.")
         parser.add_argument("--symbols", default=None, metavar="TICKER,...",
                             help="Scan exactly these tickers (e.g. BTC-USD,ETH-USD), in "
                                  "this order, instead of the first --max-symbols rows. "
@@ -950,6 +1046,10 @@ class Command(BaseCommand):
         # could silently inherit live settings — two runs meant to differ came out
         # byte-identical because the flag couldn't move an env-set gate. Printing the
         # resolved values makes every result self-documenting.
+        # Defaults to the LIVE setting, so a plain run models the system users trade.
+        # Everything measured in this file before 2026-10-22 was implicitly False.
+        trend_break_on = (settings.SIGNAL_EXIT_ON_TREND_BREAK
+                          if opts.get("trend_break") is None else opts["trend_break"])
         self.stdout.write(self.style.MIGRATE_HEADING("Effective config:"))
         for label, value in [
             ("ema gate", pregate.EMA_GATE_MODE),
@@ -979,6 +1079,9 @@ class Command(BaseCommand):
              f"{opts.get('reversion_atr_floor') or settings.SIGNAL_ATR_FLOOR_REVERSION}-"
              f"{opts.get('reversion_atr_cap') or settings.SIGNAL_ATR_CAP_REVERSION} xATR"
              + (" (override)" if opts.get("reversion_atr_floor") else " (per asset class)")),
+            ("trend-break exit", ("ON — trend calls close flat when the EMA stack breaks"
+                                  if trend_break_on
+                                  else "off (runs to target/stop/expiry)")),
             ("timeframes", ",".join(timeframes)),
             ("candles / symbols", f"{opts['candles']} / {opts['max_symbols']}"),
         ]:
@@ -1145,7 +1248,7 @@ class Command(BaseCommand):
                                  overlap_sets, rb_test, holdout, conf_sim,
                                  opts.get("entry_pullback"), opts.get("fill_bars", 3),
                                  opts.get("entry_delay"), opts.get("fade_momentum_veto"),
-                                 gate_stats, trade_log)
+                                 gate_stats, trade_log, trend_break_on)
                 series += 1
                 self.stdout.write(f"  · {sym.ticker} {tf}", ending="\r")
             if llm_on and budget["left"] <= 0:
@@ -1335,7 +1438,8 @@ class Command(BaseCommand):
                     eval_bars=None, spread_pct=None, leader_tl=None,
                     leader_all=False, overlap_sets=None, rb_test=None,
                     holdout=None, conf_sim=None, pullback=None, fill_bars=3,
-                    delay=None, fade_veto=None, gate_stats=None, trade_log=None):
+                    delay=None, fade_veto=None, gate_stats=None, trade_log=None,
+                    trend_break=False):
         ticker = sym.ticker
         n = len(candles)
         if spread_pct is None:
@@ -1505,9 +1609,19 @@ class Command(BaseCommand):
                             gate_stats[(svc.slug, "confidence-floor")] += 1
                         continue
 
+                # Thesis invalidation applies to the same narrow set live applies it to:
+                # built-in TREND strategies only. Breakouts never required the stack to
+                # enter (EMA_STACK_EXEMPT), so they may not be closed by a condition
+                # they were never gated on — and fades trade against it by design.
+                invalidate_at = None
+                if trend_break and svc.slug not in EMA_STACK_EXEMPT:
+                    invalidate_at = _stack_break_offset(
+                        candles, i, direction,
+                        (eval_bars or 0) + (delay or 0) + max(fill_bars or 0, 0),
+                    )
                 res = _outcome(direction, snap, future, asset_class, svc.slug,
                                atr_floor, atr_cap, rev_floor, rev_cap, eval_bars,
-                               pullback, fill_bars, delay, tf)
+                               pullback, fill_bars, delay, tf, invalidate_at)
                 if res is None:
                     free_at[svc.slug] = i + 1
                     continue
@@ -1637,6 +1751,9 @@ class Command(BaseCommand):
         # occupy a slot and really did return 0.
         decided = b["wins"] + b["losses"] or 1
         exp = f" exp={b['expired']}" if b["expired"] else ""
+        # Printed next to the expiries because the two look identical in the R column
+        # (both 0R) and mean opposite things about what to change.
+        exp += f" inval={b['invalid']}" if b.get("invalid") else ""
         return (
             f"  {b['name']:<26} {b['wins']/decided*100:5.1f}%  "
             f"{b['wins']:>3}W /{b['losses']:>3}L{exp}  n={t:<4} "
