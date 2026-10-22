@@ -128,8 +128,10 @@ class Command(BaseCommand):
         Scored with ``stats.outcome_r`` under each row's own ``exit_model``, so a
         trade is always valued under the plan it was issued with — the same function
         the user-facing accuracy figure uses. Unlike the win-rate tables above, flat
-        closes are KEPT: a trend-flip scratch is 0R, not a missing trade, and dropping
-        it would understate both exposure and the trade count the curve rests on.
+        closes are KEPT: a trend-flip close is a real position that committed capital,
+        not a missing trade, and dropping it would understate both exposure and the
+        trade count the curve rests on. It is scored at the price it actually closed
+        at (``realized_r``) rather than assumed flat.
 
         Costs are charged per trade as BACKTEST_COST_PCT / this trade's stored
         risk_pct, so a wide-stop trade correctly pays proportionally less of its R.
@@ -139,7 +141,7 @@ class Command(BaseCommand):
         """
         trades = []
         for s in resolved:
-            r = outcome_r(s.exit_model, s.outcome)
+            r = outcome_r(s.exit_model, s.outcome, s.realized_r)
             if not gross and s.risk_pct:
                 r -= settings.BACKTEST_COST_PCT.get(s.symbol.asset_class, 0.0) / s.risk_pct
             opened = int(s.generated_at.timestamp())

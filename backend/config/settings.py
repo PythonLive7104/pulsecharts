@@ -195,10 +195,50 @@ FOREX_POLL_INTERVAL = env.float("FOREX_POLL_INTERVAL", default=15.0)
 # it — so it lives on the machine running backtests, not in the deployed image.
 HISTORY_DIR = env("HISTORY_DIR", default=str(BASE_DIR / "history"))
 
+# Minimum seconds between Hyperliquid REST calls FROM ONE PROCESS (apps.market_data
+# .client._pace). The client already retries a 429 with backoff, but that is reactive
+# — it reacts after a request has been refused, and a scan fires ~300 calls back to
+# back (one per symbol per timeframe, plus the higher-timeframe reads). At 70 symbols
+# that produced bursts of 429s in production with four coins exhausting all three
+# retries and dropping out of the scan entirely, which nothing surfaces: the coin just
+# silently generates no signal that cycle.
+#
+# Pacing trades scan DURATION for completeness, which is the right trade at a 900s
+# scan interval. Raise it if 429s persist; lower it if a scan starts overrunning its
+# interval. It applies per process, so the worker and the relay pace independently
+# against one shared IP budget — size it for the sum of both, not for one.
+#
+# It also applies to the chart API's candle fetches in the web container, where it
+# costs latency only when two requests collide. 0 disables.
+HYPERLIQUID_MIN_REQUEST_INTERVAL = env.float(
+    "HYPERLIQUID_MIN_REQUEST_INTERVAL", default=0.2
+)
+
 # Round-trip trading cost every backtest charges by default, as % of price, per asset
 # class (newPRD §4: results are cost-adjusted or they are not results). Crypto 0.1% ≈
 # Hyperliquid taker fees both ways plus a little slippage; forex ≈ 1 pip on EUR/USD.
 # `backtest --gross` disables it, `--spread-pct` overrides it.
+#
+# The crypto figure was CHECKED against the live book on 2026-10-20, reading
+# top-of-book from Hyperliquid's public l2Book for 23 listed coins and costing a round
+# trip as 2x spread + 0.09% taker (0.045% a side):
+#
+#     BTC/DOGE 0.092%   ETH 0.098%   XRP 0.105%   SOL 0.109%   LTC 0.110%
+#     ICP 0.111%   AVAX 0.121%   DOT 0.124%   SAND 0.128%   ATOM 0.135%   ALGO 0.143%
+#
+# So 0.1% is honest for the liquid end and mildly optimistic at the thin end — the
+# whole range is 0.09-0.15%, not the 0.3-0.5% a CEX-spot intuition suggests. That
+# intuition is wrong here and was briefly used to argue for a narrower signal
+# universe: Hyperliquid is a perp venue with tight top-of-book even on small alts, so
+# SPREAD is not what makes a thin coin expensive.
+#
+# DEPTH is. Notional resting within 10bp of mid ranged from $25.5M (ETH) and $8.9M
+# (BTC) down to $13k (ALGO) and $5.3k (ATOM) — a factor of ~5000. The quoted spread is
+# what one small order pays; the depth is what the whole feed pays when many users act
+# on the same card within the same minute. Before widening the universe again, or
+# before raising position sizes, check depth rather than spread — and note that this
+# is a point-in-time snapshot of one venue, so re-measure rather than trusting these
+# numbers later.
 BACKTEST_COST_PCT = {
     "crypto": env.float("BACKTEST_COST_PCT_CRYPTO", default=0.1),
     "forex": env.float("BACKTEST_COST_PCT_FOREX", default=0.0087),
@@ -617,7 +657,13 @@ SIGNAL_MAX_CRYPTO_PER_DIRECTION = env.int("SIGNAL_MAX_CRYPTO_PER_DIRECTION", def
 # This reads OUTCOMES instead, and is the only mechanism that can conclude "today is
 # not working" and stop. Global per asset class, not per user: the failure is
 # market-wide and every user holds the same book.
-SIGNAL_LOSS_BREAKER = env("SIGNAL_LOSS_BREAKER", default="")
+# Defaults to 6/4/6 (was ""), i.e. ON unless deliberately switched off. A circuit
+# breaker that defaults to disabled protects nobody: the deployment it is meant for is
+# the one where somebody forgot to set it. The measured drawdowns argue the same way —
+# 37% on 4h and 55% on 1h out of sample, with up to 12 same-direction positions open
+# at once under SIGNAL_MAX_CRYPTO_PER_DIRECTION — so the day this is needed is a day
+# nobody is watching the feed. Set it to "" to disable explicitly.
+SIGNAL_LOSS_BREAKER = env("SIGNAL_LOSS_BREAKER", default="6/4/6")
 
 SIGNAL_SUPPRESS_PROGRESSED = env.bool("SIGNAL_SUPPRESS_PROGRESSED", default=True)
 # 2. Age, counted in BARS of the signal's own timeframe so one number means the same

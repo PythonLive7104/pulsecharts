@@ -109,8 +109,27 @@ docker compose exec web python manage.py set_telegram_webhook https://your-domai
 docker compose ps                 # service status
 docker compose logs -f worker     # watch signal generation
 docker compose logs -f relay      # watch the Hyperliquid feed
-docker compose restart web        # after an .env change
+docker compose restart web        # after an .env change the WEB app reads
+docker compose restart worker     # after an .env change the SIGNAL ENGINE reads
 docker compose down               # stop everything (Redis data persists)
+```
+
+**Which container to restart after an `.env` change.** Every `SIGNAL_*` setting is read
+by `apps/signals/tasks.py`, which runs under Celery in **`worker`** — restarting `web`
+alone leaves the engine on the old value, and the only symptom is that nothing changes.
+Restart both if unsure; neither is disruptive.
+
+**`restart` is not enough for a code change.** The services use `build: ./backend` with
+no bind mounts, so the code lives in the image: `git pull` updates the host and the
+containers keep running the old build. Code changes need `docker compose up -d --build`.
+`.env` is read at container start, which is why it only needs a restart — and it is
+gitignored, so it is never pulled or pushed.
+
+To confirm a setting actually took effect, read it back from the process that uses it
+rather than inferring it from a clean restart:
+
+```bash
+docker compose exec worker python manage.py signal_config
 ```
 
 ## TLS / HTTPS

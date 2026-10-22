@@ -63,8 +63,19 @@ def trade_r(exit_model: str, best_tp: int) -> float:
     return win_r(exit_model, best_tp) if best_tp >= 1 else -1.0
 
 
-def outcome_r(exit_model: str, outcome: str) -> float:
-    """R for a stored outcome label: TP1-4 win, SL -1R, anything else flat (0)."""
+def outcome_r(exit_model: str, outcome: str, realized_r=None) -> float:
+    """R for a stored outcome label: TP1-4 win, SL -1R, anything else flat (0).
+
+    ``realized_r`` is the row's own recorded result and WINS over the table whenever
+    it is present, because the table cannot express it. A target and a stop both
+    close at a price the card already named, so their R is a constant; a trend-flip
+    invalidation closes at whatever the market was, which is only knowable from the
+    row. Scoring those flat understated losses that really happened — see
+    Signal.realized_r for what that was worth. NULL (rows invalidated before the
+    field existed, and every target/stop) keeps the table's answer.
+    """
+    if realized_r is not None:
+        return float(realized_r)
     if outcome in TP_OUTCOMES:
         return win_r(exit_model, int(outcome[2:]))
     if outcome == "SL":
@@ -133,21 +144,23 @@ def _trade_counts(qs) -> tuple[dict, int, float]:
     """
     rank = {"SL": 0, "EXPIRED": 1, "INVALID": 2, "PENDING": 3,
             "TP1": 4, "TP2": 5, "TP3": 6, "TP4": 7}
-    trades: dict[tuple, tuple[str, bool, str]] = {}
+    trades: dict[tuple, tuple[str, bool, str, float | None]] = {}
     for r in qs.values("symbol_id", "timeframe", "direction", "entry_price",
-                       "outcome", "best_tp", "exit_model"):
+                       "outcome", "best_tp", "exit_model", "realized_r"):
         key = (r["symbol_id"], r["timeframe"], r["direction"], r["entry_price"])
         outcome = _effective_outcome(r["outcome"], r["best_tp"])
         still_open = r["outcome"] == "PENDING"
         cur = trades.get(key)
         if cur is None or rank.get(outcome, 9) < rank.get(cur[0], 9):
-            trades[key] = (outcome, still_open, r["exit_model"])
+            # The winning row carries its own realized_r: rows for one trade share an
+            # entry and a stop, so they were invalidated at the same close and agree.
+            trades[key] = (outcome, still_open, r["exit_model"], r["realized_r"])
     counts: dict[str, int] = {}
     running = 0
     total_r = 0.0
-    for outcome, still_open, exit_model in trades.values():
+    for outcome, still_open, exit_model, realized in trades.values():
         counts[outcome] = counts.get(outcome, 0) + 1
-        total_r += outcome_r(exit_model, outcome)
+        total_r += outcome_r(exit_model, outcome, realized)
         if still_open and outcome in TP_OUTCOMES:
             running += 1
     return counts, running, total_r
@@ -170,8 +183,13 @@ def accuracy_stats(base=None) -> dict:
     # trade that banked TP1 lands in both or neither. (Rolled up in Python rather than
     # via annotate() because the mapping depends on best_tp and exit_model.)
     per_service: dict[str, dict] = {}
+    # realized_r joins the GROUP BY so an invalidation's own result survives the
+    # rollup. It is a float, so invalidated rows mostly group alone — a little less
+    # compression in exchange for the per-strategy R agreeing with the overall one,
+    # which is the whole point of computing both.
     rows = base.values(
-        "service__slug", "service__name", "outcome", "best_tp", "exit_model"
+        "service__slug", "service__name", "outcome", "best_tp", "exit_model",
+        "realized_r",
     ).annotate(n=Count("id"))
     for r in rows:
         slug = r["service__slug"]
@@ -180,7 +198,7 @@ def accuracy_stats(base=None) -> dict:
         )
         outcome = _effective_outcome(r["outcome"], r["best_tp"])
         bucket["_counts"][outcome] = bucket["_counts"].get(outcome, 0) + r["n"]
-        bucket["_r"] += outcome_r(r["exit_model"], outcome) * r["n"]
+        bucket["_r"] += outcome_r(r["exit_model"], outcome, r["realized_r"]) * r["n"]
         if r["outcome"] == "PENDING" and outcome in TP_OUTCOMES:
             bucket["_running"] += r["n"]
 
