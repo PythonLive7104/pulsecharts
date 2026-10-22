@@ -657,13 +657,26 @@ SIGNAL_MAX_CRYPTO_PER_DIRECTION = env.int("SIGNAL_MAX_CRYPTO_PER_DIRECTION", def
 # This reads OUTCOMES instead, and is the only mechanism that can conclude "today is
 # not working" and stop. Global per asset class, not per user: the failure is
 # market-wide and every user holds the same book.
-# Defaults to 6/4/6 (was ""), i.e. ON unless deliberately switched off. A circuit
-# breaker that defaults to disabled protects nobody: the deployment it is meant for is
-# the one where somebody forgot to set it. The measured drawdowns argue the same way —
-# 37% on 4h and 55% on 1h out of sample, with up to 12 same-direction positions open
-# at once under SIGNAL_MAX_CRYPTO_PER_DIRECTION — so the day this is needed is a day
-# nobody is watching the feed. Set it to "" to disable explicitly.
-SIGNAL_LOSS_BREAKER = env("SIGNAL_LOSS_BREAKER", default="6/4/6")
+# OFF by default (2026-10-22), reverting a two-commit experiment with 6/4/6.
+#
+# The developer's call, and the reasoning is a product one rather than a measurement:
+# a feed that goes silent for six hours is worse for this product right now than the
+# losses the pause would avoid. Paying users who open the app and find a banner
+# instead of signals do not come back to read the rationale.
+#
+# What the experiment did establish, and what to fix before re-enabling:
+#   * The thresholds are stale. 6/4/6 was calibrated against 20 coins on 4h, where the
+#     bad days ran 20-65 losses. The feed is now 50 coins on 1h with
+#     SIGNAL_CONFLUENCE_MIN=1, so far more trades resolve per hour and six stop-outs
+#     in four is close to the normal rate, not an alarm.
+#   * It halted the live feed within hours of being switched on, which is the
+#     empirical answer to whether it was calibrated for this feed.
+#   * The counting bug it exposed is fixed regardless (breaker.py now counts trades,
+#     not Signal rows), so re-enabling it later starts from honest arithmetic.
+#
+# `manage.py breaker_replay` scores candidate thresholds against real history — run
+# that before turning this back on, rather than picking a number.
+SIGNAL_LOSS_BREAKER = env("SIGNAL_LOSS_BREAKER", default="")
 
 SIGNAL_SUPPRESS_PROGRESSED = env.bool("SIGNAL_SUPPRESS_PROGRESSED", default=True)
 # 2. Age, counted in BARS of the signal's own timeframe so one number means the same
