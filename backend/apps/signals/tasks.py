@@ -14,7 +14,7 @@ import logging
 import requests
 from celery import shared_task
 from django.conf import settings
-from django.db.models import F, Q
+from django.db.models import F, Q, Value
 from datetime import timezone as dt_timezone
 from django.utils import timezone
 
@@ -650,14 +650,35 @@ def _invalidate_trend_breaks(sym, tf, ind, now) -> int:
         service__owner__isnull=True,
     ).exclude(service__slug__in=EMA_STACK_EXEMPT)
 
+    # The close that broke the thesis IS the exit price — this runs on the scan, off
+    # the same closed-candle snapshot the gates read, so it is the latest price the
+    # trade could have been closed at. Recording it is what stops an invalidation
+    # being scored as a flat 0R it did not earn (see Signal.realized_r).
+    close = ind.get("close")
+    if close in (None, 0):
+        return 0
+    close = float(close)
+    # R is signed by direction and divided by the trade's own risk distance, so it is
+    # computed per ROW in the database rather than in Python — a bulk update keeps the
+    # invalidation cheap, which matters when it fires across every open call at once.
+    # Rows with a degenerate stop are excluded: dividing by zero would error the whole
+    # update and leave real trades open.
+    base = base.exclude(entry_price=F("stop_loss"))
+
     n = 0
     if not (ema9 > ema21 > ema200):  # bull thesis gone
         n += base.filter(direction=Signal.Direction.BUY).update(
-            outcome=Signal.Outcome.INVALIDATED, resolved_at=now
+            outcome=Signal.Outcome.INVALIDATED, resolved_at=now, exit_price=close,
+            # BUY: risk = entry - stop (stop sits below entry), profit = close - entry
+            realized_r=(Value(close) - F("entry_price"))
+            / (F("entry_price") - F("stop_loss")),
         )
     if not (ema9 < ema21 < ema200):  # bear thesis gone
         n += base.filter(direction=Signal.Direction.SELL).update(
-            outcome=Signal.Outcome.INVALIDATED, resolved_at=now
+            outcome=Signal.Outcome.INVALIDATED, resolved_at=now, exit_price=close,
+            # SELL: risk = stop - entry (stop sits above entry), profit = entry - close
+            realized_r=(F("entry_price") - Value(close))
+            / (F("stop_loss") - F("entry_price")),
         )
     return n
 

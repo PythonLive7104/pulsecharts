@@ -201,6 +201,26 @@ class Signal(models.Model):
     resolved_at = models.DateTimeField(null=True, blank=True)
     mfe_pct = models.FloatField(null=True, blank=True)  # max favorable excursion %
     mae_pct = models.FloatField(null=True, blank=True)  # max adverse excursion %
+    # Price the position was actually closed at, for an exit that isn't a level the
+    # card already names. A stop or a target closes AT the number on the card, so
+    # those need nothing stored; a trend-flip invalidation closes at whatever the
+    # market happened to be, which nothing recorded.
+    exit_price = models.FloatField(null=True, blank=True)
+    # What the trade actually made, in R, when that cannot be derived from `outcome`
+    # alone. NULL means "use the outcome table" (stats.win_r), which is correct for a
+    # target or a stop.
+    #
+    # It exists because scoring an INVALIDATED trade as a flat 0R is an assumption,
+    # not a fill: an EMA stack breaking on a BUY means price has usually come DOWN off
+    # the entry, so the real exit is a small loss. The assumption is OPTIMISTIC, and
+    # at the volumes that exit produced it decided the headline outright — measured
+    # over 5 coins and 7.7 years, scoring invalidations flat turned a -0.01R strategy
+    # into a +0.05R one and a +2% curve into +1005%. Frozen per row like `exit_model`,
+    # so re-scoring can never rewrite a past trade's result.
+    #
+    # Rows invalidated before this field existed stay NULL and keep scoring flat —
+    # their exit price was never recorded and inventing one would be worse.
+    realized_r = models.FloatField(null=True, blank=True)
     # Highest take-profit reached SO FAR (0 = none yet). Tracked on every evaluator
     # pass, including while the trade is still PENDING: under "let winners run"
     # (§19.2) a call that banks TP1/TP2 stays open until it reaches TP3 or comes back
