@@ -195,6 +195,25 @@ FOREX_POLL_INTERVAL = env.float("FOREX_POLL_INTERVAL", default=15.0)
 # it — so it lives on the machine running backtests, not in the deployed image.
 HISTORY_DIR = env("HISTORY_DIR", default=str(BASE_DIR / "history"))
 
+# Minimum seconds between Hyperliquid REST calls FROM ONE PROCESS (apps.market_data
+# .client._pace). The client already retries a 429 with backoff, but that is reactive
+# — it reacts after a request has been refused, and a scan fires ~300 calls back to
+# back (one per symbol per timeframe, plus the higher-timeframe reads). At 70 symbols
+# that produced bursts of 429s in production with four coins exhausting all three
+# retries and dropping out of the scan entirely, which nothing surfaces: the coin just
+# silently generates no signal that cycle.
+#
+# Pacing trades scan DURATION for completeness, which is the right trade at a 900s
+# scan interval. Raise it if 429s persist; lower it if a scan starts overrunning its
+# interval. It applies per process, so the worker and the relay pace independently
+# against one shared IP budget — size it for the sum of both, not for one.
+#
+# It also applies to the chart API's candle fetches in the web container, where it
+# costs latency only when two requests collide. 0 disables.
+HYPERLIQUID_MIN_REQUEST_INTERVAL = env.float(
+    "HYPERLIQUID_MIN_REQUEST_INTERVAL", default=0.2
+)
+
 # Round-trip trading cost every backtest charges by default, as % of price, per asset
 # class (newPRD §4: results are cost-adjusted or they are not results). Crypto 0.1% ≈
 # Hyperliquid taker fees both ways plus a little slippage; forex ≈ 1 pip on EUR/USD.

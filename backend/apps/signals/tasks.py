@@ -388,6 +388,10 @@ def run_scan(symbol_limit: int | None = None, use_pregate: bool | None = None) -
             ] = s["last"]
 
     created = scanned = deduped = cooled = invalidated = regime_skipped = 0
+    # Symbols whose candles could not be fetched at all this pass. Counted, not just
+    # logged: a coin that loses its candle fetch silently produces no signal, which is
+    # indistinguishable from "no setup" in every summary the operator reads.
+    fetch_failed = 0
     leader_blocked = 0
     htf_struct_skipped = 0
     stats = {"gated": 0, "llm_calls": 0, "in_tokens": 0, "out_tokens": 0}
@@ -427,6 +431,7 @@ def run_scan(symbol_limit: int | None = None, use_pregate: bool | None = None) -
             try:
                 candles = _closed_candles(get_candles(sym, tf, limit=300), tf)
             except (requests.RequestException, ValueError):
+                fetch_failed += 1
                 logger.warning("candle fetch failed: %s %s", sym.ticker, tf)
                 continue
             if len(candles) < MIN_CANDLES:
@@ -589,6 +594,7 @@ def run_scan(symbol_limit: int | None = None, use_pregate: bool | None = None) -
         "direction_conflict_skipped": direction_conflict_skipped,
         "regime_skipped": regime_skipped, "leader_blocked": leader_blocked,  # skipped: ranging market / HTF disagreement (free)
         "htf_struct_skipped": htf_struct_skipped,  # skipped: HTF swing structure disagreed (free)
+        "fetch_failed": fetch_failed,     # candles unavailable — the coin was NOT evaluated
         "gated": stats["gated"],          # skipped before any LLM call (free)
         "llm_calls": stats["llm_calls"],  # actual paid OpenAI calls
         "tokens_in": stats["in_tokens"],
@@ -598,7 +604,8 @@ def run_scan(symbol_limit: int | None = None, use_pregate: bool | None = None) -
     logger.info(
         "signal scan: created=%(created)d scanned=%(scanned)d deduped=%(deduped)d "
         "cooled=%(cooled)d invalidated=%(invalidated)d regime_skipped=%(regime_skipped)d "
-        "htf_struct_skipped=%(htf_struct_skipped)d gated=%(gated)d "
+        "htf_struct_skipped=%(htf_struct_skipped)d fetch_failed=%(fetch_failed)d "
+        "gated=%(gated)d "
         "llm_calls=%(llm_calls)d tokens=%(tokens_in)d/%(tokens_out)d est_cost=$%(est_cost_usd).5f",
         summary,
     )

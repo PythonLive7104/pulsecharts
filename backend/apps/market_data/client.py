@@ -12,6 +12,7 @@ Derived from settings.HYPERLIQUID_WS_URL so testnet/mainnet stay in sync.
 """
 
 import logging
+import threading
 import time
 from urllib.parse import urlparse
 
@@ -35,6 +36,35 @@ _MAX_RETRIES = 3
 _BACKOFF_BASE = 0.5  # seconds: 0.5, 1.0, 2.0
 _BACKOFF_CAP = 5.0
 
+# --- proactive pacing ------------------------------------------------------
+# The retry/backoff above is REACTIVE: it only slows down once Hyperliquid has
+# already refused a request. That is too late for a scan, which fires one call per
+# symbol per timeframe plus the higher-timeframe reads — ~300 calls back to back at
+# 70 symbols. Production logs showed bursts of 429s with JUP, PENGU, FARTCOIN and
+# VVV exhausting all three retries and dropping out of the scan completely, which is
+# invisible to a user: the coin simply produces no signal that cycle.
+#
+# A minimum gap between calls keeps the burst under the limit instead of discovering
+# it afterwards. Per PROCESS, so the worker and the relay pace independently and
+# share one IP budget between them — size the interval for the sum, not for one.
+# 0 disables.
+_last_call_at = 0.0
+_pace_lock = threading.Lock()
+
+
+def _pace() -> None:
+    """Block until at least HYPERLIQUID_MIN_REQUEST_INTERVAL has passed since the
+    previous call from this process."""
+    global _last_call_at
+    interval = float(getattr(settings, "HYPERLIQUID_MIN_REQUEST_INTERVAL", 0.0) or 0.0)
+    if interval <= 0:
+        return
+    with _pace_lock:
+        wait = _last_call_at + interval - time.monotonic()
+        if wait > 0:
+            time.sleep(wait)
+        _last_call_at = time.monotonic()
+
 
 def _info_url() -> str:
     # wss://api.hyperliquid.xyz/ws -> https://api.hyperliquid.xyz/info
@@ -48,6 +78,7 @@ def _post_info(payload: dict, *, timeout: float = 10.0) -> requests.Response:
     last_exc: Exception | None = None
     for attempt in range(_MAX_RETRIES + 1):
         try:
+            _pace()
             resp = requests.post(_info_url(), json=payload, timeout=timeout)
             if resp.status_code in _RETRY_STATUS and attempt < _MAX_RETRIES:
                 # Honor Retry-After when present, else exponential backoff.
