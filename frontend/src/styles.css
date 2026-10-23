@@ -1280,6 +1280,10 @@ a.brand:hover { text-decoration: none; }
 /* Target already tagged on a still-open trade — the partial is due. */
 .level.tp.hit { background: color-mix(in srgb, var(--green) 12%, var(--bg)); }
 .level.tp.hit span { color: var(--green); font-weight: 600; }
+/* Extended targets under the TP1 exit model: real levels, but outside the plan the
+   results are measured on — dimmed and dashed so they never read as THE target. */
+.level.tp.extended { background: transparent; border: 1px dashed var(--border); }
+.level.tp.extended b { color: color-mix(in srgb, var(--green) 55%, var(--muted)); }
 
 .scaleout-note {
   margin: 10px 0 0;
@@ -1305,6 +1309,7 @@ a.brand:hover { text-decoration: none; }
 .rr-line .risk { color: var(--red); }
 .rr-line .reward { color: var(--green); }
 .rr-note { color: var(--muted); font-size: 12px; }
+.rr-ext { color: var(--muted); }
 
 .reasoning { margin-top: 10px; }
 .reason-toggle { background: none; border: none; color: var(--accent); cursor: pointer; font-size: 13px; padding: 0; }

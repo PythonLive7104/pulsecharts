@@ -503,6 +503,13 @@ class SignalFeedView(APIView):
             # a held-back duplicate doesn't consume a delivery slot.
             if shadowed:  # generated + evaluated, but never surfaced
                 reps = [r for r in reps if r.symbol.asset_class not in shadowed]
+            # One open call per coin: a second signal on a symbol the user is already in
+            # repeats the first's thesis at a worse price. Runs BEFORE the exposure caps and
+            # the quota slice so a same-coin repeat never consumes a slot that a different
+            # coin could have used.
+            reps = confluence.cap_per_symbol(
+                reps, already_open=confluence.open_positions_for(user)
+            )
             reps = confluence.cap_currency_exposure(
                 reps,
                 already_open=Signal.objects.filter(

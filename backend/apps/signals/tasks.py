@@ -943,6 +943,19 @@ def _fmt_price(x) -> str:
     return f"{x:,.{d}f}"
 
 
+def _FULL_EXIT_FOOTER(s: Signal) -> str:
+    """Footer for a full-exit signal, naming the extended targets when it carries any.
+
+    The plan sentence has to stay first and unqualified — it's the exit the accuracy
+    figures are measured on. The extended note follows it, saying plainly that TP2/TP3
+    are the user's own call. Mirrors the SignalCard.jsx plan note.
+    """
+    plan = "💡 Close the whole position at the target. No partials, no runner."
+    if s.tp2 is not None or s.tp3 is not None:
+        plan += " TP2/TP3 are extended levels if you run it further — not covered by the accuracy figures."
+    return plan
+
+
 def format_signal_for_telegram(s: Signal) -> str:
     """HTML-formatted signal card for a Telegram message.
 
@@ -996,10 +1009,17 @@ def format_signal_for_telegram(s: Signal) -> str:
     rows = [("Entry", s.entry_price, None, None), ("Stop", s.stop_loss, s.risk_pct, None)]
     full_exit = s.exit_model == Signal.ExitModel.TP1
     if full_exit:
-        # One target: the whole position closes at TP1. TP2/TP3 are still stored but
-        # not shown — printing levels that aren't part of the plan invites holding
-        # past the exit the results are measured on.
+        # One target the plan closes at, then TP2/TP3 as extended levels. They're
+        # marked "ext" and called out in the footer, because the accuracy figures are
+        # measured on the TP1 exit only — an unlabelled TP3 would read as a target
+        # this product's track record stands behind.
         rows.append(("Target", s.tp1, s.reward_tp1_pct, s.risk_reward_tp1))
+        for i, (tp, reward, rr) in enumerate(
+            ((s.tp2, s.reward_tp2_pct, s.risk_reward_tp2),
+             (s.tp3, s.reward_tp3_pct, s.risk_reward_tp3)), start=2
+        ):
+            if tp is not None:
+                rows.append((f"TP{i} ext", tp, reward, rr))
     else:
         for i, (tp, reward, rr) in enumerate(
             ((s.tp1, s.reward_tp1_pct, s.risk_reward_tp1),
@@ -1031,8 +1051,8 @@ def format_signal_for_telegram(s: Signal) -> str:
         lines += ["", html.escape(s.reasoning)]
     lines += [
         "",
-        ("💡 Close the whole position at the target. No partials, no runner."
-         if full_exit else "💡 Bank ½ at TP1 → stop to entry → let the rest run."),
+        (_FULL_EXIT_FOOTER(s) if full_exit
+         else "💡 Bank ½ at TP1 → stop to entry → let the rest run."),
         "<i>Not financial advice.</i>",
     ]
     return "\n".join(lines)
@@ -1375,6 +1395,13 @@ def run_telegram_push() -> dict:
         # Same correlated-exposure cap the in-app feed applies — Telegram is where the
         # four-at-once run was actually felt. Sorted oldest-first above, so the earliest
         # signal claims the exposure and later duplicates are the ones held back.
+        # One open call per coin: a second signal on a symbol the user is already in
+        # repeats the first's thesis at a worse price. Runs BEFORE the exposure caps and
+        # the quota slice so a same-coin repeat never consumes a slot that a different
+        # coin could have used.
+        reps = confluence.cap_per_symbol(
+            reps, already_open=confluence.open_positions_for(user)
+        )
         reps = confluence.cap_currency_exposure(
             reps,
             already_open=Signal.objects.filter(
@@ -1504,6 +1531,13 @@ def run_web_push() -> dict:
         if shadowed:
             reps = [r for r in reps if r.symbol.asset_class not in shadowed]
         reps = breaker.filter_halted(reps, now)
+        # One open call per coin: a second signal on a symbol the user is already in
+        # repeats the first's thesis at a worse price. Runs BEFORE the exposure caps and
+        # the quota slice so a same-coin repeat never consumes a slot that a different
+        # coin could have used.
+        reps = confluence.cap_per_symbol(
+            reps, already_open=confluence.open_positions_for(user)
+        )
         reps = confluence.cap_currency_exposure(
             reps,
             already_open=Signal.objects.filter(

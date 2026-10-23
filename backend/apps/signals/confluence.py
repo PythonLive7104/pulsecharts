@@ -363,6 +363,67 @@ def cap_crypto_direction(reps: list, *, already_open=()) -> list:
     return kept
 
 
+# --- one open trade per symbol ----------------------------------------------
+# The two caps above limit a correlated BET. This one limits repetition of a single
+# SETUP, which is a different problem with the same cause: the scan runs per (symbol,
+# strategy, timeframe), so one coin legitimately produces several rows — and
+# ``collapse`` only reduces those to one per (symbol, timeframe), not one per symbol.
+# A coin scanned on 1h and 4h surfaces two cards, and once SIGNAL_REENTRY_COOLDOWN_BARS
+# elapses the scan adds a continuation call while the first is still open.
+#
+# Generation keeps all of it (confluence counts agreement between exactly those rows,
+# and the backtest population must stay the strategy's own). Delivery does not: a
+# second call on a coin the user is already in shares the first's thesis and risk at a
+# worse price, so it waits until that trade is finished.
+
+
+def open_positions_for(user):
+    """The user's still-open delivered signals, across BOTH delivery channels.
+
+    Counting one channel at a time would let the same coin run twice — once from the
+    in-app feed and once from Telegram, which use different age windows and so don't
+    always pick the same representative. A trade is a trade whatever told the user
+    about it. ``distinct()`` because a signal delivered through both channels joins
+    twice.
+    """
+    return (
+        Signal.objects.filter(
+            Q(deliveries__user=user) | Q(telegram_deliveries__user=user),
+            outcome=Signal.Outcome.PENDING,
+        )
+        .select_related("symbol")
+        .distinct()
+    )
+
+
+def cap_per_symbol(reps: list, *, already_open=()) -> list:
+    """Hold each symbol to ``SIGNAL_MAX_OPEN_PER_SYMBOL`` concurrently open calls.
+
+    ``already_open`` is the user's still-PENDING delivered signals, so the cap counts
+    across scans, not just within one batch — the whole point is that nothing new
+    surfaces for a coin until its open call resolves (TP, stop, invalidation, expiry).
+
+    Mirrors ``cap_currency_exposure`` / ``cap_crypto_direction``: order is preserved and
+    the FIRST signal to claim a slot wins, so callers keep control of priority (the feed
+    sorts newest-first, Telegram oldest-first). 0 disables.
+    """
+    cap = int(getattr(settings, "SIGNAL_MAX_OPEN_PER_SYMBOL", 0) or 0)
+    if cap <= 0:
+        return reps
+
+    counts: dict = {}
+    for sig in already_open:
+        counts[sig.symbol_id] = counts.get(sig.symbol_id, 0) + 1
+
+    kept = []
+    for sig in reps:
+        if counts.get(sig.symbol_id, 0) >= cap:
+            continue  # already in this coin; wait for that trade to finish
+        counts[sig.symbol_id] = counts.get(sig.symbol_id, 0) + 1
+        kept.append(sig)
+    return kept
+
+
 # --- entry freshness --------------------------------------------------------
 # See SIGNAL_SUPPRESS_PROGRESSED / SIGNAL_MAX_DELIVERY_AGE_BARS in settings for why.
 # Both are expressed as a Q so they compose into the candidate query rather than

@@ -115,8 +115,23 @@ class TelegramCopyTests(_Base):
     def test_full_exit_card_shows_one_target_and_the_plan(self):
         text = tasks.format_signal_for_telegram(self._signal(exit_model="tp1"))
         self.assertIn("Target <b>", text)
-        self.assertNotIn("TP2", text)
         self.assertIn("Close the whole position at the target", text)
+
+    def test_full_exit_card_marks_tp2_tp3_as_extended(self):
+        """TP2/TP3 are shown, but never as the target the results are measured on.
+
+        The labelling is the whole point: an unmarked "TP3" on a card whose accuracy
+        figures are scored at TP1 would claim a track record the product doesn't have.
+        """
+        text = tasks.format_signal_for_telegram(self._signal(exit_model="tp1"))
+        self.assertIn("TP2 ext <b>", text)
+        self.assertIn("TP3 ext <b>", text)
+        self.assertIn("not covered by the accuracy figures", text)
+        # The plan sentence still comes first and unqualified.
+        self.assertLess(
+            text.index("Close the whole position at the target"),
+            text.index("extended levels"),
+        )
 
     def test_scaleout_card_unchanged(self):
         text = tasks.format_signal_for_telegram(self._signal(exit_model="scaleout"))
