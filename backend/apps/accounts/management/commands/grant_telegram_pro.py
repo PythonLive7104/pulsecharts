@@ -20,6 +20,7 @@ grant back up to the full window.
 
     python manage.py grant_telegram_pro --dry-run      # see who'd be touched
     python manage.py grant_telegram_pro                # grant 30 days of Pro
+    python manage.py grant_telegram_pro --all          # EVERY user, Telegram or not
     python manage.py grant_telegram_pro --days 14
     python manage.py grant_telegram_pro --include-disconnected
 """
@@ -49,6 +50,15 @@ class Command(BaseCommand):
             help="Length of the grant in days (default 30).",
         )
         parser.add_argument(
+            "--all",
+            dest="all_users",
+            action="store_true",
+            help=(
+                "Every user, Telegram or not. Same protections: staff and "
+                "perpetual-access accounts never get an expiry."
+            ),
+        )
+        parser.add_argument(
             "--include-disconnected",
             action="store_true",
             help=(
@@ -76,9 +86,12 @@ class Command(BaseCommand):
         dry = opts["dry_run"]
         granted_until = timezone.now() + timedelta(days=days)
 
-        qs = User.objects.exclude(telegram_chat_id="")
-        if not opts["include_disconnected"]:
-            qs = qs.filter(telegram_active=True)
+        if opts["all_users"]:
+            qs = User.objects.all()
+        else:
+            qs = User.objects.exclude(telegram_chat_id="")
+            if not opts["include_disconnected"]:
+                qs = qs.filter(telegram_active=True)
         if not opts["include_staff"]:
             qs = qs.exclude(Q(is_staff=True) | Q(is_superuser=True))
         qs = qs.order_by("id")
@@ -135,9 +148,10 @@ class Command(BaseCommand):
             )
 
         verb = "Would grant" if dry else "Granted"
+        who = "user(s)" if opts["all_users"] else "Telegram-connected user(s)"
         self.stdout.write(
             self.style.SUCCESS(
-                f"{verb} {days}-day Pro to {granted} Telegram-connected user(s); "
+                f"{verb} {days}-day Pro to {granted} {who}; "
                 f"{kept} kept a longer expiry, {skipped} perpetual account(s) "
                 f"kept non-expiring. All of them seeded the full Pro symbol set."
             )

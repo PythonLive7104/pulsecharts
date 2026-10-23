@@ -115,6 +115,31 @@ class GrantTelegramProTests(TestCase):
         self.assertEqual(user.plan_tier, FREE)
         self.assertFalse(WatchlistItem.objects.filter(user=user).exists())
 
+    def test_all_flag_grants_users_without_telegram(self):
+        plain = User.objects.create_user(email="plain@example.com", password="x")
+        linked = self._user("linked@example.com")
+
+        call_command("grant_telegram_pro", "--all", verbosity=0)
+
+        for user in (plain, linked):
+            user.refresh_from_db()
+            self.assertEqual(user.plan_tier, PRO, user.email)
+            self.assertEqual(WatchlistItem.objects.filter(user=user).count(), 2)
+
+    def test_all_flag_still_protects_staff_and_perpetual(self):
+        admin = User.objects.create_user(
+            email="admin@example.com", password="x", is_staff=True, plan_tier=PRO
+        )
+        lifetime = User.objects.create_user(
+            email="lifetime@example.com", password="x", plan_tier=PRO, plan_expiry=None
+        )
+
+        call_command("grant_telegram_pro", "--all", verbosity=0)
+
+        for user in (admin, lifetime):
+            user.refresh_from_db()
+            self.assertIsNone(user.plan_expiry, f"{user.email} was given an expiry")
+
     def test_dry_run_writes_nothing(self):
         user = self._user("dry@example.com")
 
