@@ -9,7 +9,12 @@ from types import SimpleNamespace
 
 from django.test import SimpleTestCase, override_settings
 
-from apps.signals.confluence import cap_crypto_direction
+from apps.signals.confluence import cap_crypto_direction, cap_per_symbol
+
+
+def _sym_sig(symbol_id, timeframe="1h"):
+    """Stand-in for cap_per_symbol, which only reads `.symbol_id`."""
+    return SimpleNamespace(symbol_id=symbol_id, timeframe=timeframe)
 
 
 def _sig(direction, asset_class="crypto", ticker="BTC-USD"):
@@ -72,7 +77,8 @@ class FreshEntryQTests(SimpleTestCase):
     """`fresh_entry_q` builds the filter; these assert the Q's SHAPE rather than
     hitting the DB, since the guards are pure configuration logic."""
 
-    @override_settings(SIGNAL_SUPPRESS_PROGRESSED=False, SIGNAL_MAX_DELIVERY_AGE_BARS=0)
+    @override_settings(SIGNAL_SUPPRESS_PROGRESSED=False, SIGNAL_MAX_DELIVERY_AGE_BARS=0,
+                       SIGNAL_MAX_ENTRY_DRIFT=0)
     def test_both_off_is_empty_q(self):
         from django.utils import timezone
 
@@ -81,7 +87,26 @@ class FreshEntryQTests(SimpleTestCase):
         # An empty Q must match everything, so callers can AND it in unconditionally.
         self.assertEqual(len(fresh_entry_q(timezone.now())), 0)
 
-    @override_settings(SIGNAL_SUPPRESS_PROGRESSED=True, SIGNAL_MAX_DELIVERY_AGE_BARS=0)
+    @override_settings(SIGNAL_SUPPRESS_PROGRESSED=False, SIGNAL_MAX_DELIVERY_AGE_BARS=0,
+                       SIGNAL_MAX_ENTRY_DRIFT=0.35)
+    def test_entry_drift_guard_is_on_by_default(self):
+        """The adverse-move guard belongs in the default filter.
+
+        It defaulted to 0 while .env.example recommended 0.35, so an unconfigured
+        deployment delivered signals whose price had already run most of the way to
+        the stop at the entry still printed on the card.
+        """
+        from django.utils import timezone
+
+        from apps.signals.confluence import fresh_entry_q
+        from django.conf import settings
+
+        self.assertEqual(settings.SIGNAL_MAX_ENTRY_DRIFT, 0.35)
+        q = fresh_entry_q(timezone.now())
+        self.assertIn("mae_pct", str(q))
+
+    @override_settings(SIGNAL_SUPPRESS_PROGRESSED=True, SIGNAL_MAX_DELIVERY_AGE_BARS=0,
+                       SIGNAL_MAX_ENTRY_DRIFT=0)
     def test_progressed_guard_filters_best_tp(self):
         from django.utils import timezone
 
@@ -89,7 +114,8 @@ class FreshEntryQTests(SimpleTestCase):
 
         self.assertIn(("best_tp", 0), fresh_entry_q(timezone.now()).children)
 
-    @override_settings(SIGNAL_SUPPRESS_PROGRESSED=False, SIGNAL_MAX_DELIVERY_AGE_BARS=4)
+    @override_settings(SIGNAL_SUPPRESS_PROGRESSED=False, SIGNAL_MAX_DELIVERY_AGE_BARS=4,
+                       SIGNAL_MAX_ENTRY_DRIFT=0)
     def test_age_guard_scales_with_timeframe(self):
         from datetime import timedelta
 
@@ -111,7 +137,8 @@ class FreshEntryQTests(SimpleTestCase):
         self.assertAlmostEqual(
             (now - cutoffs["4h"]).total_seconds(), 4 * 14400, delta=2)
 
-    @override_settings(SIGNAL_SUPPRESS_PROGRESSED=False, SIGNAL_MAX_DELIVERY_AGE_BARS=4)
+    @override_settings(SIGNAL_SUPPRESS_PROGRESSED=False, SIGNAL_MAX_DELIVERY_AGE_BARS=4,
+                       SIGNAL_MAX_ENTRY_DRIFT=0)
     def test_unknown_timeframe_is_not_dropped(self):
         from django.utils import timezone
 
@@ -150,3 +177,44 @@ class EntryDriftTests(SimpleTestCase):
         # Null mae (evaluator has not run yet) must be KEPT, not dropped — a brand-new
         # signal is the freshest thing in the feed.
         self.assertIn("mae_pct__isnull", rendered)
+
+
+class CapPerSymbolTests(SimpleTestCase):
+    """One open call per coin.
+
+    The scan generates per (symbol, strategy, timeframe) and `collapse` only reduces
+    that to one per (symbol, timeframe), so a coin scanned on two timeframes — or one
+    that re-qualifies after the re-entry cooldown while its first call is still
+    running — produced several live cards for the same setup. This cap is what holds a
+    symbol to one open trade until that trade actually resolves.
+    """
+
+    @override_settings(SIGNAL_MAX_OPEN_PER_SYMBOL=0)
+    def test_zero_disables(self):
+        reps = [_sym_sig(1) for _ in range(10)]
+        self.assertEqual(len(cap_per_symbol(reps)), 10)
+
+    @override_settings(SIGNAL_MAX_OPEN_PER_SYMBOL=1)
+    def test_one_per_symbol_within_a_batch(self):
+        # Same coin on 1h and 4h is one setup, not two.
+        reps = [_sym_sig(1), _sym_sig(1), _sym_sig(2)]
+        self.assertEqual([s.symbol_id for s in cap_per_symbol(reps)], [1, 2])
+
+    @override_settings(SIGNAL_MAX_OPEN_PER_SYMBOL=1)
+    def test_an_open_trade_blocks_the_next_call_on_that_coin(self):
+        # Counted across scans — this is the "no new signal until TP/SL/invalidation"
+        # rule, since a resolved signal is no longer in `already_open`.
+        kept = cap_per_symbol([_sym_sig(1), _sym_sig(2)], already_open=[_sym_sig(1)])
+        self.assertEqual([s.symbol_id for s in kept], [2])
+
+    @override_settings(SIGNAL_MAX_OPEN_PER_SYMBOL=1)
+    def test_order_decides_which_call_claims_the_slot(self):
+        # Callers control priority (feed newest-first, Telegram oldest-first), so the
+        # cap must never reorder.
+        first, second = _sym_sig(1, timeframe="4h"), _sym_sig(1, timeframe="1h")
+        self.assertEqual(cap_per_symbol([first, second]), [first])
+
+    @override_settings(SIGNAL_MAX_OPEN_PER_SYMBOL=2)
+    def test_a_higher_cap_allows_that_many(self):
+        reps = [_sym_sig(1) for _ in range(5)]
+        self.assertEqual(len(cap_per_symbol(reps)), 2)

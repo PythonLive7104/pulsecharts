@@ -486,8 +486,13 @@ new signals — so historical rows and the serializer stay valid.)
 Where `risk distance = abs(entry_price - stop_loss)`.
 
 **Trade management is per signal (`Signal.exit_model`).** New signals default to
-`SIGNAL_EXIT_MODEL=tp1`: the whole position closes at TP1 (+1R), the card and Telegram
-show one target, the evaluator walks TP1 only, and auto-trade brackets at TP1. It beat
+`SIGNAL_EXIT_MODEL=tp1`: the whole position closes at TP1 (+1R), the evaluator walks
+TP1 only, and auto-trade brackets at TP1. The card and Telegram show TP1 as THE target
+and TP2/TP3 beside it labelled "ext" — extended levels for a user who chooses to run
+the position further. The labelling is load-bearing, not decoration: every accuracy
+and R figure in the product is scored on the TP1 exit, so an unmarked TP3 would claim
+a track record that was never measured. Change the label in BOTH `SignalCard.jsx` and
+`tasks._FULL_EXIT_FOOTER` / `format_signal_for_telegram`. It beat
 the ladder below on 7.7 years of BTC 4h net of costs (+0.10R vs +0.03R out of sample).
 Signals issued before it keep `scaleout` and are still scored that way — R for any
 trade comes from `stats.trade_r(exit_model, best_tp)`, never a local table.
@@ -889,6 +894,21 @@ already enforced in code — don't undo them:
   - The backtest curve is the STRATEGY's population (every candidate, deduped to one
     position per setup); the delivered feed is narrower (confidence floor +
     confluence). `feed_stats` is the one that reflects what users actually got.
+- **One open call per symbol, enforced at DELIVERY** (`confluence.cap_per_symbol`,
+  `SIGNAL_MAX_OPEN_PER_SYMBOL=1`). The scan still generates per (symbol, strategy,
+  timeframe) — it must, because confluence counts agreement between exactly those rows
+  and the backtest population has to stay the strategy's own — but a user sees nothing
+  new on a coin until their open call resolves (TP, stop, invalidation, expiry).
+  Counted per user across BOTH channels (`confluence.open_positions_for`), since the
+  feed and Telegram use different age windows and don't always pick the same rep.
+  Applied before the exposure caps and the quota slice so a same-coin repeat never eats
+  a slot another coin could have used. Don't move this into generation.
+- **The three delivery-freshness guards default ON**: `SIGNAL_MAX_DELIVERY_AGE_BARS=1`,
+  `SIGNAL_MAX_DELIVERY_AGE_BARS_FEED=4`, `SIGNAL_MAX_ENTRY_DRIFT=0.35`. They each used
+  to default to 0 while `.env.example` recommended these values, so any deployment that
+  hadn't set them delivered signals at an entry price the market had already left —
+  measured at 57.3%/+0.08R on the trigger bar against 49.6%/-0.06R one bar later. A
+  deployment can still set them to 0, but that is now a deliberate opt-out.
 - **Signals run on a volume-ranked universe** (`apps/market_data/universe.py`):
   the top `SIGNAL_UNIVERSE_TOP_N` (20) crypto coins by 7-day Hyperliquid volume,
   refreshed daily (`refresh_signal_universe`, `manage.py set_signal_universe

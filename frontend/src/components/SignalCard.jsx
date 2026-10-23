@@ -103,12 +103,26 @@ export default function SignalCard({ s }) {
           <b>{running ? `${fmt(s.entry_price)} (BE)` : fmt(s.stop_loss)}</b>
         </div>
         {fullExit ? (
-          // One target. TP2/TP3 are still computed but not shown: the plan — and the
-          // track record — closes everything here, and extra levels invite holding.
-          <div className={`level tp${reached >= 1 ? " hit" : ""}`}>
-            <span>Target{reached >= 1 ? " ✓" : ""}</span>
-            <b>{fmt(s.tp1)}</b>
-          </div>
+          // The measured target, then TP2/TP3 as extended reference levels. The plan
+          // still closes the whole position at TP1 — that is the exit every result on
+          // this page is scored on — so the extra levels are styled and labelled as
+          // outside it, never as targets the track record vouches for.
+          <>
+            <div className={`level tp${reached >= 1 ? " hit" : ""}`}>
+              <span>Target{reached >= 1 ? " ✓" : ""}</span>
+              <b>{fmt(s.tp1)}</b>
+            </div>
+            {[s.tp2, s.tp3].map((tp, i) => tp == null ? null : (
+              <div
+                key={i}
+                className="level tp extended"
+                title={`Extended target at ${i + 2}R — past the exit this signal's results are measured on. Only relevant if you choose to run the position further.`}
+              >
+                <span>TP{i + 2} ext</span>
+                <b>{fmt(tp)}</b>
+              </div>
+            ))}
+          </>
         ) : [s.tp1, s.tp2, s.tp3, s.tp4].map((tp, i) => tp == null ? null : (
           <div key={i} className={`level tp${reached >= i + 1 ? " hit" : ""}`}>
             <span>TP{i + 1}{reached >= i + 1 ? " ✓" : ""}</span>
@@ -121,6 +135,10 @@ export default function SignalCard({ s }) {
         <p className="scaleout-note">
           💡 Plan: close the whole position at the target, or take the loss at the
           stop. No partials, no runner — that's how every result here is measured.
+          {(s.tp2 != null || s.tp3 != null) && (
+            <> TP2/TP3 are extended levels for running it further — your call, and
+            not covered by the accuracy figures.</>
+          )}
         </p>
       ) : running ? (
         <p className="scaleout-note running">
@@ -139,6 +157,11 @@ export default function SignalCard({ s }) {
         {fullExit ? (
           <>
             <b className="reward">{dollars(s.reward_tp1_pct)}</b> at the target (1:{Number(s.risk_reward_tp1).toFixed(1)})
+            {s.reward_tp3_pct != null && (
+              <span className="rr-ext">
+                {" "}· {dollars(s.reward_tp3_pct)} if run to TP3
+              </span>
+            )}
           </>
         ) : (
           <>

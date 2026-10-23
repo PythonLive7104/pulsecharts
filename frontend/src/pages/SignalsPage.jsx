@@ -341,7 +341,7 @@ export default function SignalsPage() {
               <p className="muted">
                 {feed?.trial_expired
                   ? "Your 30 days of free signals are up. New setups are still being found — you'll start seeing them again on a paid plan."
-                  : "4h buy/sell signals with an entry, a stop-loss, one profit target, a confidence score and the reasoning behind each call are included on the Starter and Pro plans."}
+                  : "4h buy/sell signals with an entry, a stop-loss, a measured profit target plus extended TP2/TP3 levels, a confidence score and the reasoning behind each call are included on the Starter and Pro plans."}
               </p>
               {/* Named separately from the generic "Upgrade" so a lapsed user reads it
                   as "choose a plan", not "you already had this". */}

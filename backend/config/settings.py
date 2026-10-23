@@ -621,6 +621,20 @@ SIGNAL_MAX_PER_CURRENCY = env.int("SIGNAL_MAX_PER_CURRENCY", default=1)
 # limit; as trades resolve, slots free up.
 SIGNAL_MAX_CRYPTO_PER_DIRECTION = env.int("SIGNAL_MAX_CRYPTO_PER_DIRECTION", default=0)
 
+# One open trade per symbol. The scan generates per (symbol, strategy, timeframe) —
+# which it has to, because confluence counts agreement between those rows — so a
+# single coin could surface several cards at once (one per timeframe) and then another
+# as soon as the re-entry cooldown elapsed, while the first was still running.
+#
+# From a trader's seat that is not more opportunity, it is the same coin pyramiding:
+# the second call shares the first's thesis and its risk, at a worse price. So
+# delivery holds a symbol to this many OPEN calls, counted per user across scans — a
+# new one surfaces only once the previous resolves (TP, stop, invalidation or expiry).
+#
+# Delivery-side like the other caps: generation is untouched, the track record's
+# population is unchanged, and 0 disables it.
+SIGNAL_MAX_OPEN_PER_SYMBOL = env.int("SIGNAL_MAX_OPEN_PER_SYMBOL", default=1)
+
 # --- entry freshness -------------------------------------------------------
 # A signal card prints the entry price it was generated at. The feed surfaced
 # candidates up to FEED_LOOKBACK (2 days) old, so on a 1h timeframe a user could be
@@ -678,6 +692,12 @@ SIGNAL_MAX_CRYPTO_PER_DIRECTION = env.int("SIGNAL_MAX_CRYPTO_PER_DIRECTION", def
 # that before turning this back on, rather than picking a number.
 SIGNAL_LOSS_BREAKER = env("SIGNAL_LOSS_BREAKER", default="")
 
+# --- delivery freshness: three guards, ON by default ------------------------
+# All three defaulted to 0 (disabled) while .env.example recommended 1 / 4 / 0.35, so
+# any deployment that hadn't set them delivered signals at a printed entry the market
+# had already left — the complaint these were written for. The defaults now match the
+# measured recommendation; set them to 0 in the environment to opt out deliberately.
+
 SIGNAL_SUPPRESS_PROGRESSED = env.bool("SIGNAL_SUPPRESS_PROGRESSED", default=True)
 # 2. Age, counted in BARS of the signal's own timeframe so one number means the same
 #    thing on 1h and 4h. 0 disables. Keep it SMALL: `backtest --entry-delay` measured
@@ -685,7 +705,7 @@ SIGNAL_SUPPRESS_PROGRESSED = env.bool("SIGNAL_SUPPRESS_PROGRESSED", default=True
 #    later, and 50.7% / -0.04R at 12 bars (out-of-sample, n=228-268). The trigger bar
 #    is where the edge lives, so an aged signal is not a discounted version of a good
 #    trade — it is a different, losing one. See .env.example for the full table.
-SIGNAL_MAX_DELIVERY_AGE_BARS = env.int("SIGNAL_MAX_DELIVERY_AGE_BARS", default=0)
+SIGNAL_MAX_DELIVERY_AGE_BARS = env.int("SIGNAL_MAX_DELIVERY_AGE_BARS", default=1)
 # 3. Entry drift: refuse a signal that has already run AGAINST itself by this
 #    fraction of its own risk (R) before the user ever saw it. The mirror of
 #    SIGNAL_SUPPRESS_PROGRESSED, which only covers a signal that has already run in
@@ -714,7 +734,7 @@ SIGNAL_MAX_DELIVERY_AGE_BARS = env.int("SIGNAL_MAX_DELIVERY_AGE_BARS", default=0
 # actually checks within. The honest cost is ~3 points on in-app signals; the
 # alternative was an empty page. Closing that gap properly means PUSH for the web
 # feed, after which this can come back down to match.
-SIGNAL_MAX_DELIVERY_AGE_BARS_FEED = env.int("SIGNAL_MAX_DELIVERY_AGE_BARS_FEED", default=0)
+SIGNAL_MAX_DELIVERY_AGE_BARS_FEED = env.int("SIGNAL_MAX_DELIVERY_AGE_BARS_FEED", default=4)
 
 # --- Web Push (VAPID) -------------------------------------------------------
 # Generate a keypair once:
@@ -725,7 +745,7 @@ VAPID_PUBLIC_KEY = env("VAPID_PUBLIC_KEY", default="")
 VAPID_PRIVATE_KEY = env("VAPID_PRIVATE_KEY", default="")
 VAPID_CLAIM_EMAIL = env("VAPID_CLAIM_EMAIL", default=CONTACT_US_EMAIL)
 
-SIGNAL_MAX_ENTRY_DRIFT = env.float("SIGNAL_MAX_ENTRY_DRIFT", default=0.0)
+SIGNAL_MAX_ENTRY_DRIFT = env.float("SIGNAL_MAX_ENTRY_DRIFT", default=0.35)
 
 SIGNAL_MIN_CONFIDENCE_BY_STRATEGY = _parse_strategy_floors(
     env("SIGNAL_MIN_CONFIDENCE_BY_STRATEGY", default="")
