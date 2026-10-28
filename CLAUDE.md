@@ -899,8 +899,11 @@ already enforced in code — don't undo them:
   timeframe) — it must, because confluence counts agreement between exactly those rows
   and the backtest population has to stay the strategy's own — but a user sees nothing
   new on a coin until their open call resolves (TP, stop, invalidation, expiry).
-  Counted per user across BOTH channels (`confluence.open_positions_for`), since the
-  feed and Telegram use different age windows and don't always pick the same rep.
+  Counted PER CHANNEL (`confluence.open_positions_for(user, "feed"|"telegram")`), never
+  across both: web push records an in-app `SignalDelivery` for everything it sends, so a
+  cross-channel count let the web push claim the symbol seconds before the Telegram task
+  ran and silenced Telegram for the SAME trade. Each channel dedupes its own sends
+  separately, so one trade is still announced once per channel.
   Applied before the exposure caps and the quota slice so a same-coin repeat never eats
   a slot another coin could have used. Don't move this into generation.
 - **The three delivery-freshness guards default ON**: `SIGNAL_MAX_DELIVERY_AGE_BARS=1`,

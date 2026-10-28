@@ -1400,7 +1400,7 @@ def run_telegram_push() -> dict:
         # the quota slice so a same-coin repeat never consumes a slot that a different
         # coin could have used.
         reps = confluence.cap_per_symbol(
-            reps, already_open=confluence.open_positions_for(user)
+            reps, already_open=confluence.open_positions_for(user, "telegram")
         )
         reps = confluence.cap_currency_exposure(
             reps,
@@ -1536,7 +1536,7 @@ def run_web_push() -> dict:
         # the quota slice so a same-coin repeat never consumes a slot that a different
         # coin could have used.
         reps = confluence.cap_per_symbol(
-            reps, already_open=confluence.open_positions_for(user)
+            reps, already_open=confluence.open_positions_for(user, "feed")
         )
         reps = confluence.cap_currency_exposure(
             reps,

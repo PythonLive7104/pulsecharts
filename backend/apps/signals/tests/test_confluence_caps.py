@@ -7,7 +7,7 @@ counting, not the ORM.
 
 from types import SimpleNamespace
 
-from django.test import SimpleTestCase, override_settings
+from django.test import SimpleTestCase, TestCase, override_settings
 
 from apps.signals.confluence import cap_crypto_direction, cap_per_symbol
 
@@ -218,3 +218,66 @@ class CapPerSymbolTests(SimpleTestCase):
     def test_a_higher_cap_allows_that_many(self):
         reps = [_sym_sig(1) for _ in range(5)]
         self.assertEqual(len(cap_per_symbol(reps)), 2)
+
+
+class OpenPositionsChannelTests(TestCase):
+    """`open_positions_for` must be scoped to ONE channel.
+
+    Regression: it originally counted both channels at once. Web push records an
+    in-app SignalDelivery for everything it sends, so the web push claimed the symbol
+    seconds before the Telegram task ran and `cap_per_symbol` then suppressed the
+    Telegram message for the SAME trade — a browser notification arrived and Telegram
+    stayed silent.
+    """
+
+    def setUp(self):
+        from django.contrib.auth import get_user_model
+        from django.utils import timezone
+        from apps.market_data.models import Symbol
+        from apps.signals.models import Signal, SignalService
+
+        self.user = get_user_model().objects.create_user(
+            email="trader@example.com", password="x"
+        )
+        symbol = Symbol.objects.create(ticker="ETHFI-USD", hl_coin="ETHFI")
+        service = SignalService.objects.create(
+            name="Volatility Breakout", slug="volatility-breakout"
+        )
+        self.signal = Signal.objects.create(
+            symbol=symbol, service=service, direction=Signal.Direction.SELL,
+            confidence_pct=80, timeframe="1h", entry_price=0.654, stop_loss=0.67,
+            tp1=0.638, tp2=0.622, tp3=0.606,
+            risk_pct=2.4, reward_tp1_pct=2.4, reward_tp2_pct=4.8, reward_tp3_pct=7.2,
+            risk_reward_tp1=1.0, risk_reward_tp2=2.0, risk_reward_tp3=3.0,
+            dollar_risk=2.4, dollar_tp1=2.4, dollar_tp2=4.8, dollar_tp3=7.2,
+            generated_at=timezone.now(),
+        )
+
+    def test_an_in_app_delivery_does_not_count_as_a_telegram_position(self):
+        from apps.signals.confluence import open_positions_for
+        from apps.signals.models import SignalDelivery
+
+        SignalDelivery.objects.create(user=self.user, signal=self.signal)
+
+        self.assertEqual(list(open_positions_for(self.user, "feed")), [self.signal])
+        # The whole point: Telegram has sent nothing, so nothing blocks it.
+        self.assertEqual(list(open_positions_for(self.user, "telegram")), [])
+
+    def test_a_telegram_delivery_does_not_count_as_a_feed_position(self):
+        from apps.signals.confluence import open_positions_for
+        from apps.signals.models import TelegramDelivery
+
+        TelegramDelivery.objects.create(user=self.user, signal=self.signal)
+
+        self.assertEqual(list(open_positions_for(self.user, "telegram")), [self.signal])
+        self.assertEqual(list(open_positions_for(self.user, "feed")), [])
+
+    def test_resolved_signals_free_the_symbol_again(self):
+        from apps.signals.confluence import open_positions_for
+        from apps.signals.models import Signal, TelegramDelivery
+
+        TelegramDelivery.objects.create(user=self.user, signal=self.signal)
+        self.signal.outcome = Signal.Outcome.TP1
+        self.signal.save(update_fields=["outcome"])
+
+        self.assertEqual(list(open_positions_for(self.user, "telegram")), [])

@@ -377,22 +377,27 @@ def cap_crypto_direction(reps: list, *, already_open=()) -> list:
 # worse price, so it waits until that trade is finished.
 
 
-def open_positions_for(user):
-    """The user's still-open delivered signals, across BOTH delivery channels.
+def open_positions_for(user, channel: str):
+    """The user's still-open signals delivered through ONE channel.
 
-    Counting one channel at a time would let the same coin run twice — once from the
-    in-app feed and once from Telegram, which use different age windows and so don't
-    always pick the same representative. A trade is a trade whatever told the user
-    about it. ``distinct()`` because a signal delivered through both channels joins
-    twice.
+    ``channel`` is "feed" (in-app, which web push also writes) or "telegram".
+
+    Counting both channels together looks tidier and is wrong. Web push records an
+    in-app SignalDelivery for everything it sends, so a cross-channel count meant the
+    web push claimed the symbol a few seconds before the Telegram task ran, and
+    ``cap_per_symbol`` then suppressed the Telegram message for the SAME trade — the
+    user got a browser notification and nothing on Telegram. Per channel, each one
+    independently carries one open call per symbol, and the same trade reaches the
+    user everywhere they asked to be told about it.
+
+    This caps CONCURRENT POSITIONS, not duplicates: each channel separately dedupes a
+    trade it has already sent (Telegram on (symbol, timeframe, direction, entry), the
+    feed on its delivery rows), so one trade is still only announced once per channel.
     """
+    key = "telegram_deliveries__user" if channel == "telegram" else "deliveries__user"
     return (
-        Signal.objects.filter(
-            Q(deliveries__user=user) | Q(telegram_deliveries__user=user),
-            outcome=Signal.Outcome.PENDING,
-        )
+        Signal.objects.filter(**{key: user}, outcome=Signal.Outcome.PENDING)
         .select_related("symbol")
-        .distinct()
     )
 
 
